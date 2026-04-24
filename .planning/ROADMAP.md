@@ -33,7 +33,7 @@
 Plans:
 - [x] 01-01-PLAN.md — Install Vitest + react-router-dom, extract global CSS and gameLogic utilities
 - [x] 01-02-PLAN.md — Extract already-isolated screens (Register, Login, AdminLogin, Practice, AdminPanel, Podium)
-- [ ] 01-03-PLAN.md — Extract inline screens (Welcome, Pending, Lobby, ModuleIntro, Quiz, Feedback, Ended) and create hook stubs
+- [x] 01-03-PLAN.md — Extract inline screens (Welcome, Pending, Lobby, ModuleIntro, Quiz, Feedback, Ended) and create hook stubs
 - [ ] 01-04-PLAN.md — Thin App.jsx router, wire CSS import, write calcPts tests, verify DEMO mode
 **UI hint**: no
 
@@ -102,7 +102,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Structural Refactor | 1/4 | In progress | - |
+| 1. Structural Refactor | 3/4 | In progress | - |
 | 2. Supabase Foundation | 0/? | Not started | - |
 | 3. Real-Time Quiz Engine | 0/? | Not started | - |
 | 4. Live Leaderboard and Podium | 0/? | Not started | - |
@@ -163,4 +163,4 @@ Plans:
 
 ---
 
-*Last updated: 2026-04-23 — Plan 01-01 complete*
+*Last updated: 2026-04-23 — Plan 01-03 complete*

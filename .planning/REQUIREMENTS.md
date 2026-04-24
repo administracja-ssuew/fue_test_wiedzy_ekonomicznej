@@ -9,7 +9,7 @@
 
 ### Structural Refactor
 
-- [ ] **STRUCT-01**: Kod źródłowy podzielony na `screens/`, `hooks/`, `lib/`, `styles/` — App.jsx max ~80 linii
+- [x] **STRUCT-01**: Kod źródłowy podzielony na `screens/`, `hooks/`, `lib/`, `styles/` — App.jsx max ~80 linii
 - [ ] **STRUCT-02**: Hook `useAuth()` obsługuje stan autentykacji i `onAuthStateChange`
 - [ ] **STRUCT-03**: Hook `useSession(code)` obsługuje Broadcast channel i stan sesji quizu
 - [ ] **STRUCT-04**: Hook `useTimer(deadline)` liczy czas od serwera (`q_started_at`), nie `setInterval`

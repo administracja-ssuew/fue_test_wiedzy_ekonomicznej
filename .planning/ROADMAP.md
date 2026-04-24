@@ -32,7 +32,7 @@
 **Plans**: 4 plans
 Plans:
 - [x] 01-01-PLAN.md — Install Vitest + react-router-dom, extract global CSS and gameLogic utilities
-- [ ] 01-02-PLAN.md — Extract already-isolated screens (Register, Login, AdminLogin, Practice, AdminPanel, Podium)
+- [x] 01-02-PLAN.md — Extract already-isolated screens (Register, Login, AdminLogin, Practice, AdminPanel, Podium)
 - [ ] 01-03-PLAN.md — Extract inline screens (Welcome, Pending, Lobby, ModuleIntro, Quiz, Feedback, Ended) and create hook stubs
 - [ ] 01-04-PLAN.md — Thin App.jsx router, wire CSS import, write calcPts tests, verify DEMO mode
 **UI hint**: no

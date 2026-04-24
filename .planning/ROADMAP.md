@@ -9,7 +9,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Structural Refactor** — Split App.jsx into screens/ + hooks/ + lib/; no behavior change; DEMO mode intact
+- [x] **Phase 1: Structural Refactor** — Split App.jsx into screens/ + hooks/ + lib/; no behavior change; DEMO mode intact (completed 2026-04-24)
 - [ ] **Phase 2: Supabase Foundation** — Auth, DB schema, RLS, session join code, participant registration and verification
 - [ ] **Phase 3: Real-Time Quiz Engine** — Broadcast channels, server-anchored timer, answer recording, reconnect recovery
 - [ ] **Phase 4: Live Leaderboard and Podium** — Postgres Changes on answers, admin live view, real podium data, city aggregates
@@ -34,7 +34,7 @@ Plans:
 - [x] 01-01-PLAN.md — Install Vitest + react-router-dom, extract global CSS and gameLogic utilities
 - [x] 01-02-PLAN.md — Extract already-isolated screens (Register, Login, AdminLogin, Practice, AdminPanel, Podium)
 - [x] 01-03-PLAN.md — Extract inline screens (Welcome, Pending, Lobby, ModuleIntro, Quiz, Feedback, Ended) and create hook stubs
-- [ ] 01-04-PLAN.md — Thin App.jsx router, wire CSS import, write calcPts tests, verify DEMO mode
+- [x] 01-04-PLAN.md — Thin App.jsx router, wire CSS import, write calcPts tests, verify DEMO mode
 **UI hint**: no
 
 ---
@@ -102,7 +102,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Structural Refactor | 3/4 | In progress | - |
+| 1. Structural Refactor | 3/4 | Complete    | 2026-04-24 |
 | 2. Supabase Foundation | 0/? | Not started | - |
 | 3. Real-Time Quiz Engine | 0/? | Not started | - |
 | 4. Live Leaderboard and Podium | 0/? | Not started | - |

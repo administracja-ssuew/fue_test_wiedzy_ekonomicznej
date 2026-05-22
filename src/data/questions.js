@@ -7,10 +7,11 @@ export const CITIES = [
 ];
 
 export const MODULES = [
-  { id: 1, name: "Obliczenia",         icon: "🧮", color: "#6B21E8", timePerQ: 90,  desc: "Zadania obliczeniowe" },
-  { id: 2, name: "Terminy",            icon: "📚", color: "#1565C0", timePerQ: 30,  desc: "Pojęcia i definicje" },
-  { id: 3, name: "Logika ekonomiczna", icon: "🧠", color: "#2E7D32", timePerQ: 60,  desc: "Analiza i wnioskowanie" },
-  { id: 4, name: "Pytania kreatywne",  icon: "💡", color: "#E65100", timePerQ: 75,  desc: "Scenariusze i dylematy" },
+  { id: 1, name: "Obliczenia",              icon: "🧮", color: "#6B21E8", timePerQ: 90, desc: "Zadania obliczeniowe" },
+  { id: 2, name: "Terminy",                 icon: "📚", color: "#1565C0", timePerQ: 30, desc: "Pojęcia i definicje" },
+  { id: 3, name: "Logika ekonomiczna",      icon: "🧠", color: "#2E7D32", timePerQ: 60, desc: "Analiza i wnioskowanie" },
+  { id: 4, name: "Pytania kreatywne",       icon: "💡", color: "#E65100", timePerQ: 75, desc: "Scenariusze i dylematy" },
+  { id: 5, name: "Aktualności gospodarcze", icon: "📰", color: "#880E4F", timePerQ: 45, desc: "Bieżące wydarzenia ekonomiczne" },
 ];
 
 export const QUESTIONS = [

@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_sessions (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   city                  TEXT NOT NULL,
   status                TEXT NOT NULL DEFAULT 'waiting'
-                          CHECK (status IN ('waiting','running','paused','ended')),
+                          CHECK (status IN ('waiting','running','paused','results','ended')),
   current_question_idx  INT NOT NULL DEFAULT 0,
   q_started_at          TIMESTAMPTZ,
   is_practice           BOOLEAN NOT NULL DEFAULT false,

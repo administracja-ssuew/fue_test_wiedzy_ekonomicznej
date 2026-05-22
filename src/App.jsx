@@ -5,8 +5,9 @@ import { calcPts, getModule } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
 
-import Welcome     from "./screens/Welcome.jsx";
-import Break       from "./screens/Break.jsx";
+import Welcome        from "./screens/Welcome.jsx";
+import Break          from "./screens/Break.jsx";
+import WaitingResults from "./screens/WaitingResults.jsx";
 import CodeEntry   from "./screens/CodeEntry.jsx";
 import AdminLogin  from "./screens/AdminLogin.jsx";
 import Practice    from "./screens/Practice.jsx";
@@ -37,8 +38,9 @@ export default function App() {
   const [nextModule, setNextModule]     = useState(null); // module to start after break
   const [podStep, setPodStep]           = useState(0);
 
-  // Auto-break after these modules (module 5 = results, no quiz questions)
-  const BREAK_AFTER = [2, 4];
+  // Auto-break only after module 2 (between mod 2 and 3)
+  // After module 5 → waiting_results (admin reveals ranking manually)
+  const BREAK_AFTER = [2];
 
   const timerRef  = useRef(null);
   const pickTime  = useRef(null);
@@ -122,7 +124,9 @@ export default function App() {
         setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
         setTimer(getModule(nextMod).timePerQ); setScreen("module_intro");
       } else {
-        setScreen("ended");
+        // Wszystkie moduły skończone → czekaj na ogłoszenie wyników przez admina
+        setScreen("waiting_results");
+        if (quizSession) updateSession(quizSession.id, { status: "paused" });
       }
     }
   };
@@ -190,6 +194,9 @@ export default function App() {
 
   if (screen === "break")
     return <Break participant={participant} nextModule={nextModule} onResume={handleResumeFromBreak} />;
+
+  if (screen === "waiting_results")
+    return <WaitingResults participant={participant} onReveal={() => setScreen("ended")} />;
 
   if (screen === "practice")
     return <Practice onBack={() => setScreen(participant ? "lobby" : "welcome")} />;

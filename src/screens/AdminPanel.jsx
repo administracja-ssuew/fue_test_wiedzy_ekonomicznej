@@ -306,9 +306,12 @@ function SesjaTab({ city, adminId }) {
             <button style={C.btn("pause", { flex: 1 })} onClick={() => upd({ status: "paused" })}>⏸ Pauza</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
-          {session?.status === "paused" && (
-            <button style={C.btn("success", { flex: 1 })} onClick={() => upd({ status: "running" })}>▶ Wznów</button>
-          )}
+          {session?.status === "paused" && <>
+            <button style={C.btn("success", { flex: 1 })} onClick={() => upd({ status: "running" })}>▶ Wznów quiz</button>
+            <button style={C.btn("gold", { flex: 1 })} onClick={() => { if (confirm("Ogłosić wyniki teraz? Uczestnicy zobaczą ranking.")) upd({ status: "results" }); }}>
+              🏆 Ogłoś wyniki
+            </button>
+          </>}
           {session?.status === "ended" && (
             <button style={C.btn("ghost", { flex: 1 })} onClick={load}>🔄 Odśwież wyniki</button>
           )}
@@ -506,121 +509,200 @@ function UstawieniaTab({ city }) {
   );
 }
 
-// ─── Tab: Live Quiz View ──────────────────────────────────────────────────────
+// ─── Tab: Live Quiz View (widok duchy) ───────────────────────────────────────
+
+const LIVE_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
+const LIVE_LABELS = ["A", "B", "C", "D"];
 
 function LiveTab({ city }) {
-  const [allQuestions, setAllQuestions]   = useState([]);
-  const [session, setSession]             = useState(null);
-  const [selectedQ, setSelectedQ]         = useState(null); // { id, module, q, ans, opts }
-  const [answers, setAnswers]             = useState([]);
-  const [loading, setLoading]             = useState(false);
-  const pollRef = useRef(null);
+  const [questions, setQuestions]   = useState([]);
+  const [session, setSession]       = useState(null);
+  const [phase, setPhase]           = useState("idle");    // idle|quiz|reveal|done
+  const [gIdx, setGIdx]             = useState(0);          // global question index
+  const [timer, setTimer]           = useState(0);
+  const [revealData, setRevealData] = useState([]);
+  const [autoSec, setAutoSec]       = useState(8);
+  const [liveCount, setLiveCount]   = useState(0);
+  const timerRef  = useRef(null);
+  const revealRef = useRef(null);
+  const liveRef   = useRef(null);
 
   useEffect(() => {
-    import("../data/questions.js").then((m) => setAllQuestions(m.QUESTIONS));
-    getOrCreateSession(city, null).then(({ data }) => setSession(data));
+    Promise.all([
+      getOrCreateSession(city, null, false),
+      import("../data/questions.js"),
+    ]).then(([{ data: sess }, { QUESTIONS }]) => {
+      setSession(sess);
+      // Load DB questions for city, fallback to hardcoded
+      if (sess) {
+        getLiveQuestionStats(sess.id, "dummy").catch(() => {});
+      }
+      // Try DB questions first (reuse getQuestions from supabase)
+      import("../lib/supabase.js").then(({ getQuestions: gq }) =>
+        gq(city).then((dbQs) => setQuestions(dbQs.length > 0 ? dbQs : QUESTIONS))
+      );
+    });
   }, [city]);
 
+  const currentQ = questions[gIdx];
+  const mod      = MODULES.find((m) => m.id === currentQ?.module);
+
+  // Start quiz
+  const startLive = () => {
+    setGIdx(0); setPhase("quiz"); setRevealData([]); setAutoSec(8);
+  };
+
+  // Timer effect
   useEffect(() => {
-    if (!selectedQ || !session) return;
-    clearInterval(pollRef.current);
-    const fetch = async () => {
-      const stats = await getLiveQuestionStats(session.id, selectedQ.id);
-      setAnswers(stats.answers || []);
-    };
-    fetch();
-    pollRef.current = setInterval(fetch, 3000);
-    return () => clearInterval(pollRef.current);
-  }, [selectedQ?.id, session?.id]);
+    if (phase !== "quiz" || !mod || !currentQ) return;
+    setTimer(mod.timePerQ);
+    clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimer((t) => {
+        if (t <= 1) { clearInterval(timerRef.current); doReveal(); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    // Poll live answers count
+    liveRef.current = setInterval(async () => {
+      if (session && currentQ) {
+        const stats = await getLiveQuestionStats(session.id, currentQ.id);
+        setLiveCount(stats.total);
+      }
+    }, 2000);
+    return () => { clearInterval(timerRef.current); clearInterval(liveRef.current); };
+  }, [gIdx, phase]);
 
-  const ANSWER_LABELS = ["A", "B", "C", "D"];
-  const ANSWER_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
+  const doReveal = async () => {
+    setPhase("reveal"); setAutoSec(8); clearInterval(liveRef.current);
+    if (session && currentQ) {
+      const stats = await getLiveQuestionStats(session.id, currentQ.id);
+      setRevealData(stats.answers || []);
+    }
+    let cd = 8;
+    clearInterval(revealRef.current);
+    revealRef.current = setInterval(() => {
+      cd--;
+      setAutoSec(cd);
+      if (cd <= 0) {
+        clearInterval(revealRef.current);
+        if (gIdx + 1 < questions.length) { setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0); }
+        else setPhase("done");
+      }
+    }, 1000);
+  };
 
-  const correct   = answers.filter((a) => a.isCorrect);
-  const incorrect = answers.filter((a) => !a.isCorrect);
-  const avgPts    = answers.length ? Math.round(answers.reduce((s, a) => s + a.points, 0) / answers.length) : 0;
-  // Avg response time ≈ (timePerQ × 500 − avgPts) / 500 × timePerQ (inverted scoring)
-  const mod       = allQuestions.find((q) => q.id === selectedQ?.id);
-  const timePerQ  = allQuestions.length && selectedQ ? (MODULES.find((m) => m.id === selectedQ.module)?.timePerQ || 60) : 60;
-  const avgTimeSec = answers.length ? Math.round(timePerQ - (avgPts / 1000) * timePerQ) : 0;
+  const skipReveal = () => {
+    clearInterval(revealRef.current);
+    if (gIdx + 1 < questions.length) { setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0); }
+    else setPhase("done");
+  };
 
-  const grouped = {};
-  allQuestions.forEach((q) => {
-    if (!grouped[q.module]) grouped[q.module] = [];
-    grouped[q.module].push(q);
-  });
+  const correct   = revealData.filter((a) => a.isCorrect);
+  const incorrect = revealData.filter((a) => !a.isCorrect);
+  const avgPts    = revealData.length ? Math.round(revealData.reduce((s, a) => s + a.points, 0) / revealData.length) : 0;
+  const timePerQ  = mod?.timePerQ || 60;
+  const avgTimeSec = revealData.length && avgPts > 0 ? Math.round(timePerQ * (1 - (avgPts - 500) / 500)) : timePerQ;
+  const timerPct  = timer / (mod?.timePerQ || 60);
+  const tColor    = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
+
+  if (phase === "idle" || questions.length === 0) return (
+    <div style={{ textAlign: "center", padding: "48px 0" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>👁️</div>
+      <p style={{ color: "#9B89CC", marginBottom: 24, fontSize: 14, lineHeight: 1.6 }}>
+        Widok duchy — obserwujesz quiz jak uczestnik, bez możliwości odpowiadania.<br />
+        Po każdym pytaniu widzisz pełną tabelę odpowiedzi.
+      </p>
+      <button onClick={startLive} style={{ ...C.btn("primary", { width: "auto", padding: "12px 32px" }) }}>▶ Start podglądu live</button>
+    </div>
+  );
+
+  if (phase === "done") return (
+    <div style={{ textAlign: "center", padding: "48px 0" }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+      <p style={{ color: "#9B89CC", marginBottom: 24 }}>Wszystkie pytania zostały wyświetlone.</p>
+      <button onClick={() => { setPhase("idle"); setGIdx(0); }} style={C.btn("ghost", { width: "auto" })}>↩ Reset</button>
+    </div>
+  );
 
   return (
-    <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-      {/* Lewa kolumna — lista pytań */}
-      <div style={{ minWidth: 200, flex: "0 0 220px" }}>
-        <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Wybierz pytanie</p>
-        {MODULES.map((m) => (
-          <div key={m.id} style={{ marginBottom: 12 }}>
-            <p style={{ fontSize: 11, color: m.color, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, marginBottom: 6 }}>{m.icon} {m.name}</p>
-            {(grouped[m.id] || []).map((q, idx) => (
-              <button key={q.id} onClick={() => setSelectedQ(q)}
-                style={{ ...C.btn("ghost", { width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 12, marginBottom: 4, background: selectedQ?.id === q.id ? `${m.color}20` : undefined, borderColor: selectedQ?.id === q.id ? `${m.color}55` : undefined, color: selectedQ?.id === q.id ? "#EDE9FE" : "#9B89CC" }) }}>
-                {idx + 1}. {q.q.slice(0, 30)}{q.q.length > 30 ? "…" : ""}
-              </button>
+    <div>
+      {/* Header info */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
+        <div style={{ background: "#E8376B", borderRadius: 20, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", animation: "pulse 1s infinite" }} />
+          LIVE
+        </div>
+        <span style={{ fontSize: 13, color: "#9B89CC" }}>
+          {mod?.icon} {mod?.name} · Pytanie {gIdx + 1}/{questions.length}
+        </span>
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "#9B89CC" }}>
+          {liveCount} odpowiedzi live
+        </span>
+      </div>
+
+      {/* Quiz view (ghost) */}
+      {phase === "quiz" && currentQ && (
+        <div style={{ ...C.card({ padding: "20px" }), marginBottom: 16 }}>
+          {/* Timer */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <p style={{ fontWeight: 700, fontSize: 15, flex: 1, lineHeight: 1.5 }}>{currentQ.q}</p>
+            <div style={{ width: 52, height: 52, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginLeft: 16 }}>
+              <svg width="52" height="52" style={{ position: "absolute", transform: "rotate(-90deg)" }}>
+                <circle cx="26" cy="26" r="20" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="4"/>
+                <circle cx="26" cy="26" r="20" fill="none" stroke={tColor} strokeWidth="4" strokeLinecap="round"
+                  strokeDasharray={125.6} strokeDashoffset={125.6 * (1 - timerPct)} style={{ transition: "stroke-dashoffset .95s linear" }}/>
+              </svg>
+              <span style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: tColor }}>{timer}</span>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {currentQ.opts.map((opt, i) => (
+              <div key={i} style={{ background: LIVE_COLORS[i], borderRadius: 10, padding: "12px 14px", opacity: .85, display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ width: 24, height: 24, borderRadius: 6, background: "rgba(0,0,0,.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{LIVE_LABELS[i]}</span>
+                <span style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>{opt}</span>
+              </div>
             ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
-      {/* Prawa kolumna — statystyki */}
-      <div style={{ flex: 1 }}>
-        {!selectedQ ? (
-          <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
-            <p style={{ fontSize: 32, marginBottom: 12 }}>👈</p>
-            <p>Wybierz pytanie z listy, aby zobaczyć odpowiedzi uczestników.</p>
-          </div>
-        ) : (
-          <>
-            <div style={{ ...C.card({ padding: "18px 20px", marginBottom: 16 }) }}>
-              <p style={{ fontSize: 11, color: "#9B89CC", marginBottom: 6 }}>Pytanie {allQuestions.findIndex((q) => q.id === selectedQ.id) + 1}</p>
-              <p style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.5, marginBottom: 14 }}>{selectedQ.q}</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {selectedQ.opts.map((opt, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 12px", borderRadius: 8, background: i === selectedQ.ans ? "rgba(11,158,107,.15)" : "rgba(255,255,255,.04)", border: `1px solid ${i === selectedQ.ans ? "#0B9E6B" : "rgba(255,255,255,.07)"}` }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 6, background: ANSWER_COLORS[i], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{ANSWER_LABELS[i]}</span>
-                    <span style={{ fontSize: 13, color: i === selectedQ.ans ? "#10D9A0" : "#9B89CC" }}>{opt}</span>
-                    {i === selectedQ.ans && <span style={{ marginLeft: "auto", fontSize: 12, color: "#10D9A0" }}>✓ poprawna</span>}
-                  </div>
-                ))}
+      {/* Reveal — pełna tabela */}
+      {phase === "reveal" && currentQ && (
+        <>
+          <div style={{ ...C.card({ padding: "16px 20px", marginBottom: 16, borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.06)" }) }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <p style={{ fontWeight: 700, fontSize: 14 }}>{currentQ.q}</p>
+              <div style={{ background: "#0B9E6B22", border: "1px solid #0B9E6B44", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#10D9A0" }}>
+                ✓ {["A","B","C","D"][currentQ.ans]}: {currentQ.opts[currentQ.ans]}
               </div>
             </div>
-
-            {/* Statystyki */}
-            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-              {[["Odpowiedziało", answers.length, "#EDE9FE"], ["✅ Poprawnie", correct.length, "#10D9A0"], ["❌ Błędnie", incorrect.length, "#E8376B"], ["⏱ Śr. czas", `${avgTimeSec}s`, "#F5C518"]].map(([l, v, c]) => (
-                <div key={l} style={{ ...C.card({ padding: "12px 14px", flex: 1, textAlign: "center" }) }}>
-                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 24, color: c, lineHeight: 1 }}>{v}</p>
-                  <p style={{ fontSize: 10, color: "#9B89CC", marginTop: 3 }}>{l}</p>
+            <div style={{ display: "flex", gap: 12 }}>
+              {[["Odpowiedzi", revealData.length, "#EDE9FE"], ["✅", correct.length, "#10D9A0"], ["❌", incorrect.length, "#E8376B"], ["⌀ czas", `${Math.max(1, Math.min(timePerQ, avgTimeSec))}s`, "#F5C518"]].map(([l, v, c]) => (
+                <div key={l} style={{ flex: 1, textAlign: "center" }}>
+                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: c, lineHeight: 1 }}>{v}</p>
+                  <p style={{ fontSize: 10, color: "#9B89CC" }}>{l}</p>
                 </div>
               ))}
+              <button onClick={skipReveal} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px", whiteSpace: "nowrap", alignSelf: "center" }) }}>
+                Następne → ({autoSec}s)
+              </button>
             </div>
+          </div>
 
-            {/* Lista odpowiedzi */}
-            {answers.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Odpowiedzi uczestników</p>
-                {answers.map((a) => (
-                  <div key={a.code} style={{ ...C.card({ padding: "10px 14px" }), display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 16 }}>{a.isCorrect ? "✅" : "❌"}</span>
-                    <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1 }}>{a.code}</span>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{a.name}</span>
-                    <span style={{ fontFamily: '"Bebas Neue"', fontSize: 16, color: "#F5C518" }}>{a.points} pkt</span>
-                  </div>
-                ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 400, overflowY: "auto" }}>
+            {revealData.sort((a, b) => b.points - a.points).map((a, i) => (
+              <div key={a.code} style={{ ...C.card({ padding: "8px 14px" }), display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 14 }}>{a.isCorrect ? "✅" : "❌"}</span>
+                <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1, minWidth: 80 }}>{a.code}</span>
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                <span style={{ fontFamily: '"Bebas Neue"', fontSize: 16, color: a.isCorrect ? "#F5C518" : "#E8376B" }}>{a.points} pkt</span>
               </div>
-            )}
-            {answers.length === 0 && (
-              <p style={{ color: "#9B89CC", textAlign: "center", padding: "20px 0" }}>Brak odpowiedzi na to pytanie jeszcze.</p>
-            )}
-          </>
-        )}
-      </div>
+            ))}
+            {revealData.length === 0 && <p style={{ color: "#9B89CC", textAlign: "center", padding: 16 }}>Brak odpowiedzi zarejestrowanych w bazie.</p>}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -79,7 +79,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
 
       {/* Question */}
       <div style={{ padding: "22px 20px 14px", flexShrink: 0 }}>
-        <p className="su" style={{ fontSize: isDesktop ? 20 : 18, fontWeight: 700, lineHeight: 1.45, textAlign: "center" }}>
+        <p style={{ fontSize: isDesktop ? 20 : 18, fontWeight: 700, lineHeight: 1.45, textAlign: "center" }}>
           {currentQ.q}
         </p>
       </div>

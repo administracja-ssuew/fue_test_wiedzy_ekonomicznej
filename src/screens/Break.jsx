@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
 
-export default function Break({ participant, nextModule, onResume }) {
+export default function Break({ participant, nextModule, isAdminPause, onResume }) {
   const [dots, setDots] = useState(".");
   const pollRef = useRef(null);
   const city = participant?.city;
@@ -33,20 +33,23 @@ export default function Break({ participant, nextModule, onResume }) {
     return () => supabase.removeChannel(ch);
   }, [city]);
 
-  const isResults = !nextModule;
+  const isResults     = !nextModule && !isAdminPause;
+  const isAdminPauseMode = isAdminPause;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div style={{ textAlign: "center", padding: "40px 28px", maxWidth: 420 }}>
         <div style={{ fontSize: 64, marginBottom: 20, animation: "bd 2s ease-in-out infinite" }}>
-          {isResults ? "🏆" : "☕"}
+          {isResults ? "🏆" : isAdminPauseMode ? "⏸️" : "☕"}
         </div>
-        <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 52, letterSpacing: 2, color: isResults ? "#F5C518" : "#EDE9FE", marginBottom: 8 }}>
-          {isResults ? "Chwila!" : "Przerwa"}
+        <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 52, letterSpacing: 2, color: isResults ? "#F5C518" : isAdminPauseMode ? "#F5C518" : "#EDE9FE", marginBottom: 8 }}>
+          {isResults ? "Chwila!" : isAdminPauseMode ? "Wstrzymano" : "Przerwa"}
         </h2>
         <p style={{ fontSize: 16, color: "#9B89CC", lineHeight: 1.7, marginBottom: 28 }}>
           {isResults
             ? "Zaraz nastąpi ogłoszenie wyników końcowych."
+            : isAdminPauseMode
+            ? "Quiz został chwilowo wstrzymany przez administratora."
             : <>Moduł {nextModule} rozpocznie się za chwilę.<br />Zrób sobie chwilę przerwy.</>}
         </p>
         <div style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.09)", borderRadius: 14, padding: "16px 24px", display: "inline-flex", alignItems: "center", gap: 10 }}>

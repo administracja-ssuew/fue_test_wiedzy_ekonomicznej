@@ -530,32 +530,42 @@ function LiveTab({ city }) {
   useEffect(() => {
     Promise.all([
       getOrCreateSession(city, null, false),
-      import("../data/questions.js"),
-    ]).then(([{ data: sess }, { QUESTIONS }]) => {
+      import("../lib/supabase.js").then(({ getQuestions: gq }) => gq(city)),
+    ]).then(([{ data: sess }, dbQs]) => {
       setSession(sess);
-      // Load DB questions for city, fallback to hardcoded
-      if (sess) {
-        getLiveQuestionStats(sess.id, "dummy").catch(() => {});
-      }
-      // Try DB questions first (reuse getQuestions from supabase)
-      import("../lib/supabase.js").then(({ getQuestions: gq }) =>
-        gq(city).then((dbQs) => setQuestions(dbQs.length > 0 ? dbQs : QUESTIONS))
-      );
+      // Only DB questions — no hardcoded fallback
+      setQuestions(dbQs);
     });
   }, [city]);
 
   const currentQ = questions[gIdx];
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
 
-  // Start quiz
-  const startLive = () => {
-    setGIdx(0); setPhase("quiz"); setRevealData([]); setAutoSec(8);
+  // Start live view — sync with session's current question and elapsed time
+  const startLive = async () => {
+    const { data: freshSession } = await getOrCreateSession(city, null, false);
+    setSession(freshSession);
+
+    let startIdx = freshSession?.current_question_idx || 0;
+    let startTimer = mod?.timePerQ || 60;
+
+    if (freshSession?.q_started_at) {
+      const elapsedSec = Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000);
+      const q = questions[startIdx];
+      const qMod = MODULES.find((m) => m.id === q?.module);
+      startTimer = Math.max(0, (qMod?.timePerQ || 60) - elapsedSec);
+    }
+
+    setGIdx(startIdx);
+    setTimer(startTimer);
+    setRevealData([]); setAutoSec(8);
+    setPhase("quiz");
   };
 
-  // Timer effect
+  // Timer effect — use pre-set timer value, not reset from timePerQ
   useEffect(() => {
     if (phase !== "quiz" || !mod || !currentQ) return;
-    setTimer(mod.timePerQ);
+    // Only reset timer when gIdx changes (new question), not on every render
     clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setTimer((t) => {
@@ -586,16 +596,24 @@ function LiveTab({ city }) {
       setAutoSec(cd);
       if (cd <= 0) {
         clearInterval(revealRef.current);
-        if (gIdx + 1 < questions.length) { setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0); }
-        else setPhase("done");
+        if (gIdx + 1 < questions.length) {
+          const nextQ = questions[gIdx + 1];
+          const nextMod = MODULES.find((m) => m.id === nextQ?.module);
+          setTimer(nextMod?.timePerQ || 60);
+          setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0);
+        } else setPhase("done");
       }
     }, 1000);
   };
 
   const skipReveal = () => {
     clearInterval(revealRef.current);
-    if (gIdx + 1 < questions.length) { setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0); }
-    else setPhase("done");
+    if (gIdx + 1 < questions.length) {
+      const nextQ = questions[gIdx + 1];
+      const nextMod = MODULES.find((m) => m.id === nextQ?.module);
+      setTimer(nextMod?.timePerQ || 60);
+      setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0);
+    } else setPhase("done");
   };
 
   const correct   = revealData.filter((a) => a.isCorrect);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { MODULES, QUESTIONS } from "./data/questions.js";
+import { MODULES } from "./data/questions.js";
 import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
@@ -46,8 +46,8 @@ export default function App() {
   const pickTime  = useRef(null);
   const isDesktop = useWindowWidth() >= 900;
 
-  // Use DB questions when available, fallback to hardcoded
-  const activeQuestions = cityQuestions.length > 0 ? cityQuestions : QUESTIONS;
+  // Only DB questions — no hardcoded fallback
+  const activeQuestions = cityQuestions;
   const qs       = activeQuestions.filter((q) => q.module === currentMod);
   const currentQ = qs[qIdx];
   const mod      = getModule(currentMod);
@@ -65,6 +65,25 @@ export default function App() {
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
+
+  // ── Admin pause subscription (during quiz) ───────────────────────
+  useEffect(() => {
+    if (!quizSession?.id || !participant) return;
+    const quizScreens = ["quiz", "module_intro", "feedback"];
+    if (!quizScreens.includes(screen)) return;
+
+    let pollInterval = setInterval(async () => {
+      const s = await getSessionForCity(participant.city);
+      if (s?.status === "paused" && screen === "quiz") {
+        clearInterval(timerRef.current);
+        clearInterval(pollInterval);
+        setAnswered(true); // freeze question
+        // Show break/pause screen
+        setScreen("admin_pause");
+      }
+    }, 4000);
+    return () => clearInterval(pollInterval);
+  }, [quizSession?.id, screen, participant]);
 
   // ── Quiz logic ───────────────────────────────────────────────────
 
@@ -110,6 +129,11 @@ export default function App() {
     const nextIdx = qIdx + 1;
     if (nextIdx < qs.length) {
       setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
+      // Track question start time for Live View sync
+      if (quizSession) {
+        const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + nextIdx;
+        updateSession(quizSession.id, { q_started_at: new Date().toISOString(), current_question_idx: globalIdx });
+      }
     } else {
       const nextMod = currentMod + 1;
       if (BREAK_AFTER.includes(currentMod)) {
@@ -194,6 +218,12 @@ export default function App() {
 
   if (screen === "break")
     return <Break participant={participant} nextModule={nextModule} onResume={handleResumeFromBreak} />;
+
+  // Admin manually paused mid-quiz — participant waits
+  if (screen === "admin_pause")
+    return <Break participant={participant} nextModule={currentMod} isAdminPause onResume={() => {
+      setPicked(null); setAnswered(false); setTimer(mod?.timePerQ || 60); setScreen("quiz");
+    }} />;
 
   if (screen === "waiting_results")
     return <WaitingResults participant={participant} onReveal={() => setScreen("ended")} />;

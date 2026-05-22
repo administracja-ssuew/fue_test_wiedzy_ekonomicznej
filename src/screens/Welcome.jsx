@@ -144,22 +144,40 @@ function UniversityTicker() {
 
 function SocialBar() {
   return (
-    <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "8px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+    <div style={{ background: "rgba(0,0,0,.5)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ background: "rgba(255,255,255,.1)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "4px 8px", display: "flex", alignItems: "center" }}>
-          <img src="/fue.png" alt="FUE" style={{ height: 32, width: "auto" }} />
+
+        {/* Logo FUE — białe tło bo PNG ma białe tło */}
+        <div style={{ background: "#ffffff", borderRadius: 8, padding: "3px 9px", display: "flex", alignItems: "center", boxShadow: "0 1px 10px rgba(0,0,0,.25)" }}>
+          <img src="/fue.png" alt="FUE" style={{ height: 28, width: "auto", display: "block" }} />
         </div>
+
+        {/* Event link — animowany */}
         <a href={EVENT_LINK} target="_blank" rel="noreferrer"
-          style={{ background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.45)", borderRadius: 20, padding: "4px 14px", fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", letterSpacing: .3 }}>
-          📅 Strona wydarzenia →
+          style={{
+            display: "flex", alignItems: "center", gap: 7,
+            background: "linear-gradient(135deg, rgba(107,33,232,.22), rgba(79,70,229,.18))",
+            borderRadius: 20, padding: "5px 14px",
+            fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600,
+            whiteSpace: "nowrap", letterSpacing: .3,
+            animation: "borderGlow 2.5s ease infinite",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "linear-gradient(135deg, rgba(107,33,232,.4), rgba(79,70,229,.35))")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "linear-gradient(135deg, rgba(107,33,232,.22), rgba(79,70,229,.18))")}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10D9A0", boxShadow: "0 0 6px #10D9A0", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
+          TWE 2026 — Strona wydarzenia
+          <span style={{ fontSize: 12, opacity: .7 }}>↗</span>
         </a>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
+
+      <div style={{ display: "flex", gap: 7 }}>
         {SOCIAL_LINKS.map((s) => {
           const Icon = s.icon;
           return (
             <a key={s.label} href={s.href} target="_blank" rel="noreferrer" title={s.label}
-              style={{ width: 32, height: 32, borderRadius: 9, background: `${s.color}18`, border: `1px solid ${s.color}35`, display: "flex", alignItems: "center", justifyContent: "center", color: s.color, textDecoration: "none", transition: "background .2s" }}>
+              style={{ width: 32, height: 32, borderRadius: 9, background: `${s.color}15`, border: `1px solid ${s.color}30`, display: "flex", alignItems: "center", justifyContent: "center", color: s.color, textDecoration: "none", transition: "all .2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = `${s.color}30`; e.currentTarget.style.transform = "scale(1.1)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = `${s.color}15`; e.currentTarget.style.transform = ""; }}>
               <Icon />
             </a>
           );
@@ -365,41 +383,47 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
 // ─── Tab: Organizatorzy ───────────────────────────────────────────────────────
 
 function OrganizatorszyTab() {
+  let cardIdx = 0;
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 860, padding: "32px 24px" }}>
-        <div style={{ marginBottom: 32 }}>
-          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>Ludzie za projektem</span>
-          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 42, letterSpacing: 1, color: "#EDE9FE", marginTop: 4 }}>Organizatorzy</h2>
+        <div style={{ animation: "blurIn .45s ease both", marginBottom: 36 }}>
+          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Ludzie za projektem</span>
+          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Organizatorzy</h2>
+          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
         </div>
 
-        {ORGANIZERS.map((section) => (
-          <div key={section.group} style={{ marginBottom: 40 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-              <div style={{ height: 1, flex: 1, background: "rgba(255,255,255,.08)" }} />
-              <span style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1.2, whiteSpace: "nowrap" }}>{section.group}</span>
-              <div style={{ height: 1, flex: 1, background: "rgba(255,255,255,.08)" }} />
+        {ORGANIZERS.map((section, sIdx) => (
+          <div key={section.group} style={{ marginBottom: 44, animation: "blurIn .5s ease both", animationDelay: `${.1 + sIdx * .1}s` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
+              <div style={{ height: 1, flex: 1, background: "linear-gradient(90deg,rgba(107,33,232,.4),rgba(255,255,255,.06))" }} />
+              <span style={{ fontSize: 10, color: "#9B89CC", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, whiteSpace: "nowrap" }}>{section.group}</span>
+              <div style={{ height: 1, flex: 1, background: "linear-gradient(270deg,rgba(107,33,232,.4),rgba(255,255,255,.06))" }} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 14 }}>
               {section.members.map((m) => {
                 const color = UNIV_COLORS[m.univ] || "#9B89CC";
                 const initials = m.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                const delay = `${.15 + cardIdx++ * .07}s`;
                 return (
-                  <div key={m.name + m.role} style={{ ...W.card({ padding: "20px" }) }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div key={m.name + m.role}
+                    style={{ ...W.card({ padding: "20px" }), animation: "cardIn .5s ease both", animationDelay: delay, transition: "transform .2s, box-shadow .2s", cursor: "default" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 12px 32px ${color}20`; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
                       {m.photo
-                        ? <img src={m.photo} alt={m.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: "cover", border: `2px solid ${color}44`, flexShrink: 0 }} />
-                        : <div style={{ width: 48, height: 48, borderRadius: 12, background: `${color}22`, border: `1px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 20, color, flexShrink: 0 }}>
+                        ? <img src={m.photo} alt={m.name} style={{ width: 52, height: 52, borderRadius: 14, objectFit: "cover", border: `2px solid ${color}55`, flexShrink: 0 }} />
+                        : <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${color}30,${color}15)`, border: `1px solid ${color}45`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 22, color, flexShrink: 0, letterSpacing: 1 }}>
                             {initials}
                           </div>
                       }
-                      <div>
-                        <p style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</p>
-                        <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 2 }}>{m.role}</p>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3 }}>{m.name}</p>
+                        <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 4, lineHeight: 1.4 }}>{m.role}</p>
                       </div>
                     </div>
-                    <div style={{ background: `${color}15`, border: `1px solid ${color}30`, borderRadius: 8, padding: "3px 10px", display: "inline-block" }}>
-                      <span style={{ fontSize: 11, color, fontWeight: 600 }}>{m.univ}</span>
+                    <div style={{ background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 8, padding: "4px 10px", display: "inline-block" }}>
+                      <span style={{ fontSize: 11, color, fontWeight: 700, letterSpacing: .5 }}>{m.univ}</span>
                     </div>
                   </div>
                 );
@@ -419,21 +443,40 @@ function KoordynatorzyTab({ city, setCity }) {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 580, padding: "32px 24px" }}>
-        <div style={{ marginBottom: 24 }}>
-          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>Kontakt z organizacją</span>
-          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 42, letterSpacing: 1, color: "#EDE9FE", marginTop: 4 }}>Koordynatorzy KG</h2>
+        <div style={{ animation: "blurIn .45s ease both", marginBottom: 28 }}>
+          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Kontakt z organizacją</span>
+          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Koordynatorzy KG</h2>
+          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
         </div>
 
-        <CitySelector city={city} setCity={setCity} />
+        <div style={{ animation: "blurIn .4s .12s ease both" }}>
+          <CitySelector city={city} setCity={setCity} />
+        </div>
 
-        <div className="su" style={{ ...W.card({ padding: "28px", borderColor: `${coord.color}30` }), background: `${coord.color}08` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 4 }}>
-            <div style={{ width: 60, height: 60, borderRadius: 16, background: `${coord.color}22`, border: `1px solid ${coord.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0 }}>
+        {/* Karta animowana po zmianie miasta */}
+        <div key={city} style={{
+          ...W.card({ padding: "28px", borderColor: `${coord.color}35` }),
+          background: `linear-gradient(135deg, ${coord.color}10, ${coord.color}05)`,
+          animation: "cardIn .4s ease both",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 8 }}>
+            <div style={{
+              width: 68, height: 68, borderRadius: 18,
+              background: `linear-gradient(135deg,${coord.color}30,${coord.color}15)`,
+              border: `2px solid ${coord.color}45`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 32, flexShrink: 0,
+              boxShadow: `0 8px 24px ${coord.color}25`,
+            }}>
               {coord.emoji}
             </div>
             <div>
-              <p style={{ fontWeight: 700, fontSize: 17 }}>{coord.name}</p>
-              <p style={{ fontSize: 13, color: "#9B89CC", marginTop: 3 }}>{coord.role}</p>
+              <p style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}>{coord.name}</p>
+              <p style={{ fontSize: 13, color: "#9B89CC", marginTop: 4 }}>{coord.role}</p>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 6, background: `${coord.color}18`, border: `1px solid ${coord.color}30`, borderRadius: 20, padding: "2px 10px" }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: coord.color, animation: "pulse 2s infinite" }} />
+                <span style={{ fontSize: 10, color: coord.color, fontWeight: 700, letterSpacing: .5 }}>{city}</span>
+              </div>
             </div>
           </div>
           <ContactRows coord={coord} />
@@ -459,12 +502,15 @@ function InformatorTab({ city, setCity }) {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 640, padding: "32px 24px" }}>
-        <div style={{ marginBottom: 24 }}>
-          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>Wszystko co musisz wiedzieć</span>
-          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 42, letterSpacing: 1, color: "#EDE9FE", marginTop: 4 }}>Informator uczestnika</h2>
+        <div style={{ animation: "blurIn .45s ease both", marginBottom: 28 }}>
+          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Wszystko co musisz wiedzieć</span>
+          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Informator uczestnika</h2>
+          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
         </div>
 
-        <CitySelector city={city} setCity={setCity} />
+        <div style={{ animation: "blurIn .4s .1s ease both" }}>
+          <CitySelector city={city} setCity={setCity} />
+        </div>
 
         {/* Sekcja tabs */}
         <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.09)", marginBottom: 28 }}>
@@ -478,20 +524,20 @@ function InformatorTab({ city, setCity }) {
         </div>
 
         {section === "harmonogram" && (
-          <div className="fi">
-            <div style={{ ...W.card({ padding: "14px 18px", marginBottom: 28, background: "rgba(107,33,232,.06)", borderColor: "rgba(107,33,232,.25)" }) }}>
-              <p style={{ fontSize: 11, color: "#9B89CC", marginBottom: 4 }}>📍 Miejsce</p>
+          <div key="harmonogram" style={{ animation: "blurIn .35s ease both" }}>
+            <div style={{ ...W.card({ padding: "14px 18px", marginBottom: 24, background: "rgba(107,33,232,.07)", borderColor: "rgba(107,33,232,.28)" }) }}>
+              <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>📍 Miejsce</p>
               <p style={{ fontSize: 14, fontWeight: 600 }}>{address}</p>
             </div>
             {SCHEDULE.map((s, i) => (
-              <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start", paddingBottom: 20 }}>
+              <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start", paddingBottom: 20, animation: "cardIn .4s ease both", animationDelay: `${i * .07}s` }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 20 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: i === 2 ? "#6B21E8" : "#4F46E5", border: "2px solid rgba(107,33,232,.4)", marginTop: 5 }} />
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: i === 2 ? "#6B21E8" : "#4F46E5", border: "2px solid rgba(107,33,232,.4)", marginTop: 5, ...(i === 2 ? { boxShadow: "0 0 8px rgba(107,33,232,.6)" } : {}) }} />
                   {i < SCHEDULE.length - 1 && <div style={{ width: 2, flex: 1, background: "rgba(107,33,232,.2)", marginTop: 4, minHeight: 24 }} />}
                 </div>
                 <div>
-                  <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 20, color: "#F5C518", letterSpacing: 1, lineHeight: 1 }}>{s.time}</p>
-                  <p style={{ fontSize: 13, color: "#EDE9FE", marginTop: 3 }}>{s.icon} {s.label}</p>
+                  <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 22, color: "#F5C518", letterSpacing: 1.5, lineHeight: 1 }}>{s.time}</p>
+                  <p style={{ fontSize: 14, color: "#EDE9FE", marginTop: 4, fontWeight: 500 }}>{s.icon} {s.label}</p>
                 </div>
               </div>
             ))}
@@ -499,28 +545,33 @@ function InformatorTab({ city, setCity }) {
         )}
 
         {section === "zasady" && (
-          <div className="fi" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div key="zasady" style={{ display: "flex", flexDirection: "column", gap: 10, animation: "blurIn .35s ease both" }}>
             {RULES.map((r, i) => (
-              <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", ...W.card({ padding: "14px 16px" }) }}>
-                <span style={{ background: "rgba(107,33,232,.25)", borderRadius: 6, padding: "1px 8px", fontSize: 12, fontWeight: 700, color: "#C4B5FD", flexShrink: 0 }}>{i + 1}</span>
-                <p style={{ fontSize: 14, lineHeight: 1.55 }}>{r}</p>
+              <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", ...W.card({ padding: "14px 16px" }), animation: "cardIn .4s ease both", animationDelay: `${i * .05}s`,
+                transition: "border-color .2s" }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(107,33,232,.35)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,.09)")}>
+                <span style={{ background: "rgba(107,33,232,.25)", borderRadius: 6, padding: "2px 9px", fontSize: 12, fontWeight: 700, color: "#C4B5FD", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
+                <p style={{ fontSize: 14, lineHeight: 1.6 }}>{r}</p>
               </div>
             ))}
           </div>
         )}
 
         {section === "kontakt" && (
-          <div className="fi" style={{ ...W.card({ padding: "28px", borderColor: `${coord.color}30` }), background: `${coord.color}08` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 4 }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: `${coord.color}22`, border: `1px solid ${coord.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>
-                {coord.emoji}
+          <div key="kontakt" style={{ animation: "blurIn .35s ease both" }}>
+            <div style={{ ...W.card({ padding: "28px", borderColor: `${coord.color}35` }), background: `linear-gradient(135deg, ${coord.color}10, ${coord.color}05)` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: `${coord.color}22`, border: `2px solid ${coord.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, boxShadow: `0 6px 20px ${coord.color}25` }}>
+                  {coord.emoji}
+                </div>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: 16 }}>{coord.name}</p>
+                  <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>{coord.role}</p>
+                </div>
               </div>
-              <div>
-                <p style={{ fontWeight: 700, fontSize: 16 }}>{coord.name}</p>
-                <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>{coord.role}</p>
-              </div>
+              <ContactRows coord={coord} />
             </div>
-            <ContactRows coord={coord} />
           </div>
         )}
       </div>

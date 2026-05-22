@@ -19,9 +19,9 @@ const C = {
       : { background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: "#C4B5FD" }),
     border: ["primary","success","danger","pause"].includes(v) ? "none" : undefined,
     borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700,
-    cursor: "pointer", fontFamily: '"Jost",sans-serif', ...x,
+    cursor: "pointer", fontFamily: '"Space Grotesk",sans-serif', ...x,
   }),
-  input: (x = {}) => ({ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "11px 14px", color: "#EDE9FE", fontSize: 14, fontFamily: '"Jost",sans-serif', width: "100%", ...x }),
+  input: (x = {}) => ({ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "11px 14px", color: "#EDE9FE", fontSize: 14, fontFamily: '"Space Grotesk",sans-serif', width: "100%", ...x }),
   lbl:   { fontSize: 11, fontWeight: 600, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 6 },
 };
 
@@ -728,7 +728,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
   }, [admin?.city]);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: '"Jost",sans-serif', color: "#EDE9FE", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", display: "flex", flexDirection: "column" }}>
 
       <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>

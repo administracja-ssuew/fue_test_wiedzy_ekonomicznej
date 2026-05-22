@@ -64,7 +64,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     : { icon: "🏁", text: "Sesja zakończona", color: "#E8376B" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: isDesktop ? "40px 0 48px" : "40px 24px 32px", position: "relative" }}>
 
         {/* Header */}
@@ -130,7 +130,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           </div>
         </div>
 
-        <button onClick={onPractice} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: "12px", fontSize: 13, color: "#C4B5FD", cursor: "pointer", width: "100%", fontFamily: '"Jost",sans-serif', fontWeight: 600 }}>
+        <button onClick={onPractice} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: "12px", fontSize: 13, color: "#C4B5FD", cursor: "pointer", width: "100%", fontFamily: '"Space Grotesk",sans-serif', fontWeight: 600 }}>
           📖 Przejrzyj przykładowe pytania
         </button>
 

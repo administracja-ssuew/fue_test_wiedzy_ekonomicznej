@@ -40,7 +40,7 @@ export default function WaitingResults({ participant, onReveal }) {
   }, [city]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div style={{ textAlign: "center", padding: "40px 28px", maxWidth: 420 }}>
         <div style={{ fontSize: 72, marginBottom: 24, animation: "glow 2s ease-in-out infinite" }}>🏆</div>
         <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 52, letterSpacing: 2, color: "#F5C518", marginBottom: 12 }}>

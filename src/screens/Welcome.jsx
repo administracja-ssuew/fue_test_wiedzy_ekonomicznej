@@ -116,7 +116,7 @@ const W = {
     border: v !== "ghost" ? "none" : undefined,
     borderRadius: 12, padding: "15px 20px", fontSize: 15, fontWeight: 700,
     cursor: "pointer", width: "100%", transition: "transform .15s,opacity .15s",
-    fontFamily: '"Jost",sans-serif', ...extra,
+    fontFamily: '"Space Grotesk",sans-serif', ...extra,
   }),
 };
 
@@ -143,7 +143,9 @@ function SocialBar() {
   return (
     <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "8px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <img src="/fue.png" alt="FUE" style={{ height: 32, width: "auto" }} />
+        <div style={{ background: "rgba(255,255,255,.1)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, padding: "4px 8px", display: "flex", alignItems: "center" }}>
+          <img src="/fue.png" alt="FUE" style={{ height: 32, width: "auto" }} />
+        </div>
         <a href={EVENT_LINK} target="_blank" rel="noreferrer"
           style={{ background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.45)", borderRadius: 20, padding: "4px 14px", fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", letterSpacing: .3 }}>
           📅 Strona wydarzenia →
@@ -177,7 +179,7 @@ function CitySelector({ city, setCity }) {
             borderRadius: 20, padding: "7px 16px", cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6,
             fontSize: 13, fontWeight: 600, color: city === c.name ? "#EDE9FE" : "#9B89CC",
-            transition: "all .15s", fontFamily: '"Jost",sans-serif',
+            transition: "all .15s", fontFamily: '"Space Grotesk",sans-serif',
           }}>
           <span>{c.icon}</span>{c.name}
         </button>
@@ -209,62 +211,99 @@ function ContactRows({ coord }) {
 
 // ─── Tab: Główna ─────────────────────────────────────────────────────────────
 
+// Elegant floating shape (inspired by HeroGeometric)
+function Shape({ style, gradient, delay = 0 }) {
+  return (
+    <div style={{
+      position: "absolute", borderRadius: 999, pointerEvents: "none",
+      background: `linear-gradient(135deg, ${gradient}, transparent)`,
+      border: "1px solid rgba(255,255,255,.06)",
+      boxShadow: "inset 0 0 30px rgba(255,255,255,.03)",
+      animation: `float${style.anim} ${style.dur}s ease-in-out infinite`,
+      animationDelay: `${delay}s`,
+      ...style,
+    }} />
+  );
+}
+
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   return (
     <div style={{ position: "relative", minHeight: "calc(100vh - 120px)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-      {/* Animated background blobs */}
-      <div style={{ position: "absolute", top: "8%", left: "5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(107,33,232,.16) 0%,transparent 70%)", animation: "float1 9s ease-in-out infinite", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", bottom: "10%", right: "3%", width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(245,197,24,.07) 0%,transparent 70%)", animation: "float2 11s ease-in-out infinite", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", top: "45%", right: "20%", width: 240, height: 240, borderRadius: "50%", background: "radial-gradient(circle,rgba(78,205,196,.06) 0%,transparent 70%)", animation: "float3 13s ease-in-out infinite", pointerEvents: "none" }} />
+
+      {/* Background gradient overlay */}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(107,33,232,.06) 0%, transparent 50%, rgba(245,197,24,.04) 100%)", pointerEvents: "none" }} />
+
+      {/* Animated elegant shapes */}
+      <Shape gradient="rgba(107,33,232,.14)" delay={0}   style={{ width: 580, height: 120, top: "12%",  left: "-8%",  anim: 1, dur: 10 }} />
+      <Shape gradient="rgba(232,55,107,.10)"  delay={0.3} style={{ width: 460, height: 100, bottom: "8%", right: "-5%", anim: 2, dur: 12 }} />
+      <Shape gradient="rgba(78,205,196,.08)"  delay={0.6} style={{ width: 280, height: 70,  bottom: "18%",left: "8%",  anim: 3, dur: 14 }} />
+      <Shape gradient="rgba(245,197,24,.07)"  delay={0.8} style={{ width: 180, height: 50,  top: "8%",   right: "12%", anim: 4, dur: 11 }} />
+      <Shape gradient="rgba(107,33,232,.09)"  delay={1.1} style={{ width: 220, height: 55,  top: "50%",  left: "30%",  anim: 1, dur: 15 }} />
 
       {/* Central content */}
-      <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: "40px 32px" }}>
+      <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: "40px 32px", maxWidth: 700 }}>
 
-        {/* Eyebrow */}
-        <p style={{ animation: "slideUp .5s ease both", fontSize: 11, letterSpacing: 4, color: "#9B89CC", textTransform: "uppercase", fontWeight: 600, marginBottom: 28 }}>
-          Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
-        </p>
-
-        {/* Title — staggered lines */}
-        <div style={{ lineHeight: 1, marginBottom: 12 }}>
-          <div style={{ overflow: "hidden" }}>
-            <h1 style={{ animation: "slideUp .5s .08s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 130 : 88, letterSpacing: 4, color: "#fff", lineHeight: .9 }}>
-              TEST
-            </h1>
-          </div>
-          <div style={{ overflow: "hidden" }}>
-            <h1 style={{ animation: "slideUp .5s .18s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 130 : 88, letterSpacing: 4, color: "#C4B5FD", lineHeight: .9 }}>
-              WIEDZY
-            </h1>
-          </div>
-          <div style={{ overflow: "hidden" }}>
-            <h1 style={{ animation: "slideUp .5s .28s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 86 : 58, letterSpacing: 3, lineHeight: 1.1, color: "transparent", WebkitTextStroke: `1.5px rgba(107,33,232,.75)` }}>
-              EKONOMICZNEJ
-            </h1>
-          </div>
+        {/* Eyebrow badge */}
+        <div style={{ animation: "blurIn .7s .05s ease both", display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 32 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6B21E8", animation: "pulse 2s infinite" }} />
+          <span style={{ fontSize: 11, letterSpacing: 3.5, color: "#9B89CC", textTransform: "uppercase", fontWeight: 500 }}>
+            Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
+          </span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6B21E8", animation: "pulse 2s .5s infinite" }} />
         </div>
 
-        {/* Animated separator */}
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 36, marginTop: 16 }}>
-          <div style={{ height: 2, background: "linear-gradient(90deg,transparent,#6B21E8 40%,#F5C518 60%,transparent)", animation: "revealLine .8s .4s ease both", width: 0 }} />
+        {/* Title — staggered blur-in */}
+        <div style={{ marginBottom: 8 }}>
+          <h1 style={{ animation: "blurIn .65s .15s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, color: "#ffffff", lineHeight: .85, margin: 0 }}>
+            TEST
+          </h1>
+          <h1 style={{ animation: "blurIn .65s .28s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, lineHeight: .85, margin: 0,
+            background: "linear-gradient(135deg, #C4B5FD, #8B5CF6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+            WIEDZY
+          </h1>
+          <h1 style={{ animation: "blurIn .65s .41s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 90 : 60, letterSpacing: 3, lineHeight: 1.05, margin: 0,
+            color: "transparent", WebkitTextStroke: `1.5px rgba(107,33,232,.6)` }}>
+            EKONOMICZNEJ
+          </h1>
+        </div>
+
+        {/* Shimmer separator */}
+        <div style={{ animation: "blurIn .5s .55s ease both", display: "flex", justifyContent: "center", margin: "24px 0 32px" }}>
+          <div style={{
+            height: 1, width: 160,
+            background: "linear-gradient(90deg, transparent, #6B21E8, #C4B5FD, #F5C518, transparent)",
+            backgroundSize: "200% auto",
+            animation: "shimmer 3s linear infinite",
+          }} />
         </div>
 
         {/* Buttons */}
-        <div style={{ animation: "slideUp .5s .48s ease both", display: "flex", flexDirection: "column", gap: 12, maxWidth: 340, margin: "0 auto" }}>
-          <button style={W.btn("primary", { fontSize: 16, padding: "18px 28px" })} onClick={() => onEnterCode()}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-3px) scale(1.02)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "")}>
-            🎟️ Mam kod — dołącz do quizu
+        <div style={{ animation: "blurIn .6s .65s ease both", display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 12, justifyContent: "center" }}>
+          <button
+            onClick={onEnterCode}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px) scale(1.03)"; e.currentTarget.style.boxShadow = "0 16px 40px rgba(107,33,232,.6)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 28px rgba(107,33,232,.4)"; }}
+            style={{ ...W.btn("primary", { fontSize: 15, padding: "16px 32px", width: "auto", transition: "all .2s" }) }}>
+            🎟️ Mam kod — dołącz
           </button>
-          <button style={W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.25)", fontSize: 13, padding: "13px 24px" })} onClick={() => onAdminLogin()}>
+          <button
+            onClick={onAdminLogin}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(245,197,24,.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,.04)")}
+            style={{ ...W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.2)", fontSize: 13, padding: "14px 28px", width: "auto", background: "rgba(255,255,255,.04)", transition: "background .2s" }) }}>
             🔐 Panel Administratora
           </button>
         </div>
 
-        {/* Subtle bottom info */}
-        <p style={{ animation: "slideUp .5s .58s ease both", marginTop: 32, fontSize: 11, color: "rgba(155,137,204,.35)", letterSpacing: 1 }}>
-          5 MIAST · 4 MODUŁY · 2 ETAPY
-        </p>
+        {/* Stats row */}
+        <div style={{ animation: "blurIn .5s .78s ease both", display: "flex", gap: 24, justifyContent: "center", marginTop: 36 }}>
+          {[["5", "Miast"], ["5", "Modułów"], ["2", "Etapy"]].map(([v, l]) => (
+            <div key={l} style={{ textAlign: "center" }}>
+              <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: "#6B21E8", lineHeight: 1 }}>{v}</p>
+              <p style={{ fontSize: 10, color: "rgba(155,137,204,.45)", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 2 }}>{l}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -450,7 +489,7 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
   const [city, setCity] = useState("Kraków");
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
 
       <SocialBar />
 

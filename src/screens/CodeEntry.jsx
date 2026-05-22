@@ -16,7 +16,7 @@ export default function CodeEntry({ onBack, onSuccess }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: "28px", justifyContent: "center" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#9B89CC", fontSize: 22, padding: "0 0 24px", cursor: "pointer", alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8 }}>
           ← <span style={{ fontSize: 14, fontWeight: 600 }}>Wróć</span>
@@ -46,7 +46,7 @@ export default function CodeEntry({ onBack, onSuccess }) {
           <button
             onClick={submit}
             disabled={loading}
-            style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "16px", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: '"Jost",sans-serif', boxShadow: "0 8px 28px rgba(107,33,232,.4)", marginTop: 4 }}>
+            style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "16px", fontSize: 16, fontWeight: 700, cursor: "pointer", fontFamily: '"Space Grotesk",sans-serif', boxShadow: "0 8px 28px rgba(107,33,232,.4)", marginTop: 4 }}>
             {loading ? "Sprawdzanie…" : "Dołącz do quizu →"}
           </button>
         </div>

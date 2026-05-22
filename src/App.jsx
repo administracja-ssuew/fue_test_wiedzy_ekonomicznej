@@ -176,7 +176,7 @@ export default function App() {
 
   // ── Loading ──────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ minHeight: "100vh", background: "#070215", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "#070215", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="spinner" style={{ width: 40, height: 40, border: "3px solid rgba(107,33,232,.3)", borderTop: "3px solid #6B21E8", borderRadius: "50%" }} />
       <p style={{ color: "#9B89CC", fontSize: 14 }}>Ładowanie…</p>
     </div>

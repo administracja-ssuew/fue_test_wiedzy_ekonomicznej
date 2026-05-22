@@ -36,7 +36,7 @@ export default function Break({ participant, nextModule, onResume }) {
   const isResults = !nextModule;
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div style={{ textAlign: "center", padding: "40px 28px", maxWidth: 420 }}>
         <div style={{ fontSize: 64, marginBottom: 20, animation: "bd 2s ease-in-out infinite" }}>
           {isResults ? "🏆" : "☕"}

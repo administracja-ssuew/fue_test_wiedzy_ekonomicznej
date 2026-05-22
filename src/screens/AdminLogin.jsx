@@ -7,7 +7,7 @@ const W = {
       : { background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "#C4B5FD" }),
     border: v !== "ghost" ? "none" : undefined,
     borderRadius: 12, padding: "15px 20px", fontSize: 15, fontWeight: 700,
-    cursor: "pointer", width: "100%", fontFamily: '"Jost",sans-serif', ...extra,
+    cursor: "pointer", width: "100%", fontFamily: '"Space Grotesk",sans-serif', ...extra,
   }),
 };
 
@@ -28,7 +28,7 @@ export default function AdminLogin({ onBack, onSuccess }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: "28px", justifyContent: "center" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#9B89CC", fontSize: 22, padding: "0 0 24px", cursor: "pointer", alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8 }}>
           ← <span style={{ fontSize: 14, fontWeight: 600 }}>Wróć</span>

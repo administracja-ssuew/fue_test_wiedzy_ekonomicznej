@@ -1,7 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow-x: hidden; }
 :root { --fue-bg: linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%); }
-body { background: var(--fue-bg); -webkit-font-smoothing: antialiased; font-family: 'Jost', sans-serif; }
+body { background: var(--fue-bg); -webkit-font-smoothing: antialiased; font-family: 'Space Grotesk', sans-serif; }
 input, button, select, textarea { outline: none; border: none; font-family: inherit; }
 button { cursor: pointer; }
 
@@ -15,10 +15,13 @@ button { cursor: pointer; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 @keyframes ticker { from{transform:translateX(0)} to{transform:translateX(-33.333%)} }
-@keyframes float1 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(22px,-28px) scale(1.04)} 66%{transform:translate(-16px,18px) scale(.97)} }
-@keyframes float2 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-26px,14px) scale(.96)} 66%{transform:translate(20px,-22px) scale(1.03)} }
-@keyframes float3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-18px,-14px) scale(1.06)} }
+@keyframes float1 { 0%,100%{transform:translate(0,0) rotate(12deg)} 50%{transform:translate(20px,-30px) rotate(14deg)} }
+@keyframes float2 { 0%,100%{transform:translate(0,0) rotate(-15deg)} 50%{transform:translate(-25px,20px) rotate(-13deg)} }
+@keyframes float3 { 0%,100%{transform:translate(0,0) rotate(-8deg)} 50%{transform:translate(15px,-15px) rotate(-6deg)} }
+@keyframes float4 { 0%,100%{transform:translate(0,0) rotate(20deg)} 50%{transform:translate(-10px,25px) rotate(22deg)} }
 @keyframes slideUp { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
+@keyframes blurIn  { from{filter:blur(16px);opacity:0;transform:translateY(20px)} to{filter:blur(0);opacity:1;transform:translateY(0)} }
+@keyframes shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
 @keyframes revealLine { from{width:0;opacity:0} to{width:80px;opacity:1} }
 
 .su { animation: su .35s ease both; }

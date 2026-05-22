@@ -10,7 +10,7 @@ const SOCIAL_LINKS = [
   { label: "TWE Facebook",  abbr: "FB", href: "#TODO", color: "#1877F2" },
   { label: "FUE Instagram", abbr: "IG", href: "#TODO", color: "#E1306C" },
   { label: "FUE Facebook",  abbr: "FB", href: "#TODO", color: "#1877F2" },
-  { label: "Strona FUE",    abbr: "🌐", href: "#TODO", color: "#6B21E8" },
+  { label: "Strona FUE",    abbr: "🌐", href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
 ];
 
 const UNIVERSITIES = [
@@ -23,11 +23,11 @@ const UNIVERSITIES = [
 
 const ORGANIZERS = [
   {
-    group: "Zarząd FUE",
+    group: "Prezydium Forum Uczelni Ekonomicznych",
     members: [
-      { name: "Imię Nazwisko", role: "Prezes FUE",               univ: "UEK"   },
-      { name: "Imię Nazwisko", role: "Wiceprezes ds. Projektów",  univ: "SGH"   },
-      { name: "Imię Nazwisko", role: "Wiceprezes ds. Finansów",   univ: "UEP"   },
+      { name: "Dawid Rutkowski", role: "Przewodniczący FUE",               univ: "UEW"   },
+      { name: "Helena Popek", role: "Wiceprezes ds. Projektów",  univ: "SGH"   },
+      { name: "Jan Peciak", role: "Członek Prezydium ds. Kontaktów Zewnętrznych",   univ: "UEKat"   },
     ],
   },
   {
@@ -451,7 +451,7 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
   const [city, setCity] = useState("Kraków");
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", flexDirection: "column", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
 
       {DEMO && (
         <div style={{ background: "rgba(245,197,24,.12)", borderBottom: "1px solid rgba(245,197,24,.3)", padding: "8px 20px", fontSize: 12, color: "#F5C518", textAlign: "center" }}>

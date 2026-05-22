@@ -222,10 +222,13 @@ export async function updateSession(sessionId, updates) {
 export async function getSessionForCity(city) {
   if (DEMO) {
     const s = localStorage.getItem(`fue_session_${city}`);
-    return s ? JSON.parse(s) : null;
+    if (!s) return null;
+    const parsed = JSON.parse(s);
+    // Participants only join real (non-practice) sessions
+    return parsed.is_practice ? null : parsed;
   }
   const { data } = await supabase.from("quiz_sessions")
-    .select("*").eq("city", city).neq("status", "ended")
+    .select("*").eq("city", city).eq("is_practice", false).neq("status", "ended")
     .order("created_at", { ascending: false }).limit(1);
   return data?.[0] || null;
 }

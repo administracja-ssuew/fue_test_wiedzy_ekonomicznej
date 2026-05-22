@@ -26,8 +26,10 @@ const ORGANIZERS = [
     group: "Prezydium Forum Uczelni Ekonomicznych",
     members: [
       { name: "Dawid Rutkowski", role: "Przewodniczący FUE",               univ: "UEW"   },
-      { name: "Helena Popek", role: "Wiceprezes ds. Projektów",  univ: "SGH"   },
+      { name: "Helena Popek", role: "Wiceprzewodnicząca, Członkini Prezydium ds. Projektów",  univ: "SGH"   },
       { name: "Jan Peciak", role: "Członek Prezydium ds. Kontaktów Zewnętrznych",   univ: "UEKat"   },
+      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",   univ: "UEK"   },
+      { name: "Jakub Kliński", role: "Członek Prezydium ds. Administracji",   univ: "UEP"   },
     ],
   },
   {

@@ -500,6 +500,11 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
   const [city, setCity]  = useState(admin?.city || "Kraków");
   const [tab, setTab]    = useState("sesja");
 
+  // Update city when admin profile loads (async from Supabase)
+  useEffect(() => {
+    if (admin?.city) setCity(admin.city);
+  }, [admin?.city]);
+
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: '"Outfit",sans-serif', color: "#EDE9FE", display: "flex", flexDirection: "column" }}>
 

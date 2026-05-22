@@ -1,21 +1,20 @@
 import { useState, useEffect, useRef } from "react";
-import { MODULES } from "./data/questions.js";
-import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed } from "./lib/supabase.js";
-import { calcPts, getModule, moduleQuestions } from "./lib/gameLogic.js";
+import { MODULES, QUESTIONS } from "./data/questions.js";
+import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions } from "./lib/supabase.js";
+import { calcPts, getModule } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
 
-import Welcome    from "./screens/Welcome.jsx";
-import CodeEntry  from "./screens/CodeEntry.jsx";
-import AdminLogin from "./screens/AdminLogin.jsx";
-import Practice   from "./screens/Practice.jsx";
-import Lobby      from "./screens/Lobby.jsx";
+import Welcome     from "./screens/Welcome.jsx";
+import CodeEntry   from "./screens/CodeEntry.jsx";
+import AdminLogin  from "./screens/AdminLogin.jsx";
+import Practice    from "./screens/Practice.jsx";
+import Lobby       from "./screens/Lobby.jsx";
 import ModuleIntro from "./screens/ModuleIntro.jsx";
-import Quiz       from "./screens/Quiz.jsx";
-import Feedback   from "./screens/Feedback.jsx";
-import Ended      from "./screens/Ended.jsx";
-import AdminPanel from "./screens/AdminPanel.jsx";
-import Podium     from "./screens/Podium.jsx";
+import Quiz        from "./screens/Quiz.jsx";
+import Ended       from "./screens/Ended.jsx";
+import AdminPanel  from "./screens/AdminPanel.jsx";
+import Podium      from "./screens/Podium.jsx";
 
 export default function App() {
   const [screen, setScreen] = useState("welcome");
@@ -26,6 +25,7 @@ export default function App() {
 
   // Quiz state
   const [quizSession, setQuizSession]   = useState(null);
+  const [cityQuestions, setCityQuestions] = useState([]); // loaded from DB for participant's city
   const [currentMod, setCurrentMod]     = useState(1);
   const [qIdx, setQIdx]                 = useState(0);
   const [timer, setTimer]               = useState(0);
@@ -39,13 +39,9 @@ export default function App() {
   const pickTime  = useRef(null);
   const isDesktop = useWindowWidth() >= 900;
 
-  // Apply saved background on mount
-  useEffect(() => {
-    const saved = localStorage.getItem("fue_bg");
-    if (saved) document.documentElement.style.setProperty("--fue-bg", saved);
-  }, []);
-
-  const qs       = moduleQuestions(currentMod);
+  // Use DB questions when available, fallback to hardcoded
+  const activeQuestions = cityQuestions.length > 0 ? cityQuestions : QUESTIONS;
+  const qs       = activeQuestions.filter((q) => q.module === currentMod);
   const currentQ = qs[qIdx];
   const mod      = getModule(currentMod);
 
@@ -133,15 +129,23 @@ export default function App() {
   };
 
   // Called automatically by Lobby when admin changes status to "running"
-  const startQuiz = (session) => {
+  const startQuiz = async (session) => {
     setQuizSession(session);
+    // Load city-specific questions from DB (fallback to hardcoded if none)
+    if (session?.city) {
+      const dbQs = await getQuestions(session.city);
+      if (dbQs.length > 0) setCityQuestions(dbQs);
+    }
     setCurrentMod(1); setQIdx(0); setMyPts(0); setAllAnswers([]);
     setPicked(null); setAnswered(false); setTimer(MODULES[0].timePerQ);
     setScreen("module_intro");
   };
 
   const handleAdminLogout = async () => { await logoutAdmin(); setScreen("welcome"); };
-  const resetApp = () => { setScreen("welcome"); setParticipant(null); setMyPts(0); setAllAnswers([]); setQuizSession(null); };
+  const resetApp = () => {
+    setScreen("welcome"); setParticipant(null); setMyPts(0);
+    setAllAnswers([]); setQuizSession(null); setCityQuestions([]);
+  };
 
   // ── Loading ──────────────────────────────────────────────────────
   if (loading) return (
@@ -171,10 +175,7 @@ export default function App() {
     return <ModuleIntro currentMod={currentMod} onStart={() => { setTimer(mod?.timePerQ || 60); setScreen("quiz"); }} />;
 
   if (screen === "quiz" && currentQ && mod)
-    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onPick={handlePick} />;
-
-  if (screen === "feedback" && currentQ && mod)
-    return <Feedback currentQ={currentQ} picked={picked} timer={timer} mod={mod} />;
+    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onPick={handlePick} />;
 
   if (screen === "ended")
     return <Ended participant={participant} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onGoHome={resetApp} />;

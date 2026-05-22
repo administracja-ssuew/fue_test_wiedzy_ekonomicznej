@@ -1,4 +1,4 @@
-import { MODULES, QUESTIONS } from "../data/questions.js";
+import { MODULES } from "../data/questions.js";
 import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
 
 const W = {
@@ -33,14 +33,13 @@ const W = {
   ),
 };
 
-export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, onPick }) {
+export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, onPick }) {
   if (!currentQ || !mod) return null;
-  const qs = QUESTIONS.filter((q) => q.module === currentMod);
   const timerPct = timer / mod.timePerQ;
   const r = 22, circ = 2 * Math.PI * r;
   const tColor = timer > mod.timePerQ * 0.5 ? "#10D9A0" : timer > mod.timePerQ * 0.25 ? "#FF9A3C" : "#E8376B";
-  const allQs = QUESTIONS;
-  const qNumGlobal = allQs.filter((q) => q.module < currentMod).length + qIdx + 1;
+  const total = totalQuestions?.length || qs.length * MODULES.length;
+  const qNumGlobal = (totalQuestions || []).filter((q) => q.module < currentMod).length + qIdx + 1;
 
   const QuizContent = () => (
     <div className="fue-quiz-main" style={{ display: "flex", flexDirection: "column", flex: 1 }}>
@@ -53,7 +52,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
             </span>
             {isPractice && <span style={{ background: "rgba(16,217,160,.2)", border: "1px solid rgba(16,217,160,.4)", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700, color: "#10D9A0" }}>PRÓBA</span>}
           </div>
-          <p style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>Pytanie {qIdx + 1} / {qs.length} · #{qNumGlobal}/{QUESTIONS.length}</p>
+          <p style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>Pytanie {qIdx + 1} / {qs.length} · #{qNumGlobal}/{total}</p>
         </div>
         <div style={{ position: "relative", width: 54, height: 54, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <svg width="54" height="54" style={{ position: "absolute", transform: "rotate(-90deg)" }}>
@@ -68,7 +67,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
 
       {/* Global progress */}
       <div style={{ height: 3, background: "rgba(255,255,255,.07)", flexShrink: 0 }}>
-        <div style={{ height: "100%", background: `linear-gradient(90deg,${mod.color},#F5C518)`, width: `${(qNumGlobal / QUESTIONS.length) * 100}%`, transition: "width .4s" }} />
+        <div style={{ height: "100%", background: `linear-gradient(90deg,${mod.color},#F5C518)`, width: `${(qNumGlobal / total) * 100}%`, transition: "width .4s" }} />
       </div>
 
       {/* Question */}

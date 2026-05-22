@@ -14,11 +14,11 @@ const SOCIAL_LINKS = [
 ];
 
 const UNIVERSITIES = [
-  { abbr: "UEK",   city: "Kraków",    emoji: "🏰", color: "#FFA653" },
-  { abbr: "SGH",   city: "Warszawa",  emoji: "🏛️", color: "#FF6B6B" },
-  { abbr: "UEP",   city: "Poznań",    emoji: "🐐", color: "#4ECDC4" },
-  { abbr: "UEWr",  city: "Wrocław",   emoji: "🦌", color: "#45B7D1" },
-  { abbr: "UEKat", city: "Katowice",  emoji: "⚙️", color: "#FF6B9D" },
+  { abbr: "UEK",   city: "Kraków",    logo: "/uek.jpg",   color: "#FFA653" },
+  { abbr: "SGH",   city: "Warszawa",  logo: "/sgh.png",   color: "#FF6B6B" },
+  { abbr: "UEP",   city: "Poznań",    logo: "/uep.png",   color: "#4ECDC4" },
+  { abbr: "UEWr",  city: "Wrocław",   logo: "/uewr.png",  color: "#45B7D1" },
+  { abbr: "UEKat", city: "Katowice",  logo: "/uekat.png", color: "#FF6B9D" },
 ];
 
 const ORGANIZERS = [
@@ -101,15 +101,11 @@ const W = {
 function UniversityTicker() {
   const items = [...UNIVERSITIES, ...UNIVERSITIES, ...UNIVERSITIES];
   return (
-    <div style={{ background: "rgba(0,0,0,.3)", borderTop: "1px solid rgba(255,255,255,.07)", overflow: "hidden", padding: "10px 0", flexShrink: 0 }}>
-      <div style={{ display: "flex", width: "max-content", animation: "ticker 22s linear infinite" }}>
+    <div style={{ background: "rgba(0,0,0,.3)", borderTop: "1px solid rgba(255,255,255,.07)", overflow: "hidden", padding: "14px 0", flexShrink: 0 }}>
+      <div style={{ display: "flex", width: "max-content", animation: "ticker 22s linear infinite", alignItems: "center" }}>
         {items.map((u, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, width: 150, flexShrink: 0, padding: "0 16px", borderRight: "1px solid rgba(255,255,255,.06)" }}>
-            <span style={{ fontSize: 20, lineHeight: 1 }}>{u.emoji}</span>
-            <div>
-              <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 17, color: u.color, letterSpacing: 1, lineHeight: 1 }}>{u.abbr}</p>
-              <p style={{ fontSize: 9, color: "#9B89CC", textTransform: "uppercase", letterSpacing: .5, marginTop: 1 }}>{u.city}</p>
-            </div>
+          <div key={i} style={{ background: "#fff", borderRadius: 12, width: 160, height: 64, flexShrink: 0, marginRight: 20, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 16px" }}>
+            <img src={u.logo} alt={u.abbr} style={{ height: 40, width: "auto", objectFit: "contain", maxWidth: 128 }} />
           </div>
         ))}
       </div>
@@ -123,7 +119,9 @@ function SocialBar() {
   return (
     <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 12, color: "#9B89CC", fontWeight: 600, whiteSpace: "nowrap" }}>🐐 FUE</span>
+        <div style={{ background: "#fff", borderRadius: 8, padding: "3px 8px", display: "flex", alignItems: "center" }}>
+          <img src="/fue.png" alt="FUE" style={{ height: 26, width: "auto" }} />
+        </div>
         <a href={EVENT_LINK} target="_blank" rel="noreferrer"
           style={{ background: "rgba(107,33,232,.3)", border: "1px solid rgba(107,33,232,.5)", borderRadius: 20, padding: "3px 12px", fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }}>
           📅 Strona wydarzenia →

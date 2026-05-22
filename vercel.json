@@ -1,5 +1,1 @@
-{
-  "buildCommand": "cd fue-quiz && npm ci && npm run build",
-  "outputDirectory": "fue-quiz/dist",
-  "installCommand": "echo skip"
-}
+{"buildCommand":"npm run build","outputDirectory":"dist"}

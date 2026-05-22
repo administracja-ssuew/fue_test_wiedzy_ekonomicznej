@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { MODULES } from "./data/questions.js";
-import { logoutAdmin, getOrCreateSession, saveAnswer, getSessionForCity } from "./lib/supabase.js";
+import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg } from "./lib/supabase.js";
 import { calcPts, getModule, moduleQuestions } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -121,9 +121,11 @@ export default function App() {
   // Participant enters lobby after code validation
   const handleCodeSuccess = async (participantData) => {
     setParticipant(participantData);
-    // Try to attach to existing session for this city
     const session = await getSessionForCity(participantData.city);
     if (session) setQuizSession(session);
+    // Apply city-specific background
+    const bg = session?.bg || await getCityBg(participantData.city);
+    if (bg) document.documentElement.style.setProperty("--fue-bg", bg);
     setScreen("lobby");
   };
 

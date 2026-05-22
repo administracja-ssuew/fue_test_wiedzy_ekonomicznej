@@ -3,7 +3,7 @@ import {
   getQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
-  getLiveQuestionStats, endAndResetSession,
+  getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg,
 } from "../lib/supabase.js";
 import { CITIES, MODULES } from "../data/questions.js";
 
@@ -395,31 +395,61 @@ const BG_PRESETS = [
   { name: "Czarny",               value: "linear-gradient(160deg,#000000 0%,#0A0A0A 50%,#000000 100%)" },
 ];
 
-function UstawieniaTab() {
-  const current = localStorage.getItem("fue_bg") || BG_PRESETS[0].value;
+function UstawieniaTab({ city }) {
+  const [current, setCurrent] = useState(null);
+  const [saving, setSaving]   = useState(false);
+  const [saved, setSaved]     = useState(false);
 
-  const applyBg = (value) => {
+  useEffect(() => {
+    getCityBg(city).then((bg) => setCurrent(bg || BG_PRESETS[0].value));
+    setSaved(false);
+  }, [city]);
+
+  const apply = async (value) => {
+    setCurrent(value);
+    // Preview immediately for admin
     document.documentElement.style.setProperty("--fue-bg", value);
-    localStorage.setItem("fue_bg", value);
+  };
+
+  const save = async () => {
+    if (!current) return;
+    setSaving(true);
+    await setCityBg(city, current);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   return (
     <div>
-      <div style={{ marginBottom: 28 }}>
-        <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>🎨 Tło aplikacji</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12 }}>
-          {BG_PRESETS.map((p) => {
-            const isActive = current === p.value;
-            return (
-              <button key={p.name} onClick={() => applyBg(p.value)}
-                style={{ background: p.value, border: `2px solid ${isActive ? "#fff" : "rgba(255,255,255,.15)"}`, borderRadius: 12, padding: "32px 12px 12px", cursor: "pointer", textAlign: "left", position: "relative", transition: "border-color .2s" }}>
-                {isActive && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 16 }}>✓</span>}
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#EDE9FE", fontFamily: '"Outfit",sans-serif' }}>{p.name}</span>
-              </button>
-            );
-          })}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontWeight: 700, fontSize: 16 }}>Tło dla: <span style={{ color: CITY_COLORS[city] }}>{city}</span></p>
+          <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>Uczestnicy z {city} zobaczą wybrane tło po dołączeniu do quizu.</p>
         </div>
-        <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 12 }}>Zmiana tła jest widoczna natychmiast dla wszystkich — zapis w przeglądarce.</p>
+        <button onClick={save} disabled={saving}
+          style={{ ...C.btn(saved ? "success" : "primary", { whiteSpace: "nowrap", padding: "10px 20px" }) }}>
+          {saving ? "Zapisuję…" : saved ? "✓ Zapisano!" : "💾 Zapisz dla " + city}
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12, marginBottom: 16 }}>
+        {BG_PRESETS.map((p) => {
+          const isActive = current === p.value;
+          return (
+            <button key={p.name} onClick={() => apply(p.value)}
+              style={{ background: p.value, border: `2px solid ${isActive ? "#fff" : "rgba(255,255,255,.15)"}`, borderRadius: 12, padding: "32px 12px 12px", cursor: "pointer", textAlign: "left", position: "relative", transition: "border-color .2s", fontFamily: '"Outfit",sans-serif' }}>
+              {isActive && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 16 }}>✓</span>}
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#EDE9FE" }}>{p.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ ...C.card({ padding: "12px 16px", borderColor: "rgba(245,197,24,.2)", background: "rgba(245,197,24,.04)" }) }}>
+        <p style={{ fontSize: 12, color: "#9B89CC" }}>
+          ℹ️ Kliknij preset → podgląd natychmiastowy. Naciśnij <strong style={{ color: "#EDE9FE" }}>Zapisz</strong> żeby utrwalić — dopiero wtedy uczestnicy nowo dołączający do {city} zobaczą zmianę.
+        </p>
       </div>
     </div>
   );
@@ -470,7 +500,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
         {tab === "pytania"    && <PytaniaTab city={city} />}
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
         {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} />}
-        {tab === "ustawienia" && <UstawieniaTab />}
+        {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>
     </div>
   );

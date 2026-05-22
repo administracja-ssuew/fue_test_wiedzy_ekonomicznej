@@ -91,9 +91,15 @@ CREATE TABLE IF NOT EXISTS public.quiz_sessions (
                           CHECK (status IN ('waiting','running','paused','ended')),
   current_question_idx  INT NOT NULL DEFAULT 0,
   q_started_at          TIMESTAMPTZ,
+  is_practice           BOOLEAN NOT NULL DEFAULT false,
+  bg                    TEXT,                        -- per-city background gradient
   created_by            UUID REFERENCES public.profiles(id),
   created_at            TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migration for existing databases (run if table already exists):
+-- ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS is_practice BOOLEAN NOT NULL DEFAULT false;
+-- ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS bg TEXT;
 
 ALTER TABLE public.quiz_sessions ENABLE ROW LEVEL SECURITY;
 

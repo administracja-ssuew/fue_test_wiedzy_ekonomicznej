@@ -305,3 +305,31 @@ export async function getLiveQuestionStats(sessionId, questionId) {
     answers: data.map((a) => ({ code: a.participant_code, name: a.participant_name, isCorrect: a.is_correct, points: a.points })),
   };
 }
+
+// ─── PER-CITY BACKGROUND ──────────────────────────────────────────────────────
+
+export async function getCityBg(city) {
+  if (DEMO) {
+    return localStorage.getItem(`fue_bg_${city}`) || null;
+  }
+  const { data } = await supabase.from("quiz_sessions")
+    .select("bg").eq("city", city).neq("status", "ended")
+    .order("created_at", { ascending: false }).limit(1).single();
+  return data?.bg || null;
+}
+
+export async function setCityBg(city, bg) {
+  if (DEMO) {
+    localStorage.setItem(`fue_bg_${city}`, bg);
+    // Also update the active session object in localStorage
+    const keys = [`fue_session_${city}`, `fue_session_${city}_practice`];
+    for (const key of keys) {
+      const s = localStorage.getItem(key);
+      if (s) localStorage.setItem(key, JSON.stringify({ ...JSON.parse(s), bg }));
+    }
+    return { error: null };
+  }
+  const { error } = await supabase.from("quiz_sessions")
+    .update({ bg }).eq("city", city).neq("status", "ended");
+  return { error: error?.message || null };
+}

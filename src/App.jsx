@@ -55,6 +55,30 @@ export default function App() {
   const currentQ = qs[qIdx];
   const mod      = getModule(currentMod);
 
+  // ── Helpers — synchronizacja z globalnym indeksem pytania ────────
+  const getQuestionState = (globalIdx, questions) => {
+    const q = questions[globalIdx];
+    if (!q) return null;
+    const m = getModule(q.module);
+    if (!m) return null;
+    const modQs = questions.filter((q2) => q2.module === q.module);
+    const qIdxInMod = modQs.findIndex((q2) => q2.id === q.id);
+    return { q, mod: m, modId: q.module, qIdx: Math.max(0, qIdxInMod) };
+  };
+
+  const syncToSession = (session, questions) => {
+    if (!session?.q_started_at || !questions.length) return false;
+    const globalIdx = Math.min(session.current_question_idx || 0, questions.length - 1);
+    const state = getQuestionState(globalIdx, questions);
+    if (!state) return false;
+    const elapsed    = Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000);
+    const remaining  = Math.max(1, state.mod.timePerQ - elapsed);
+    clearInterval(timerRef.current);
+    setCurrentMod(state.modId); setQIdx(state.qIdx);
+    setTimer(remaining); setAnswered(false); setPicked(null);
+    return true;
+  };
+
   // ── Timer ────────────────────────────────────────────────────────
   useEffect(() => {
     if (screen !== "quiz") { clearInterval(timerRef.current); return; }
@@ -68,6 +92,36 @@ export default function App() {
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
+
+  // ── Synchronizacja pytań przez Realtime (wszyscy na tym samym pytaniu) ──
+  useEffect(() => {
+    if (!quizSession?.id || !participant || !cityQuestions.length || DEMO || !supabase) return;
+
+    const ch = supabase.channel(`q-sync-${quizSession.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "quiz_sessions",
+        filter: `id=eq.${quizSession.id}`,
+      }, ({ new: s }) => {
+        if (s.status !== "running" || s.current_question_idx === undefined) return;
+        // Oblicz aktualny globalny indeks pytania u tego uczestnika
+        const myGlobalIdx = cityQuestions.filter((q) => q.module < currentMod).length + qIdx;
+        if (s.current_question_idx > myGlobalIdx) {
+          // Serwer jest do przodu — synchronizuj
+          const state = getQuestionState(s.current_question_idx, cityQuestions);
+          if (state) {
+            const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+            const remaining = Math.max(1, state.mod.timePerQ - elapsed);
+            clearInterval(timerRef.current);
+            setCurrentMod(state.modId); setQIdx(state.qIdx);
+            setTimer(remaining); setAnswered(false); setPicked(null);
+            setScreen("quiz");
+          }
+        }
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(ch);
+  }, [quizSession?.id, participant?.code, cityQuestions.length]);
 
   // ── Admin pause — active from quiz start until session ends ─────────
   useEffect(() => {
@@ -195,15 +249,30 @@ export default function App() {
     setScreen("lobby");
   };
 
-  // Called automatically by Lobby when admin changes status to "running"
+  // Called by Lobby when session goes "running" (first join or reconnect)
   const startQuiz = async (session) => {
     setQuizSession(session);
-    // Load city-specific questions from DB (fallback to hardcoded if none)
-    if (session?.city) {
-      const dbQs = await getQuestions(session.city);
-      if (dbQs.length > 0) setCityQuestions(dbQs);
+
+    const dbQs = session?.city ? await getQuestions(session.city) : [];
+
+    // Brak pytań — pokaż komunikat zamiast pustego ekranu
+    if (dbQs.length === 0) {
+      setScreen("no_questions");
+      return;
     }
-    setCurrentMod(1); setQIdx(0); setMyPts(0); setAllAnswers([]);
+
+    setCityQuestions(dbQs);
+    setMyPts(0); setAllAnswers([]);
+
+    // Powrót uczestnika mid-quiz — sync do aktualnego pytania
+    const isRunningMidQuiz = session?.status === "running" && (session?.current_question_idx || 0) > 0;
+    if (isRunningMidQuiz && syncToSession(session, dbQs)) {
+      setScreen("quiz");
+      return;
+    }
+
+    // Pierwsza sesja — zacznij od początku (module_intro)
+    setCurrentMod(1); setQIdx(0);
     setPicked(null); setAnswered(false); setTimer(MODULES[0].timePerQ);
     setScreen("module_intro");
   };
@@ -246,6 +315,22 @@ export default function App() {
 
   if (screen === "practice")
     return <Practice onBack={() => setScreen(participant ? "lobby" : "welcome")} />;
+
+  if (screen === "no_questions") return (
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", textAlign: "center", padding: 32 }}>
+      <div>
+        <div style={{ fontSize: 52, marginBottom: 16 }}>⚠️</div>
+        <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 36, letterSpacing: 1, color: "#F5C518", marginBottom: 12 }}>Brak pytań</h2>
+        <p style={{ color: "#9B89CC", fontSize: 15, lineHeight: 1.7, maxWidth: 360, margin: "0 auto 28px" }}>
+          Administrator nie wgrał jeszcze pytań dla Twojego miasta ({participant?.city}).<br />
+          Skontaktuj się z organizatorem.
+        </p>
+        <button onClick={() => setScreen("lobby")} style={{ background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.15)", borderRadius: 12, padding: "12px 28px", color: "#C4B5FD", cursor: "pointer", fontFamily: '"Space Grotesk"', fontSize: 14 }}>
+          ← Wróć do poczekalni
+        </button>
+      </div>
+    </div>
+  );
 
   if (screen === "lobby")
     return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;

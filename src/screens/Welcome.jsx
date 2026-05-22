@@ -184,7 +184,7 @@ function ContactRows({ coord }) {
 
 // ─── Tab: Główna ─────────────────────────────────────────────────────────────
 
-function HomeTab({ isDesktop, onRegister, onLogin, onAdminLogin }) {
+function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div className="fue-page" style={{ position: "relative", overflow: "hidden" }}>
@@ -223,8 +223,7 @@ function HomeTab({ isDesktop, onRegister, onLogin, onAdminLogin }) {
             </div>
             {!isDesktop && (
               <div className="su" style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 36, animationDelay: ".28s" }}>
-                <button style={W.btn("primary")} onClick={() => onRegister()}>🎓 Zarejestruj się</button>
-                <button style={W.btn("ghost")} onClick={() => onLogin()}>🔑 Mam już konto</button>
+                <button style={W.btn("primary")} onClick={() => onEnterCode()}>🎟️ Mam kod — dołącz do quizu</button>
                 <button style={W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.3)" })} onClick={() => onAdminLogin()}>🔐 Panel Admina</button>
               </div>
             )}
@@ -236,13 +235,10 @@ function HomeTab({ isDesktop, onRegister, onLogin, onAdminLogin }) {
               <div style={{ ...W.card({ padding: "36px 32px" }), background: "rgba(255,255,255,.04)" }}>
                 <p style={{ fontSize: 13, color: "#9B89CC", marginBottom: 20, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Dołącz do testu</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <button style={W.btn("primary", { fontSize: 16, padding: "18px 24px" })} onClick={() => onRegister()}
+                  <button style={W.btn("primary", { fontSize: 16, padding: "18px 24px" })} onClick={() => onEnterCode()}
                     onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
                     onMouseLeave={(e) => (e.currentTarget.style.transform = "")}>
-                    🎓 Zarejestruj się jako uczestnik
-                  </button>
-                  <button style={W.btn("ghost", { fontSize: 15, padding: "16px 24px" })} onClick={() => onLogin()}>
-                    🔑 Zaloguj się (mam konto)
+                    🎟️ Mam kod — dołącz do quizu
                   </button>
                   <button style={W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.3)", fontSize: 14, padding: "14px 24px" })} onClick={() => onAdminLogin()}>
                     🔐 Panel Administratora
@@ -260,9 +256,9 @@ function HomeTab({ isDesktop, onRegister, onLogin, onAdminLogin }) {
               <div style={{ ...W.card({ padding: "20px 24px", borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.05)" }) }}>
                 <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 10 }}>Jak to działa?</p>
                 {[
-                  ["1.", "Zarejestruj się i poczekaj na weryfikację admina"],
-                  ["2.", "Etap regionalny — rywalizuj z uczestnikami swojego miasta"],
-                  ["3.", "Top 5 z każdego miasta przechodzi do etapu ogólnopolskiego"],
+                  ["1.", "Otrzymaj indywidualny kod od koordynatora swojego miasta"],
+                  ["2.", "Wpisz kod i dołącz do lobby — rywalizuj z uczestnikami z Twojego miasta"],
+                  ["3.", "Top 5 z każdego miasta przechodzi do Etapu Ogólnopolskiego"],
                 ].map(([n, t]) => (
                   <div key={n} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
                     <span style={{ background: "rgba(107,33,232,.3)", borderRadius: 6, padding: "1px 7px", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0 }}>{n}</span>
@@ -450,7 +446,7 @@ const NAV_TABS = [
   { id: "informator",    label: "Informator"    },
 ];
 
-export default function Welcome({ isDesktop, onRegister, onLogin, onAdminLogin }) {
+export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
   const [tab, setTab] = useState("home");
   const [city, setCity] = useState("Kraków");
 
@@ -476,7 +472,7 @@ export default function Welcome({ isDesktop, onRegister, onLogin, onAdminLogin }
       </nav>
 
       <div style={{ flex: 1 }}>
-        {tab === "home"          && <HomeTab isDesktop={isDesktop} onRegister={onRegister} onLogin={onLogin} onAdminLogin={onAdminLogin} />}
+        {tab === "home"          && <HomeTab isDesktop={isDesktop} onEnterCode={onEnterCode} onAdminLogin={onAdminLogin} />}
         {tab === "organizatorzy" && <OrganizatorszyTab />}
         {tab === "koordynatorzy" && <KoordynatorzyTab city={city} setCity={setCity} />}
         {tab === "informator"    && <InformatorTab city={city} setCity={setCity} />}

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git submodule *)",
+      "Bash(git ls-tree *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(ls *.json *.toml)",
+      "Bash(ls fue-quiz/*.json fue-quiz/*.toml fue-quiz/vercel.json fue-quiz/netlify.toml)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(find fue-quiz/public -type f)",
+      "Bash(dir /s /b \"fue-quiz\\\\public\")",
+      "Bash(dir \"c:\\\\Users\\\\Mikołaj\\\\Downloads\\\\fue-quiz-project\\\\fue-quiz\\\\public\\\\logos\")",
+      "Bash(git branch *)",
+      "Bash(git mv *)",
+      "Bash(node_modules/.bin/vite build *)",
+      "Bash(npm install *)"
+    ]
+  }
+}

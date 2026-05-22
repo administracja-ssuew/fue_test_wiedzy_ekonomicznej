@@ -4,194 +4,205 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const DEMO = !SUPABASE_URL || !SUPABASE_KEY;
-
 export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
 
-const generateCode = () =>
-  String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+// ─── ADMIN AUTH ───────────────────────────────────────────────────────────────
 
-// ─── AUTH ─────────────────────────────────────────────────────────────────────
-
-export async function registerUser({ email, password, fullName, city, university }) {
+export async function loginAdmin({ email, password }) {
   if (DEMO) {
-    const users = JSON.parse(localStorage.getItem("fue_users") || "[]");
-    if (users.find((u) => u.email === email))
-      return { error: "Ten email jest już zajęty." };
-    const profile = {
-      id: "demo_" + Math.random().toString(36).slice(2),
-      email, fullName, city, university,
-      role: "participant", verified: false, createdAt: new Date().toISOString(),
-    };
-    users.push(profile);
-    localStorage.setItem("fue_users", JSON.stringify(users));
-    return { data: profile, error: null };
-  }
-  const { data: authData, error: authErr } = await supabase.auth.signUp({ email, password });
-  if (authErr) return { error: authErr.message };
-  const { error: profErr } = await supabase.from("profiles").insert({
-    id: authData.user.id,
-    full_name: fullName,
-    city,
-    university,
-    role: "participant",
-    verified: false,
-  });
-  if (profErr) return { error: profErr.message };
-  return { data: authData.user, error: null };
-}
-
-export async function loginUser({ email, password }) {
-  if (DEMO) {
-    const users = JSON.parse(localStorage.getItem("fue_users") || "[]");
-    const u = users.find((x) => x.email === email);
-    if (!u) return { error: "Nie znaleziono konta." };
-    localStorage.setItem("fue_current_user", JSON.stringify(u));
-    return { data: u, error: null };
+    if (email === "admin@fue.pl" && password === "FUE2025") {
+      const u = { id: "demo_admin", email, full_name: "Demo Admin", role: "superadmin", city: null };
+      localStorage.setItem("fue_admin", JSON.stringify(u));
+      return { data: u, error: null };
+    }
+    return { error: "Nieprawidłowy email lub hasło." };
   }
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
-  const { data: profile, error: profErr } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", data.user.id)
-    .single();
-  if (profErr) return { error: profErr.message };
+  const { data: profile, error: pErr } = await supabase
+    .from("profiles").select("*").eq("id", data.user.id).single();
+  if (pErr) return { error: "Brak profilu admina." };
   return { data: { ...data.user, ...profile }, error: null };
 }
 
-export async function logoutUser() {
-  if (DEMO) {
-    localStorage.removeItem("fue_current_user");
-    return;
-  }
+export async function logoutAdmin() {
+  if (DEMO) { localStorage.removeItem("fue_admin"); return; }
   await supabase.auth.signOut();
 }
 
-export async function getCurrentUser() {
+export async function getCurrentAdmin() {
   if (DEMO) {
-    return JSON.parse(localStorage.getItem("fue_current_user") || "null");
+    const u = localStorage.getItem("fue_admin");
+    return u ? JSON.parse(u) : null;
   }
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return null;
   const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", session.user.id)
-    .single();
+    .from("profiles").select("*").eq("id", session.user.id).single();
   return profile ? { ...session.user, ...profile } : null;
 }
 
-// ─── ADMIN — USER MANAGEMENT ─────────────────────────────────────────────────
+// ─── PARTICIPANT CODES ────────────────────────────────────────────────────────
 
-export async function getAllUsers(city = null) {
+export async function validateParticipantCode(rawCode) {
+  const code = rawCode.trim().toUpperCase();
   if (DEMO) {
-    const users = JSON.parse(localStorage.getItem("fue_users") || "[]");
-    return city ? users.filter((u) => u.city === city) : users;
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    const entry = codes.find((c) => c.code === code);
+    if (!entry) return { error: "Nie znaleziono kodu." };
+    if (entry.used) return { error: "Ten kod został już wykorzystany." };
+    return { data: entry, error: null };
   }
-  let q = supabase.from("profiles").select("*").order("created_at", { ascending: false });
-  if (city) q = q.eq("city", city);
-  const { data } = await q;
-  return data || [];
+  const { data, error } = await supabase
+    .from("participant_codes").select("*").eq("code", code).single();
+  if (error || !data) return { error: "Nie znaleziono kodu." };
+  if (data.used) return { error: "Ten kod został już wykorzystany." };
+  return { data, error: null };
 }
 
-export async function getPendingUsers(city = null) {
+export async function markCodeUsed(code, sessionId) {
   if (DEMO) {
-    const users = JSON.parse(localStorage.getItem("fue_users") || "[]");
-    return users.filter((u) => !u.verified && (!city || u.city === city));
-  }
-  let q = supabase.from("profiles").select("*").eq("verified", false);
-  if (city) q = q.eq("city", city);
-  const { data } = await q;
-  return data || [];
-}
-
-export async function verifyUser(userId, approve = true) {
-  if (DEMO) {
-    const users = JSON.parse(localStorage.getItem("fue_users") || "[]");
-    const idx = users.findIndex((u) => u.id === userId);
-    if (idx === -1) return { error: "Nie znaleziono użytkownika." };
-    if (approve) {
-      users[idx].verified = true;
-    } else {
-      users.splice(idx, 1);
-    }
-    localStorage.setItem("fue_users", JSON.stringify(users));
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    const idx = codes.findIndex((c) => c.code === code);
+    if (idx >= 0) { codes[idx].used = true; codes[idx].session_id = sessionId; }
+    localStorage.setItem("fue_codes", JSON.stringify(codes));
     return { error: null };
   }
-  if (approve) {
-    const { error } = await supabase
-      .from("profiles")
-      .update({ verified: true })
-      .eq("id", userId);
-    return { error: error?.message || null };
-  }
-  const { error } = await supabase.from("profiles").delete().eq("id", userId);
+  const { error } = await supabase.from("participant_codes")
+    .update({ used: true, session_id: sessionId }).eq("code", code);
   return { error: error?.message || null };
 }
 
-// ─── QUIZ SESSIONS ────────────────────────────────────────────────────────────
-
-export async function createSession({ stage, city, createdBy }) {
+export async function generateParticipantCode({ name, surname, city, createdBy }) {
+  const prefix = CITY_PREFIX[city] || "XXX";
+  const code = `${prefix}-${String(Math.floor(1000 + Math.random() * 9000))}`;
   if (DEMO) {
-    const session = {
-      id: "sess_" + Math.random().toString(36).slice(2),
-      join_code: generateCode(),
-      stage, city: city || null, status: "waiting",
-      current_question_index: 0, q_started_at: null,
-      created_by: createdBy, created_at: new Date().toISOString(),
-    };
-    const sessions = JSON.parse(localStorage.getItem("fue_sessions") || "[]");
-    sessions.push(session);
-    localStorage.setItem("fue_sessions", JSON.stringify(sessions));
-    localStorage.setItem("fue_active_session", JSON.stringify(session));
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    if (codes.find((c) => c.code === code))
+      return generateParticipantCode({ name, surname, city, createdBy }); // retry
+    const entry = { id: crypto.randomUUID(), code, name, surname, city, used: false, session_id: null, created_at: new Date().toISOString() };
+    codes.push(entry);
+    localStorage.setItem("fue_codes", JSON.stringify(codes));
+    return { data: entry, error: null };
+  }
+  const { data, error } = await supabase.from("participant_codes")
+    .insert({ code, name, surname, city, created_by: createdBy })
+    .select().single();
+  if (error?.code === "23505") return generateParticipantCode({ name, surname, city, createdBy }); // retry on duplicate
+  return { data, error: error?.message || null };
+}
+
+export async function getParticipantCodes(city) {
+  if (DEMO) {
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    return city ? codes.filter((c) => c.city === city) : codes;
+  }
+  let q = supabase.from("participant_codes").select("*").order("created_at", { ascending: false });
+  if (city) q = q.eq("city", city);
+  const { data } = await q;
+  return data || [];
+}
+
+export async function deleteParticipantCode(id) {
+  if (DEMO) {
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    localStorage.setItem("fue_codes", JSON.stringify(codes.filter((c) => c.id !== id)));
+    return { error: null };
+  }
+  const { error } = await supabase.from("participant_codes").delete().eq("id", id);
+  return { error: error?.message || null };
+}
+
+// ─── QUESTIONS ────────────────────────────────────────────────────────────────
+
+export async function getQuestions(city) {
+  if (DEMO) {
+    const qs = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
+    return qs;
+  }
+  const { data } = await supabase.from("questions").select("*")
+    .eq("city", city).order("module").order("sort_order");
+  return data || [];
+}
+
+export async function addQuestion({ city, module, q, opts, ans, exp, createdBy }) {
+  if (DEMO) {
+    const questions = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
+    const entry = { id: crypto.randomUUID(), city, module, q, opts, ans, exp: exp || "", sort_order: questions.length, created_at: new Date().toISOString() };
+    questions.push(entry);
+    localStorage.setItem(`fue_questions_${city}`, JSON.stringify(questions));
+    return { data: entry, error: null };
+  }
+  const existing = await getQuestions(city);
+  const sort_order = existing.filter((x) => x.module === module).length;
+  const { data, error } = await supabase.from("questions")
+    .insert({ city, module, q, opts, ans, exp: exp || null, sort_order, created_by: createdBy })
+    .select().single();
+  return { data, error: error?.message || null };
+}
+
+export async function updateQuestion(id, updates) {
+  if (DEMO) {
+    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
+    for (const city of cities) {
+      const qs = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
+      const idx = qs.findIndex((q) => q.id === id);
+      if (idx >= 0) { qs[idx] = { ...qs[idx], ...updates }; localStorage.setItem(`fue_questions_${city}`, JSON.stringify(qs)); break; }
+    }
+    return { error: null };
+  }
+  const { error } = await supabase.from("questions").update(updates).eq("id", id);
+  return { error: error?.message || null };
+}
+
+export async function deleteQuestion(id) {
+  if (DEMO) {
+    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
+    for (const city of cities) {
+      const qs = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
+      const filtered = qs.filter((q) => q.id !== id);
+      if (filtered.length !== qs.length) { localStorage.setItem(`fue_questions_${city}`, JSON.stringify(filtered)); break; }
+    }
+    return { error: null };
+  }
+  const { error } = await supabase.from("questions").delete().eq("id", id);
+  return { error: error?.message || null };
+}
+
+// ─── SESSIONS ─────────────────────────────────────────────────────────────────
+
+export async function getOrCreateSession(city, adminId) {
+  if (DEMO) {
+    const key = `fue_session_${city}`;
+    const existing = localStorage.getItem(key);
+    if (existing) {
+      const s = JSON.parse(existing);
+      if (s.status !== "ended") return { data: s, error: null };
+    }
+    const session = { id: `sess_${city}_${Date.now()}`, city, status: "waiting", current_question_idx: 0, q_started_at: null, created_at: new Date().toISOString() };
+    localStorage.setItem(key, JSON.stringify(session));
     return { data: session, error: null };
   }
-  for (let i = 0; i < 5; i++) {
-    const code = generateCode();
-    const { data, error } = await supabase
-      .from("quiz_sessions")
-      .insert({ join_code: code, stage, city: city || null, created_by: createdBy, status: "waiting" })
-      .select()
-      .single();
-    if (!error) return { data, error: null };
-    if (error.code !== "23505") return { data: null, error: error.message };
-  }
-  return { data: null, error: "Could not generate unique session code after 5 attempts" };
-}
-
-export async function getSessionByCode(joinCode) {
-  if (DEMO) {
-    const sessions = JSON.parse(localStorage.getItem("fue_sessions") || "[]");
-    return sessions.find((s) => s.join_code === joinCode) || null;
-  }
-  const { data } = await supabase
-    .from("quiz_sessions")
-    .select("*")
-    .eq("join_code", joinCode)
-    .neq("status", "finished")
-    .single();
-  return data || null;
-}
-
-export async function getActiveSession(city = null) {
-  if (DEMO) {
-    const s = localStorage.getItem("fue_active_session");
-    return s ? JSON.parse(s) : null;
-  }
-  let q = supabase.from("quiz_sessions").select("*").in("status", ["waiting", "active"]);
-  if (city) q = q.eq("city", city);
-  const { data } = await q.order("created_at", { ascending: false }).limit(1);
-  return data?.[0] || null;
+  // Try to find active session for city
+  const { data: existing } = await supabase.from("quiz_sessions")
+    .select("*").eq("city", city).neq("status", "ended")
+    .order("created_at", { ascending: false }).limit(1);
+  if (existing?.[0]) return { data: existing[0], error: null };
+  // Create new session
+  const { data, error } = await supabase.from("quiz_sessions")
+    .insert({ city, status: "waiting", created_by: adminId }).select().single();
+  return { data, error: error?.message || null };
 }
 
 export async function updateSession(sessionId, updates) {
   if (DEMO) {
-    const session = JSON.parse(localStorage.getItem("fue_active_session") || "null");
-    if (session?.id === sessionId) {
-      const updated = { ...session, ...updates };
-      localStorage.setItem("fue_active_session", JSON.stringify(updated));
+    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
+    for (const city of cities) {
+      const key = `fue_session_${city}`;
+      const s = JSON.parse(localStorage.getItem(key) || "null");
+      if (s?.id === sessionId) { localStorage.setItem(key, JSON.stringify({ ...s, ...updates })); break; }
     }
     return { error: null };
   }
@@ -199,41 +210,64 @@ export async function updateSession(sessionId, updates) {
   return { error: error?.message || null };
 }
 
-export async function joinSession(sessionId, userId) {
+export async function getSessionForCity(city) {
   if (DEMO) {
+    const s = localStorage.getItem(`fue_session_${city}`);
+    return s ? JSON.parse(s) : null;
+  }
+  const { data } = await supabase.from("quiz_sessions")
+    .select("*").eq("city", city).neq("status", "ended")
+    .order("created_at", { ascending: false }).limit(1);
+  return data?.[0] || null;
+}
+
+export async function getParticipantsInSession(city) {
+  if (DEMO) {
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    return codes.filter((c) => c.city === city && c.used);
+  }
+  const { data } = await supabase.from("participant_codes")
+    .select("*").eq("city", city).eq("used", true);
+  return data || [];
+}
+
+// ─── ANSWERS ──────────────────────────────────────────────────────────────────
+
+export async function saveAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect, points }) {
+  if (DEMO) {
+    const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]");
+    answers.push({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect, points, answeredAt: new Date().toISOString() });
+    localStorage.setItem("fue_answers", JSON.stringify(answers));
     return { error: null };
   }
-  const { error } = await supabase
-    .from("participants")
-    .upsert({ session_id: sessionId, user_id: userId }, { onConflict: "session_id,user_id" });
+  const { error } = await supabase.from("answers").upsert({
+    session_id: sessionId, participant_code: participantCode, participant_name: participantName,
+    city, question_id: questionId, module, chosen, is_correct: isCorrect, points,
+  }, { onConflict: "session_id,participant_code,question_id" });
   return { error: error?.message || null };
 }
 
-// ─── ATTEMPTS ─────────────────────────────────────────────────────────────────
-
-export async function saveAttempt({ sessionId, userId, answers, totalScore, completed }) {
+export async function getSessionResults(sessionId) {
   if (DEMO) {
-    const attempts = JSON.parse(localStorage.getItem("fue_attempts") || "[]");
-    const idx = attempts.findIndex((a) => a.sessionId === sessionId && a.userId === userId);
-    const attempt = { sessionId, userId, answers, totalScore, completed };
-    if (idx >= 0) attempts[idx] = attempt; else attempts.push(attempt);
-    localStorage.setItem("fue_attempts", JSON.stringify(attempts));
-    return { error: null };
+    const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId);
+    const grouped = {};
+    for (const a of answers) {
+      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: `${a.participantName}`, points: 0, answers: 0 };
+      grouped[a.participantCode].points += a.points;
+      grouped[a.participantCode].answers += 1;
+    }
+    return Object.values(grouped).sort((a, b) => b.points - a.points);
   }
-  return { error: null }; // Phase 3 replaces with per-answer inserts
-}
-
-export async function getSessionAttempts(sessionId) {
-  if (DEMO) {
-    const attempts = JSON.parse(localStorage.getItem("fue_attempts") || "[]");
-    const users = JSON.parse(localStorage.getItem("fue_users") || "[]");
-    return attempts
-      .filter((a) => a.sessionId === sessionId)
-      .map((a) => ({ ...a, profile: users.find((u) => u.id === a.userId) }));
-  }
-  const { data } = await supabase
-    .from("answers")
-    .select("user_id, points, profiles(full_name, city)")
+  const { data } = await supabase.from("answers")
+    .select("participant_code, participant_name, points")
     .eq("session_id", sessionId);
-  return data || [];
+  if (!data) return [];
+  const grouped = {};
+  for (const row of data) {
+    if (!grouped[row.participant_code])
+      grouped[row.participant_code] = { code: row.participant_code, name: row.participant_name, points: 0 };
+    grouped[row.participant_code].points += row.points;
+  }
+  return Object.values(grouped).sort((a, b) => b.points - a.points);
 }

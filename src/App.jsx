@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { MODULES, QUESTIONS } from "./data/questions.js";
-import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions } from "./lib/supabase.js";
+import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
 
 import Welcome     from "./screens/Welcome.jsx";
+import Break       from "./screens/Break.jsx";
 import CodeEntry   from "./screens/CodeEntry.jsx";
 import AdminLogin  from "./screens/AdminLogin.jsx";
 import Practice    from "./screens/Practice.jsx";
@@ -33,7 +34,11 @@ export default function App() {
   const [answered, setAnswered]         = useState(false);
   const [myPts, setMyPts]               = useState(0);
   const [allAnswers, setAllAnswers]     = useState([]);
+  const [nextModule, setNextModule]     = useState(null); // module to start after break
   const [podStep, setPodStep]           = useState(0);
+
+  // Auto-break after these modules (module 5 = results, no quiz questions)
+  const BREAK_AFTER = [2, 4];
 
   const timerRef  = useRef(null);
   const pickTime  = useRef(null);
@@ -105,12 +110,30 @@ export default function App() {
       setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
     } else {
       const nextMod = currentMod + 1;
-      if (nextMod <= MODULES.length) {
+      if (BREAK_AFTER.includes(currentMod)) {
+        // Automatyczna przerwa po module 2 lub 4
+        const afterBreakModule = nextMod <= MODULES.length ? nextMod : null;
+        setNextModule(afterBreakModule);
+        setPicked(null); setAnswered(false);
+        setScreen("break");
+        // Poinformuj sesję o pauzie (admin widzi stan)
+        if (quizSession) updateSession(quizSession.id, { status: "paused" });
+      } else if (nextMod <= MODULES.length) {
         setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
         setTimer(getModule(nextMod).timePerQ); setScreen("module_intro");
       } else {
         setScreen("ended");
       }
+    }
+  };
+
+  // Wznowienie po przerwie (admin zmienił status na "running")
+  const handleResumeFromBreak = () => {
+    if (nextModule && nextModule <= MODULES.length) {
+      setCurrentMod(nextModule); setQIdx(0); setPicked(null); setAnswered(false);
+      setTimer(getModule(nextModule).timePerQ); setScreen("module_intro");
+    } else {
+      setScreen("ended"); // moduł 5 = ogłoszenie wyników
     }
   };
 
@@ -144,12 +167,12 @@ export default function App() {
   const handleAdminLogout = async () => { await logoutAdmin(); setScreen("welcome"); };
   const resetApp = () => {
     setScreen("welcome"); setParticipant(null); setMyPts(0);
-    setAllAnswers([]); setQuizSession(null); setCityQuestions([]);
+    setAllAnswers([]); setQuizSession(null); setCityQuestions([]); setNextModule(null);
   };
 
   // ── Loading ──────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ minHeight: "100vh", background: "#070215", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "#070215", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
       <div className="spinner" style={{ width: 40, height: 40, border: "3px solid rgba(107,33,232,.3)", borderTop: "3px solid #6B21E8", borderRadius: "50%" }} />
       <p style={{ color: "#9B89CC", fontSize: 14 }}>Ładowanie…</p>
     </div>
@@ -164,6 +187,9 @@ export default function App() {
 
   if (screen === "admin_login")
     return <AdminLogin onBack={() => setScreen("welcome")} onSuccess={(u) => setScreen("admin")} />;
+
+  if (screen === "break")
+    return <Break participant={participant} nextModule={nextModule} onResume={handleResumeFromBreak} />;
 
   if (screen === "practice")
     return <Practice onBack={() => setScreen(participant ? "lobby" : "welcome")} />;

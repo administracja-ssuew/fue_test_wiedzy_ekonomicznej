@@ -7,7 +7,7 @@ const W = {
     minHeight: "100vh",
     background: "var(--fue-bg)",
     display: "flex", justifyContent: "center",
-    fontFamily: '"Outfit",sans-serif', color: "#EDE9FE",
+    fontFamily: '"Jost",sans-serif', color: "#EDE9FE",
   },
   card: (extra = {}) => ({
     background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.09)", borderRadius: 16, ...extra,
@@ -20,7 +20,7 @@ const W = {
     border: v !== "ghost" ? "none" : undefined,
     borderRadius: 12, padding: "15px 20px", fontSize: 15, fontWeight: 700,
     cursor: "pointer", width: "100%", transition: "transform .15s,opacity .15s",
-    fontFamily: '"Outfit",sans-serif', ...extra,
+    fontFamily: '"Jost",sans-serif', ...extra,
   }),
   label: { fontSize: 11, fontWeight: 600, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 8 },
   blob: (t, l, size, color) => ({
@@ -166,7 +166,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
 
       {/* Anti-cheat warning overlay */}
       {showWarning && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.95)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Outfit",sans-serif', padding: 24 }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.95)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Jost",sans-serif', padding: 24 }}>
           <div style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
             <div style={{ fontSize: 56, marginBottom: 16 }} className="pi">⚠️</div>
             <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 36, letterSpacing: 1, color: "#E8376B", marginBottom: 12 }}>
@@ -185,7 +185,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
               </p>
             )}
             <button onClick={dismiss}
-              style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "14px 32px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: '"Outfit",sans-serif' }}>
+              style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "14px 32px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: '"Jost",sans-serif' }}>
               Rozumiem — wracam do testu
             </button>
           </div>

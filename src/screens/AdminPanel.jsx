@@ -19,14 +19,14 @@ const C = {
       : { background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: "#C4B5FD" }),
     border: ["primary","success","danger","pause"].includes(v) ? "none" : undefined,
     borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700,
-    cursor: "pointer", fontFamily: '"Outfit",sans-serif', ...x,
+    cursor: "pointer", fontFamily: '"Jost",sans-serif', ...x,
   }),
-  input: (x = {}) => ({ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "11px 14px", color: "#EDE9FE", fontSize: 14, fontFamily: '"Outfit",sans-serif', width: "100%", ...x }),
+  input: (x = {}) => ({ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 10, padding: "11px 14px", color: "#EDE9FE", fontSize: 14, fontFamily: '"Jost",sans-serif', width: "100%", ...x }),
   lbl:   { fontSize: 11, fontWeight: 600, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 6 },
 };
 
 const CITY_COLORS  = { Kraków: "#FFA653", Warszawa: "#FF6B6B", Poznań: "#4ECDC4", Wrocław: "#45B7D1", Katowice: "#FF6B9D" };
-const STATUS_LABEL = { waiting: "Oczekiwanie", running: "Trwa quiz", paused: "Pauza", ended: "Zakończona" };
+const STATUS_LABEL = { waiting: "Oczekiwanie", running: "Trwa quiz", paused: "☕ Przerwa", ended: "Zakończona" };
 const STATUS_COLOR = { waiting: "#9B89CC", running: "#10D9A0", paused: "#F5C518", ended: "#E8376B" };
 
 // ─── City picker ──────────────────────────────────────────────────────────────
@@ -506,12 +506,132 @@ function UstawieniaTab({ city }) {
   );
 }
 
+// ─── Tab: Live Quiz View ──────────────────────────────────────────────────────
+
+function LiveTab({ city }) {
+  const [allQuestions, setAllQuestions]   = useState([]);
+  const [session, setSession]             = useState(null);
+  const [selectedQ, setSelectedQ]         = useState(null); // { id, module, q, ans, opts }
+  const [answers, setAnswers]             = useState([]);
+  const [loading, setLoading]             = useState(false);
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    import("../data/questions.js").then((m) => setAllQuestions(m.QUESTIONS));
+    getOrCreateSession(city, null).then(({ data }) => setSession(data));
+  }, [city]);
+
+  useEffect(() => {
+    if (!selectedQ || !session) return;
+    clearInterval(pollRef.current);
+    const fetch = async () => {
+      const stats = await getLiveQuestionStats(session.id, selectedQ.id);
+      setAnswers(stats.answers || []);
+    };
+    fetch();
+    pollRef.current = setInterval(fetch, 3000);
+    return () => clearInterval(pollRef.current);
+  }, [selectedQ?.id, session?.id]);
+
+  const ANSWER_LABELS = ["A", "B", "C", "D"];
+  const ANSWER_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
+
+  const correct   = answers.filter((a) => a.isCorrect);
+  const incorrect = answers.filter((a) => !a.isCorrect);
+  const avgPts    = answers.length ? Math.round(answers.reduce((s, a) => s + a.points, 0) / answers.length) : 0;
+  // Avg response time ≈ (timePerQ × 500 − avgPts) / 500 × timePerQ (inverted scoring)
+  const mod       = allQuestions.find((q) => q.id === selectedQ?.id);
+  const timePerQ  = allQuestions.length && selectedQ ? (MODULES.find((m) => m.id === selectedQ.module)?.timePerQ || 60) : 60;
+  const avgTimeSec = answers.length ? Math.round(timePerQ - (avgPts / 1000) * timePerQ) : 0;
+
+  const grouped = {};
+  allQuestions.forEach((q) => {
+    if (!grouped[q.module]) grouped[q.module] = [];
+    grouped[q.module].push(q);
+  });
+
+  return (
+    <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+      {/* Lewa kolumna — lista pytań */}
+      <div style={{ minWidth: 200, flex: "0 0 220px" }}>
+        <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Wybierz pytanie</p>
+        {MODULES.map((m) => (
+          <div key={m.id} style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: 11, color: m.color, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, marginBottom: 6 }}>{m.icon} {m.name}</p>
+            {(grouped[m.id] || []).map((q, idx) => (
+              <button key={q.id} onClick={() => setSelectedQ(q)}
+                style={{ ...C.btn("ghost", { width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 12, marginBottom: 4, background: selectedQ?.id === q.id ? `${m.color}20` : undefined, borderColor: selectedQ?.id === q.id ? `${m.color}55` : undefined, color: selectedQ?.id === q.id ? "#EDE9FE" : "#9B89CC" }) }}>
+                {idx + 1}. {q.q.slice(0, 30)}{q.q.length > 30 ? "…" : ""}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Prawa kolumna — statystyki */}
+      <div style={{ flex: 1 }}>
+        {!selectedQ ? (
+          <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
+            <p style={{ fontSize: 32, marginBottom: 12 }}>👈</p>
+            <p>Wybierz pytanie z listy, aby zobaczyć odpowiedzi uczestników.</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ ...C.card({ padding: "18px 20px", marginBottom: 16 }) }}>
+              <p style={{ fontSize: 11, color: "#9B89CC", marginBottom: 6 }}>Pytanie {allQuestions.findIndex((q) => q.id === selectedQ.id) + 1}</p>
+              <p style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.5, marginBottom: 14 }}>{selectedQ.q}</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {selectedQ.opts.map((opt, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "7px 12px", borderRadius: 8, background: i === selectedQ.ans ? "rgba(11,158,107,.15)" : "rgba(255,255,255,.04)", border: `1px solid ${i === selectedQ.ans ? "#0B9E6B" : "rgba(255,255,255,.07)"}` }}>
+                    <span style={{ width: 20, height: 20, borderRadius: 6, background: ANSWER_COLORS[i], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{ANSWER_LABELS[i]}</span>
+                    <span style={{ fontSize: 13, color: i === selectedQ.ans ? "#10D9A0" : "#9B89CC" }}>{opt}</span>
+                    {i === selectedQ.ans && <span style={{ marginLeft: "auto", fontSize: 12, color: "#10D9A0" }}>✓ poprawna</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Statystyki */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              {[["Odpowiedziało", answers.length, "#EDE9FE"], ["✅ Poprawnie", correct.length, "#10D9A0"], ["❌ Błędnie", incorrect.length, "#E8376B"], ["⏱ Śr. czas", `${avgTimeSec}s`, "#F5C518"]].map(([l, v, c]) => (
+                <div key={l} style={{ ...C.card({ padding: "12px 14px", flex: 1, textAlign: "center" }) }}>
+                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 24, color: c, lineHeight: 1 }}>{v}</p>
+                  <p style={{ fontSize: 10, color: "#9B89CC", marginTop: 3 }}>{l}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Lista odpowiedzi */}
+            {answers.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Odpowiedzi uczestników</p>
+                {answers.map((a) => (
+                  <div key={a.code} style={{ ...C.card({ padding: "10px 14px" }), display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16 }}>{a.isCorrect ? "✅" : "❌"}</span>
+                    <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1 }}>{a.code}</span>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                    <span style={{ fontFamily: '"Bebas Neue"', fontSize: 16, color: "#F5C518" }}>{a.points} pkt</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {answers.length === 0 && (
+              <p style={{ color: "#9B89CC", textAlign: "center", padding: "20px 0" }}>Brak odpowiedzi na to pytanie jeszcze.</p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
   { id: "pytania",    label: "📝 Pytania"    },
   { id: "kody",       label: "🎟️ Kody"      },
   { id: "sesja",      label: "🎮 Sesja"     },
+  { id: "live",       label: "🔴 Live"      },
   { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
 
@@ -526,7 +646,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
   }, [admin?.city]);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: '"Outfit",sans-serif', color: "#EDE9FE", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: '"Jost",sans-serif', color: "#EDE9FE", display: "flex", flexDirection: "column" }}>
 
       <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
@@ -556,6 +676,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
         {tab === "pytania"    && <PytaniaTab city={city} />}
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
         {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} />}
+        {tab === "live"       && <LiveTab    city={city} />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>
     </div>

@@ -1,7 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow-x: hidden; }
 :root { --fue-bg: linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%); }
-body { background: var(--fue-bg); -webkit-font-smoothing: antialiased; }
+body { background: var(--fue-bg); -webkit-font-smoothing: antialiased; font-family: 'Jost', sans-serif; }
 input, button, select, textarea { outline: none; border: none; font-family: inherit; }
 button { cursor: pointer; }
 

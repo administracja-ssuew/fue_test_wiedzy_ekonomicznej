@@ -7,7 +7,7 @@ const W = {
     minHeight: "100vh",
     background: "var(--fue-bg)",
     display: "flex", justifyContent: "center",
-    fontFamily: '"Outfit",sans-serif', color: "#EDE9FE",
+    fontFamily: '"Jost",sans-serif', color: "#EDE9FE",
   },
   card: (extra = {}) => ({
     background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.09)", borderRadius: 16, ...extra,
@@ -20,7 +20,7 @@ const W = {
     border: v !== "ghost" ? "none" : undefined,
     borderRadius: 12, padding: "15px 20px", fontSize: 15, fontWeight: 700,
     cursor: "pointer", width: "100%", transition: "transform .15s,opacity .15s",
-    fontFamily: '"Outfit",sans-serif', ...extra,
+    fontFamily: '"Jost",sans-serif', ...extra,
   }),
   label: { fontSize: 11, fontWeight: 600, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 8 },
   blob: (t, l, size, color) => ({
@@ -40,7 +40,7 @@ function PracticeScreen({ onBack }) {
   const q = PRACTICE_QUESTIONS[idx];
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: "28px 24px 36px" }}>
         {W.back(onBack)}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>

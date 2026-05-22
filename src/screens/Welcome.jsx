@@ -1,16 +1,36 @@
 import { useState } from "react";
-import { DEMO } from "../lib/supabase.js";
-import { CITIES, MODULES } from "../data/questions.js";
+import { CITIES } from "../data/questions.js";
 
 // ─── Placeholder content — podmień przed eventem ─────────────────────────────
 
 const EVENT_LINK = "#TODO"; // TODO: URL strony wydarzenia TWE
 
+// SVG icons (no icon library needed)
+const IconFacebook = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+  </svg>
+);
+const IconInstagram = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <rect x="2" y="2" width="20" height="20" rx="5"/>
+    <circle cx="12" cy="12" r="4"/>
+    <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+  </svg>
+);
+const IconGlobe = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="2" y1="12" x2="22" y2="12"/>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+  </svg>
+);
+
 const SOCIAL_LINKS = [
-  { label: "TWE Facebook",  abbr: "FB", href: "#TODO", color: "#1877F2" },
-  { label: "FUE Instagram", abbr: "IG", href: "#TODO", color: "#E1306C" },
-  { label: "FUE Facebook",  abbr: "FB", href: "#TODO", color: "#1877F2" },
-  { label: "Strona FUE",    abbr: "🌐", href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
+  { label: "TWE Facebook",  icon: IconFacebook,  href: "#TODO", color: "#1877F2" },
+  { label: "FUE Instagram", icon: IconInstagram, href: "#TODO", color: "#E1306C" },
+  { label: "FUE Facebook",  icon: IconFacebook,  href: "#TODO", color: "#1877F2" },
+  { label: "Strona FUE",    icon: IconGlobe,     href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
 ];
 
 const UNIVERSITIES = [
@@ -25,23 +45,25 @@ const ORGANIZERS = [
   {
     group: "Prezydium Forum Uczelni Ekonomicznych",
     members: [
-      { name: "Dawid Rutkowski", role: "Przewodniczący FUE",               univ: "UEW"   },
-      { name: "Helena Popek", role: "Wiceprzewodnicząca, Członkini Prezydium ds. Projektów",  univ: "SGH"   },
-      { name: "Jan Peciak", role: "Członek Prezydium ds. Kontaktów Zewnętrznych",   univ: "UEKat"   },
-      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",   univ: "UEK"   },
-      { name: "Jakub Kliński", role: "Członek Prezydium ds. Administracji",   univ: "UEP"   },
+      { name: "Dawid Rutkowski",  role: "Przewodniczący FUE",                                        univ: "UEWr",  photo: null },
+      { name: "Helena Popek",     role: "Wiceprzewodnicząca, ds. Projektów",                          univ: "SGH",   photo: null },
+      { name: "Jan Peciak",       role: "Członek Prezydium ds. Kontaktów Zewnętrznych",               univ: "UEKat", photo: null },
+      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",                     univ: "UEK",   photo: null },
+      { name: "Jakub Kliński",    role: "Członek Prezydium ds. Administracji",                        univ: "UEP",   photo: null },
     ],
   },
   {
     group: "Komitet Organizacyjny TWE",
     members: [
-      { name: "Imię Nazwisko", role: "Koordynator Główny TWE",       univ: "UEWr"  },
-      { name: "Imię Nazwisko", role: "Koordynator ds. Technologii",  univ: "UEKat" },
-      { name: "Imię Nazwisko", role: "Koordynator ds. Promocji",     univ: "UEK"   },
-      { name: "Imię Nazwisko", role: "Koordynator ds. Logistyki",    univ: "SGH"   },
+      { name: "Imię Nazwisko", role: "Koordynator Główny TWE",       univ: "UEWr",  photo: null },
+      { name: "Imię Nazwisko", role: "Koordynator ds. Technologii",  univ: "UEKat", photo: null },
+      { name: "Imię Nazwisko", role: "Koordynator ds. Promocji",     univ: "UEK",   photo: null },
+      { name: "Imię Nazwisko", role: "Koordynator ds. Logistyki",    univ: "SGH",   photo: null },
     ],
   },
 ];
+// Aby dodać zdjęcie: zmień photo: null na photo: "/zdjecia/imie-nazwisko.jpg"
+// i wgraj plik do katalogu public/zdjecia/
 
 const UNIV_COLORS = {
   UEK: "#FFA653", SGH: "#FF6B6B", UEP: "#4ECDC4", UEWr: "#45B7D1", UEKat: "#FF6B9D",
@@ -94,7 +116,7 @@ const W = {
     border: v !== "ghost" ? "none" : undefined,
     borderRadius: 12, padding: "15px 20px", fontSize: 15, fontWeight: 700,
     cursor: "pointer", width: "100%", transition: "transform .15s,opacity .15s",
-    fontFamily: '"Outfit",sans-serif', ...extra,
+    fontFamily: '"Jost",sans-serif', ...extra,
   }),
 };
 
@@ -103,11 +125,11 @@ const W = {
 function UniversityTicker() {
   const items = [...UNIVERSITIES, ...UNIVERSITIES, ...UNIVERSITIES];
   return (
-    <div style={{ background: "rgba(0,0,0,.3)", borderTop: "1px solid rgba(255,255,255,.07)", overflow: "hidden", padding: "14px 0", flexShrink: 0 }}>
-      <div style={{ display: "flex", width: "max-content", animation: "ticker 22s linear infinite", alignItems: "center" }}>
+    <div style={{ background: "rgba(0,0,0,.35)", borderTop: "1px solid rgba(255,255,255,.08)", overflow: "hidden", padding: "18px 0", flexShrink: 0 }}>
+      <div style={{ display: "flex", width: "max-content", animation: "ticker 24s linear infinite", alignItems: "center" }}>
         {items.map((u, i) => (
-          <div key={i} style={{ background: "#fff", borderRadius: 12, width: 160, height: 64, flexShrink: 0, marginRight: 20, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 16px" }}>
-            <img src={u.logo} alt={u.abbr} style={{ height: 40, width: "auto", objectFit: "contain", maxWidth: 128 }} />
+          <div key={i} style={{ background: "#fff", borderRadius: 14, width: 200, height: 80, flexShrink: 0, marginRight: 24, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 20px" }}>
+            <img src={u.logo} alt={u.abbr} style={{ height: 52, width: "auto", objectFit: "contain", maxWidth: 160 }} />
           </div>
         ))}
       </div>
@@ -119,23 +141,24 @@ function UniversityTicker() {
 
 function SocialBar() {
   return (
-    <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ background: "#fff", borderRadius: 8, padding: "3px 8px", display: "flex", alignItems: "center" }}>
-          <img src="/fue.png" alt="FUE" style={{ height: 26, width: "auto" }} />
-        </div>
+    <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.06)", padding: "8px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <img src="/fue.png" alt="FUE" style={{ height: 32, width: "auto" }} />
         <a href={EVENT_LINK} target="_blank" rel="noreferrer"
-          style={{ background: "rgba(107,33,232,.3)", border: "1px solid rgba(107,33,232,.5)", borderRadius: 20, padding: "3px 12px", fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }}>
+          style={{ background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.45)", borderRadius: 20, padding: "4px 14px", fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap", letterSpacing: .3 }}>
           📅 Strona wydarzenia →
         </a>
       </div>
-      <div style={{ display: "flex", gap: 6 }}>
-        {SOCIAL_LINKS.map((s) => (
-          <a key={s.label} href={s.href} target="_blank" rel="noreferrer" title={s.label}
-            style={{ width: 30, height: 30, borderRadius: 8, background: `${s.color}20`, border: `1px solid ${s.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: s.color, textDecoration: "none" }}>
-            {s.abbr}
-          </a>
-        ))}
+      <div style={{ display: "flex", gap: 8 }}>
+        {SOCIAL_LINKS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <a key={s.label} href={s.href} target="_blank" rel="noreferrer" title={s.label}
+              style={{ width: 32, height: 32, borderRadius: 9, background: `${s.color}18`, border: `1px solid ${s.color}35`, display: "flex", alignItems: "center", justifyContent: "center", color: s.color, textDecoration: "none", transition: "background .2s" }}>
+              <Icon />
+            </a>
+          );
+        })}
       </div>
     </div>
   );
@@ -154,7 +177,7 @@ function CitySelector({ city, setCity }) {
             borderRadius: 20, padding: "7px 16px", cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6,
             fontSize: 13, fontWeight: 600, color: city === c.name ? "#EDE9FE" : "#9B89CC",
-            transition: "all .15s", fontFamily: '"Outfit",sans-serif',
+            transition: "all .15s", fontFamily: '"Jost",sans-serif',
           }}>
           <span>{c.icon}</span>{c.name}
         </button>
@@ -272,9 +295,12 @@ function OrganizatorszyTab() {
                 return (
                   <div key={m.name + m.role} style={{ ...W.card({ padding: "20px" }) }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: 12, background: `${color}22`, border: `1px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 18, color, flexShrink: 0 }}>
-                        {initials}
-                      </div>
+                      {m.photo
+                        ? <img src={m.photo} alt={m.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: "cover", border: `2px solid ${color}44`, flexShrink: 0 }} />
+                        : <div style={{ width: 48, height: 48, borderRadius: 12, background: `${color}22`, border: `1px solid ${color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 20, color, flexShrink: 0 }}>
+                            {initials}
+                          </div>
+                      }
                       <div>
                         <p style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</p>
                         <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 2 }}>{m.role}</p>
@@ -424,13 +450,7 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
   const [city, setCity] = useState("Kraków");
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
-
-      {DEMO && (
-        <div style={{ background: "rgba(245,197,24,.12)", borderBottom: "1px solid rgba(245,197,24,.3)", padding: "8px 20px", fontSize: 12, color: "#F5C518", textAlign: "center" }}>
-          ⚠️ Tryb DEMO — dane przechowywane lokalnie. Skonfiguruj Supabase dla pełnej funkcjonalności.
-        </div>
-      )}
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Jost",sans-serif', color: "#EDE9FE" }}>
 
       <SocialBar />
 

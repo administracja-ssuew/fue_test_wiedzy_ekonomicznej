@@ -36,8 +36,14 @@ export default function App() {
   const [podStep, setPodStep]           = useState(0);
 
   const timerRef  = useRef(null);
-  const pickTime  = useRef(null); // timer value when participant clicked — for pts calc
+  const pickTime  = useRef(null);
   const isDesktop = useWindowWidth() >= 900;
+
+  // Apply saved background on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("fue_bg");
+    if (saved) document.documentElement.style.setProperty("--fue-bg", saved);
+  }, []);
 
   const qs       = moduleQuestions(currentMod);
   const currentQ = qs[qIdx];
@@ -154,19 +160,19 @@ export default function App() {
     return <Practice onBack={() => setScreen(participant ? "lobby" : "welcome")} />;
 
   if (screen === "lobby")
-    return <Lobby participant={participant} isDesktop={isDesktop} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
+    return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
 
   if (screen === "module_intro")
     return <ModuleIntro currentMod={currentMod} onStart={() => { setTimer(mod?.timePerQ || 60); setScreen("quiz"); }} />;
 
   if (screen === "quiz" && currentQ && mod)
-    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} onPick={handlePick} />;
+    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onPick={handlePick} />;
 
   if (screen === "feedback" && currentQ && mod)
     return <Feedback currentQ={currentQ} picked={picked} timer={timer} mod={mod} />;
 
   if (screen === "ended")
-    return <Ended participant={participant} myPts={myPts} allAnswers={allAnswers} onGoHome={resetApp} />;
+    return <Ended participant={participant} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onGoHome={resetApp} />;
 
   if (screen === "admin")
     return <AdminPanel admin={admin} isDesktop={isDesktop} onLogout={handleAdminLogout} />;

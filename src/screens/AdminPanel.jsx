@@ -3,7 +3,7 @@ import {
   getQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
-  getLiveQuestionStats,
+  getLiveQuestionStats, endAndResetSession,
 } from "../lib/supabase.js";
 import { CITIES, MODULES } from "../data/questions.js";
 
@@ -219,15 +219,16 @@ function SesjaTab({ city, adminId }) {
   const [session, setSession]           = useState(null);
   const [participants, setParticipants] = useState([]);
   const [results, setResults]           = useState([]);
-  const [liveStats, setLiveStats]       = useState(null); // { total, correct, answers[] }
+  const [liveStats, setLiveStats]       = useState(null);
   const [loading, setLoading]           = useState(true);
+  const [isPractice, setIsPractice]     = useState(false);
   const pollRef = useRef(null);
 
-  useEffect(() => { load(); return () => clearInterval(pollRef.current); }, [city]);
+  useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
-  const load = async () => {
+  const load = async (practice = isPractice) => {
     setLoading(true);
-    const { data } = await getOrCreateSession(city, adminId);
+    const { data } = await getOrCreateSession(city, adminId, practice);
     setSession(data);
     if (data) {
       setParticipants(await getParticipantsInSession(city));
@@ -270,10 +271,18 @@ function SesjaTab({ city, adminId }) {
 
   return (
     <div>
-      <div style={{ ...C.card({ padding: "20px", marginBottom: 20, borderColor: `${STATUS_COLOR[session?.status || "waiting"]}30`, background: `${STATUS_COLOR[session?.status || "waiting"]}08` }) }}>
+      {/* Mode switcher */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button onClick={() => setIsPractice(false)} style={{ ...C.btn(isPractice ? "ghost" : "primary", { fontSize: 12, padding: "8px 16px" }) }}>🏆 Właściwy quiz</button>
+        <button onClick={() => setIsPractice(true)}  style={{ ...C.btn(isPractice ? "success" : "ghost", { fontSize: 12, padding: "8px 16px" }) }}>🔬 Próbny test</button>
+      </div>
+
+      <div style={{ ...C.card({ padding: "20px", marginBottom: 20, borderColor: isPractice ? "rgba(16,217,160,.3)" : `${STATUS_COLOR[session?.status || "waiting"]}30`, background: isPractice ? "rgba(16,217,160,.06)" : `${STATUS_COLOR[session?.status || "waiting"]}08` }) }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div>
-            <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Sesja — {city}</p>
+            <p style={{ fontSize: 11, color: isPractice ? "#10D9A0" : "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
+              {isPractice ? "🔬 PRÓBNY TEST" : "Sesja"} — {city}
+            </p>
             <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: STATUS_COLOR[session?.status || "waiting"], letterSpacing: 1, marginTop: 2 }}>
               {STATUS_LABEL[session?.status || "waiting"]}
             </p>
@@ -375,12 +384,54 @@ function SesjaTab({ city, adminId }) {
   );
 }
 
+// ─── Tab: Ustawienia ─────────────────────────────────────────────────────────
+
+const BG_PRESETS = [
+  { name: "Fioletowy (domyślny)", value: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)" },
+  { name: "Granatowy",            value: "linear-gradient(160deg,#020B18 0%,#05224B 50%,#020B18 100%)" },
+  { name: "Zielony",              value: "linear-gradient(160deg,#021207 0%,#052A0E 50%,#021207 100%)" },
+  { name: "Czerwony",             value: "linear-gradient(160deg,#160202 0%,#2A0505 50%,#160202 100%)" },
+  { name: "Turkusowy",            value: "linear-gradient(160deg,#011212 0%,#022B2B 50%,#011212 100%)" },
+  { name: "Czarny",               value: "linear-gradient(160deg,#000000 0%,#0A0A0A 50%,#000000 100%)" },
+];
+
+function UstawieniaTab() {
+  const current = localStorage.getItem("fue_bg") || BG_PRESETS[0].value;
+
+  const applyBg = (value) => {
+    document.documentElement.style.setProperty("--fue-bg", value);
+    localStorage.setItem("fue_bg", value);
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}>
+        <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>🎨 Tło aplikacji</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12 }}>
+          {BG_PRESETS.map((p) => {
+            const isActive = current === p.value;
+            return (
+              <button key={p.name} onClick={() => applyBg(p.value)}
+                style={{ background: p.value, border: `2px solid ${isActive ? "#fff" : "rgba(255,255,255,.15)"}`, borderRadius: 12, padding: "32px 12px 12px", cursor: "pointer", textAlign: "left", position: "relative", transition: "border-color .2s" }}>
+                {isActive && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 16 }}>✓</span>}
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#EDE9FE", fontFamily: '"Outfit",sans-serif' }}>{p.name}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 12 }}>Zmiana tła jest widoczna natychmiast dla wszystkich — zapis w przeglądarce.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "pytania", label: "📝 Pytania" },
-  { id: "kody",    label: "🎟️ Kody"   },
-  { id: "sesja",   label: "🎮 Sesja"  },
+  { id: "pytania",    label: "📝 Pytania"    },
+  { id: "kody",       label: "🎟️ Kody"      },
+  { id: "sesja",      label: "🎮 Sesja"     },
+  { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
 
 export default function AdminPanel({ admin, isDesktop, onLogout }) {
@@ -405,20 +456,21 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
         </div>
       )}
 
-      <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.15)" }}>
+      <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.15)", overflowX: "auto" }}>
         {TABS.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`fue-tab${tab === t.id ? " active" : ""}`}
-            style={{ whiteSpace: "nowrap", fontSize: 13, padding: "14px 22px" }}>
+            style={{ whiteSpace: "nowrap", fontSize: 13, padding: "14px 20px" }}>
             {t.label}
           </button>
         ))}
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: isDesktop ? "28px 40px" : "20px 16px", maxWidth: 900, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-        {tab === "pytania" && <PytaniaTab city={city} />}
-        {tab === "kody"    && <KodyTab    city={city} adminId={admin?.id} />}
-        {tab === "sesja"   && <SesjaTab   city={city} adminId={admin?.id} />}
+        {tab === "pytania"    && <PytaniaTab city={city} />}
+        {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
+        {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} />}
+        {tab === "ustawienia" && <UstawieniaTab />}
       </div>
     </div>
   );

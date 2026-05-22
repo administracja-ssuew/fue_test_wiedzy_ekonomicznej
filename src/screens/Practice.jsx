@@ -5,7 +5,7 @@ import { ANSWER_LABELS } from "../lib/gameLogic.js";
 const W = {
   wrap: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
+    background: "var(--fue-bg)",
     display: "flex", justifyContent: "center",
     fontFamily: '"Outfit",sans-serif', color: "#EDE9FE",
   },
@@ -40,7 +40,7 @@ function PracticeScreen({ onBack }) {
   const q = PRACTICE_QUESTIONS[idx];
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: "28px 24px 36px" }}>
         {W.back(onBack)}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>

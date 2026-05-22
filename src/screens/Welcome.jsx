@@ -451,7 +451,7 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
   const [city, setCity] = useState("Kraków");
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", flexDirection: "column", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
 
       {DEMO && (
         <div style={{ background: "rgba(245,197,24,.12)", borderBottom: "1px solid rgba(245,197,24,.3)", padding: "8px 20px", fontSize: 12, color: "#F5C518", textAlign: "center" }}>

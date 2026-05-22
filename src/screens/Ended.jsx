@@ -3,7 +3,7 @@ import { MODULES } from "../data/questions.js";
 const W = {
   wrap: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
+    background: "var(--fue-bg)",
     display: "flex", justifyContent: "center",
     fontFamily: '"Outfit",sans-serif', color: "#EDE9FE",
   },
@@ -32,16 +32,23 @@ const W = {
   ),
 };
 
-export default function Ended({ user, myPts, allAnswers, onGoHome }) {
+export default function Ended({ participant, myPts, allAnswers, isPractice, onGoHome }) {
   return (
     <div style={W.wrap}>
       <div className="fue-page" style={{ justifyContent: "center", alignItems: "center", padding: "36px 28px", textAlign: "center" }}>
-        <div style={W.blob("40%", "20%", 280, "rgba(107,33,232,.15)")} />
-        <div className="pi" style={{ fontSize: 64, marginBottom: 16 }}>🏆</div>
-        <h2 className="su" style={{ fontFamily: '"Bebas Neue"', fontSize: 52, letterSpacing: 2, animationDelay: ".06s" }}>Ukończyłeś Test!</h2>
+        <div style={W.blob("40%", "20%", 280, isPractice ? "rgba(16,217,160,.1)" : "rgba(107,33,232,.15)")} />
+        {isPractice && (
+          <div style={{ background: "rgba(16,217,160,.15)", border: "1px solid rgba(16,217,160,.35)", borderRadius: 20, padding: "4px 16px", fontSize: 12, fontWeight: 700, color: "#10D9A0", marginBottom: 16 }}>
+            🔬 PRÓBNY TEST
+          </div>
+        )}
+        <div className="pi" style={{ fontSize: 64, marginBottom: 16 }}>{isPractice ? "🔬" : "🏆"}</div>
+        <h2 className="su" style={{ fontFamily: '"Bebas Neue"', fontSize: 52, letterSpacing: 2, animationDelay: ".06s" }}>
+          {isPractice ? "Próba zakończona!" : "Ukończyłeś Test!"}
+        </h2>
         <p className="su" style={{ color: "#9B89CC", fontSize: 15, marginTop: 6, lineHeight: 1.7, animationDelay: ".12s" }}>
-          Dziękujemy za udział,<br />
-          <strong style={{ color: "#EDE9FE" }}>{user?.fullName || user?.full_name || "Uczestniku"}</strong>!
+          {isPractice ? "To był próbny test — wyniki nie są oficjalne." : "Dziękujemy za udział,"}<br />
+          <strong style={{ color: "#EDE9FE" }}>{participant?.name} {participant?.surname}</strong>!
         </p>
         <div className="su" style={{ ...W.card({ padding: "24px", marginTop: 24, borderColor: "rgba(245,197,24,.25)", background: "rgba(245,197,24,.06)" }), animationDelay: ".18s", width: "100%" }}>
           <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 6 }}>Twój wynik</p>

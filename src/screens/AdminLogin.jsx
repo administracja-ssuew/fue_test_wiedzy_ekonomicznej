@@ -28,7 +28,7 @@ export default function AdminLogin({ onBack, onSuccess }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: "28px", justifyContent: "center" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", color: "#9B89CC", fontSize: 22, padding: "0 0 24px", cursor: "pointer", alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 8 }}>
           ← <span style={{ fontSize: 14, fontWeight: 600 }}>Wróć</span>

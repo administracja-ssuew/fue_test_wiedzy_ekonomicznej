@@ -4,7 +4,7 @@ import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
 const W = {
   wrap: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
+    background: "var(--fue-bg)",
     display: "flex", justifyContent: "center",
     fontFamily: '"Outfit",sans-serif', color: "#EDE9FE",
   },
@@ -33,7 +33,7 @@ const W = {
   ),
 };
 
-export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, onPick }) {
+export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, onPick }) {
   if (!currentQ || !mod) return null;
   const qs = QUESTIONS.filter((q) => q.module === currentMod);
   const timerPct = timer / mod.timePerQ;
@@ -51,6 +51,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
             <span style={{ background: `${mod.color}22`, border: `1px solid ${mod.color}44`, borderRadius: 20, padding: "2px 10px", fontSize: 10, fontWeight: 700, color: mod.color }}>
               {mod.icon} {mod.name}
             </span>
+            {isPractice && <span style={{ background: "rgba(16,217,160,.2)", border: "1px solid rgba(16,217,160,.4)", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700, color: "#10D9A0" }}>PRÓBA</span>}
           </div>
           <p style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>Pytanie {qIdx + 1} / {qs.length} · #{qNumGlobal}/{QUESTIONS.length}</p>
         </div>

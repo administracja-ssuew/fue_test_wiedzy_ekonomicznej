@@ -9,7 +9,7 @@ function PodiumScreen({ onBack, podStep, setPodStep }) {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
+    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Outfit",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ justifyContent: "space-between", padding: "40px 22px 32px", overflow: "hidden", position: "relative" }}>
         {podStep >= 3 && Array.from({ length: 24 }).map((_, i) => (
           <div key={i} style={{ position: "absolute", top: -10, left: `${3 + i * 4}%`, width: 7 + (i % 3) * 3, height: 7 + (i % 3) * 3, borderRadius: i % 2 ? "50%" : 3, background: confColors[i % 5], animation: `conffall ${1.4 + (i % 4) * .3}s ${i * .07}s ease-in both`, zIndex: 10 }} />

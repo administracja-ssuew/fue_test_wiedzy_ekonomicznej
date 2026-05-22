@@ -4,7 +4,7 @@ import { getModule, moduleQuestions } from "../lib/gameLogic.js";
 const W = {
   wrap: {
     minHeight: "100vh",
-    background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
+    background: "var(--fue-bg)",
     display: "flex", justifyContent: "center",
     fontFamily: '"Outfit",sans-serif', color: "#EDE9FE",
   },

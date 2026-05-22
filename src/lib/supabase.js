@@ -173,27 +173,36 @@ export async function deleteQuestion(id) {
 
 // ─── SESSIONS ─────────────────────────────────────────────────────────────────
 
-export async function getOrCreateSession(city, adminId) {
+export async function getOrCreateSession(city, adminId, isPractice = false) {
   if (DEMO) {
-    const key = `fue_session_${city}`;
+    const key = `fue_session_${city}${isPractice ? "_practice" : ""}`;
     const existing = localStorage.getItem(key);
     if (existing) {
       const s = JSON.parse(existing);
       if (s.status !== "ended") return { data: s, error: null };
     }
-    const session = { id: `sess_${city}_${Date.now()}`, city, status: "waiting", current_question_idx: 0, q_started_at: null, created_at: new Date().toISOString() };
+    const session = { id: `sess_${city}_${Date.now()}`, city, status: "waiting", is_practice: isPractice, current_question_idx: 0, q_started_at: null, created_at: new Date().toISOString() };
     localStorage.setItem(key, JSON.stringify(session));
     return { data: session, error: null };
   }
-  // Try to find active session for city
   const { data: existing } = await supabase.from("quiz_sessions")
-    .select("*").eq("city", city).neq("status", "ended")
+    .select("*").eq("city", city).eq("is_practice", isPractice).neq("status", "ended")
     .order("created_at", { ascending: false }).limit(1);
   if (existing?.[0]) return { data: existing[0], error: null };
-  // Create new session
   const { data, error } = await supabase.from("quiz_sessions")
-    .insert({ city, status: "waiting", created_by: adminId }).select().single();
+    .insert({ city, status: "waiting", is_practice: isPractice, created_by: adminId }).select().single();
   return { data, error: error?.message || null };
+}
+
+export async function endAndResetSession(city, adminId, isPractice = false) {
+  if (DEMO) {
+    const key = `fue_session_${city}${isPractice ? "_practice" : ""}`;
+    localStorage.removeItem(key);
+    return getOrCreateSession(city, adminId, isPractice);
+  }
+  await supabase.from("quiz_sessions").update({ status: "ended" })
+    .eq("city", city).eq("is_practice", isPractice).neq("status", "ended");
+  return getOrCreateSession(city, adminId, isPractice);
 }
 
 export async function updateSession(sessionId, updates) {

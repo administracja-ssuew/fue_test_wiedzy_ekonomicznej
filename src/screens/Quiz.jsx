@@ -81,20 +81,26 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 14px 20px", alignContent: "start" }}>
         {currentQ.opts.map((opt, i) => {
           const sel = picked === i, ok = i === currentQ.ans;
-          let bg = ANSWER_BG[i], opacity = 1;
-          if (answered) {
-            if (sel && ok) bg = "#0B9E6B";
+          let bg = ANSWER_BG[i], opacity = 1, border = "none";
+          if (!answered && sel) {
+            // Picked but timer still running — show as locked-in (bright outline, no color change)
+            opacity = 1;
+            border = "3px solid rgba(255,255,255,.9)";
+          } else if (answered) {
+            // Timer ended — reveal correct/wrong
+            if (sel && ok)       bg = "#0B9E6B";
             else if (sel && !ok) bg = "#C0284A";
             else if (!sel && ok) { bg = "#0B9E6B"; opacity = .85; }
-            else opacity = .3;
+            else                 opacity = .3;
           }
           return (
             <button key={i} onClick={() => onPick(i)} className="ans-btn"
-              style={{ background: bg, border: "none", borderRadius: 14, padding: "16px 12px", color: "#fff", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, cursor: answered ? "default" : "pointer", opacity, minHeight: 100, textAlign: "left", boxShadow: "0 4px 18px rgba(0,0,0,.35)", position: "relative", overflow: "hidden" }}
-              disabled={answered}>
+              style={{ background: bg, border, borderRadius: 14, padding: "16px 12px", color: "#fff", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, cursor: (answered || picked !== null) ? "default" : "pointer", opacity, minHeight: 100, textAlign: "left", boxShadow: "0 4px 18px rgba(0,0,0,.35)", position: "relative", overflow: "hidden" }}
+              disabled={answered || picked !== null}>
               <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(0,0,0,.28)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{ANSWER_LABELS[i]}</div>
               <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{opt}</span>
-              {answered && ok && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✓</div>}
+              {!answered && sel && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 13, color: "rgba(255,255,255,.7)" }}>✔ wybrano</div>}
+              {answered && ok  && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✓</div>}
               {answered && sel && !ok && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✗</div>}
             </button>
           );

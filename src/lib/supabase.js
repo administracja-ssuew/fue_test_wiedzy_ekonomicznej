@@ -271,3 +271,28 @@ export async function getSessionResults(sessionId) {
   }
   return Object.values(grouped).sort((a, b) => b.points - a.points);
 }
+
+// Live stats for current question (admin panel)
+export async function getLiveQuestionStats(sessionId, questionId) {
+  if (DEMO) {
+    const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
+    const correct = answers.filter((a) => a.isCorrect).length;
+    const avgTime = answers.length
+      ? answers.reduce((s, a) => s + (a.responseTime || 0), 0) / answers.length
+      : 0;
+    return { total: answers.length, correct, avgTime: Math.round(avgTime), answers };
+  }
+  const { data } = await supabase.from("answers")
+    .select("participant_code, participant_name, is_correct, points, answered_at")
+    .eq("session_id", sessionId)
+    .eq("question_id", questionId);
+  if (!data) return { total: 0, correct: 0, avgTime: 0, answers: [] };
+  const correct = data.filter((a) => a.is_correct).length;
+  return {
+    total: data.length,
+    correct,
+    avgTime: 0, // would need response_time column for accurate avg
+    answers: data.map((a) => ({ code: a.participant_code, name: a.participant_name, isCorrect: a.is_correct, points: a.points })),
+  };
+}

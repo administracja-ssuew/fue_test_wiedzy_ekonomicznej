@@ -35,7 +35,8 @@ export default function App() {
   const [allAnswers, setAllAnswers]     = useState([]);
   const [podStep, setPodStep]           = useState(0);
 
-  const timerRef = useRef(null);
+  const timerRef  = useRef(null);
+  const pickTime  = useRef(null); // timer value when participant clicked — for pts calc
   const isDesktop = useWindowWidth() >= 900;
 
   const qs       = moduleQuestions(currentMod);
@@ -57,29 +58,43 @@ export default function App() {
   }, [screen, currentMod, qIdx]);
 
   // ── Quiz logic ───────────────────────────────────────────────────
+
+  // Called when timer hits 0 — reveals correct answer to participant
   const handleTimeout = () => {
     if (answered) return;
-    setAnswered(true);
-    if (currentQ && participant && quizSession) {
+    const userPicked  = picked;               // may be null (no answer)
+    const timeWhenPicked = pickTime.current;  // timer value when they clicked
+
+    const correct = userPicked !== null && userPicked === currentQ?.ans;
+    const pts     = userPicked !== null ? calcPts(timeWhenPicked, mod.timePerQ, correct) : 0;
+
+    setMyPts((p) => p + pts);
+    setAllAnswers((prev) => currentQ
+      ? [...prev, { qId: currentQ.id, module: currentMod, picked: userPicked, correct, pts }]
+      : prev);
+
+    // Save missed answers to DB (picked answers saved immediately in handlePick)
+    if (userPicked === null && currentQ && participant && quizSession) {
       saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: null, isCorrect: false, points: 0 });
     }
-    setTimeout(advanceQuestion, 2500);
+
+    setAnswered(true); // NOW reveal correct/wrong colors
+    setTimeout(advanceQuestion, 2200);
   };
 
+  // User clicks an answer — lock in choice but DON'T reveal yet (timer still runs)
   const handlePick = (i) => {
-    if (answered) return;
-    clearInterval(timerRef.current);
+    if (picked !== null || answered) return; // already picked or revealed
+    pickTime.current = timer;
     setPicked(i);
-    setAnswered(true);
-    const correct = i === currentQ.ans;
-    const pts = calcPts(timer, mod.timePerQ, correct);
-    setMyPts((p) => p + pts);
-    setAllAnswers((prev) => [...prev, { qId: currentQ.id, module: currentMod, picked: i, correct, pts }]);
-    if (participant && quizSession) {
+
+    // Save to DB immediately so admin sees live responses
+    if (currentQ && participant && quizSession) {
+      const correct = i === currentQ.ans;
+      const pts     = calcPts(timer, mod.timePerQ, correct);
       saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: i, isCorrect: correct, points: pts });
     }
-    setTimeout(() => setScreen("feedback"), 500);
-    setTimeout(advanceQuestion, 2800);
+    // Timer keeps running — handleTimeout will reveal the answer
   };
 
   const advanceQuestion = () => {

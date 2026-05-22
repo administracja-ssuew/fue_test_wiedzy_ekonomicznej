@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   getQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
+  getLiveQuestionStats,
 } from "../lib/supabase.js";
 import { CITIES, MODULES } from "../data/questions.js";
 
@@ -215,12 +216,14 @@ function KodyTab({ city, adminId }) {
 // ─── Tab: Sesja ───────────────────────────────────────────────────────────────
 
 function SesjaTab({ city, adminId }) {
-  const [session, setSession] = useState(null);
+  const [session, setSession]           = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [results, setResults]           = useState([]);
+  const [liveStats, setLiveStats]       = useState(null); // { total, correct, answers[] }
+  const [loading, setLoading]           = useState(true);
+  const pollRef = useRef(null);
 
-  useEffect(() => { load(); }, [city]);
+  useEffect(() => { load(); return () => clearInterval(pollRef.current); }, [city]);
 
   const load = async () => {
     setLoading(true);
@@ -233,11 +236,34 @@ function SesjaTab({ city, adminId }) {
     setLoading(false);
   };
 
+  // Poll live stats every 3s when quiz is running
+  useEffect(() => {
+    clearInterval(pollRef.current);
+    if (session?.status === "running") {
+      pollRef.current = setInterval(async () => {
+        const qs = await import("../data/questions.js");
+        const questions = qs.QUESTIONS;
+        const q = questions[session.current_question_idx];
+        if (q && session.id) {
+          const stats = await getLiveQuestionStats(session.id, q.id);
+          setLiveStats(stats);
+        }
+        // Also refresh participant count
+        setParticipants(await getParticipantsInSession(city));
+      }, 3000);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [session?.status, session?.current_question_idx]);
+
   const upd = async (updates) => {
     if (!session) return;
     await updateSession(session.id, updates);
     setSession((s) => ({ ...s, ...updates }));
-    if (updates.status === "ended") setResults(await getSessionResults(session.id));
+    if (updates.status === "ended") {
+      clearInterval(pollRef.current);
+      setResults(await getSessionResults(session.id));
+      setLiveStats(null);
+    }
   };
 
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
@@ -274,6 +300,45 @@ function SesjaTab({ city, adminId }) {
           )}
         </div>
       </div>
+
+      {/* Live stats — visible while quiz is running */}
+      {session?.status === "running" && liveStats && (
+        <div style={{ ...C.card({ padding: "16px 20px", marginBottom: 20, borderColor: "rgba(16,217,160,.25)", background: "rgba(16,217,160,.06)" }) }}>
+          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>📊 Live — bieżące pytanie</p>
+          <div style={{ display: "flex", gap: 16, marginBottom: liveStats.answers.length ? 16 : 0 }}>
+            {[
+              ["Odpowiedziało", liveStats.total, "#EDE9FE"],
+              ["Poprawnie", liveStats.correct, "#10D9A0"],
+              ["Błędnie", liveStats.total - liveStats.correct, "#E8376B"],
+            ].map(([l, v, col]) => (
+              <div key={l} style={{ textAlign: "center" }}>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: col, lineHeight: 1 }}>{v}</p>
+                <p style={{ fontSize: 11, color: "#9B89CC" }}>{l}</p>
+              </div>
+            ))}
+            <div style={{ flex: 1 }}>
+              <div style={{ height: 8, background: "rgba(255,255,255,.1)", borderRadius: 4, overflow: "hidden", marginTop: 10 }}>
+                <div style={{ height: "100%", background: "#10D9A0", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
+              </div>
+              <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 4 }}>
+                {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych
+              </p>
+            </div>
+          </div>
+          {liveStats.answers.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
+              {liveStats.answers.map((a) => (
+                <div key={a.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: "rgba(0,0,0,.2)", borderRadius: 8 }}>
+                  <span style={{ fontSize: 14 }}>{a.isCorrect ? "✅" : "❌"}</span>
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1 }}>{a.code}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{a.name}</span>
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 14, color: "#F5C518" }}>{a.points} pkt</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {participants.length > 0 && session?.status !== "ended" && (
         <div style={{ marginBottom: 24 }}>

@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CITIES } from "../data/questions.js";
+
+// ─── TODO: ustaw datę i godzinę startu testu ─────────────────────────────────
+const TEST_START = new Date("2026-10-01T10:00:00"); // <-- zmień przed eventem
 
 // ─── Placeholder content — podmień przed eventem ─────────────────────────────
 
@@ -209,6 +212,61 @@ function ContactRows({ coord }) {
   );
 }
 
+// ─── Countdown hook ──────────────────────────────────────────────────────────
+
+function useCountdown(target) {
+  const calc = () => Math.max(0, Math.floor((target - Date.now()) / 1000));
+  const [secs, setSecs] = useState(calc);
+  useEffect(() => {
+    const t = setInterval(() => setSecs(calc()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return secs;
+}
+
+function CountdownDisplay() {
+  const secs  = useCountdown(TEST_START);
+  const days  = Math.floor(secs / 86400);
+  const hrs   = Math.floor((secs % 86400) / 3600);
+  const mins  = Math.floor((secs % 3600) / 60);
+  const s     = secs % 60;
+  const pad   = (n) => String(n).padStart(2, "0");
+  const done  = secs === 0;
+
+  if (done) return (
+    <div style={{ animation: "blurIn .6s ease both", textAlign: "center" }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "rgba(16,217,160,.12)", border: "1px solid rgba(16,217,160,.3)", borderRadius: 20, padding: "10px 24px" }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10D9A0", animation: "pulse 1s infinite" }} />
+        <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#10D9A0", letterSpacing: 2 }}>TEST RUSZYŁ!</span>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10D9A0", animation: "pulse 1s .3s infinite" }} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ textAlign: "center" }}>
+      <p style={{ fontSize: 10, color: "rgba(155,137,204,.4)", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8 }}>
+        Start testu za
+      </p>
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "flex-end" }}>
+        {days > 0 && (
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1, letterSpacing: 2 }}>{pad(days)}</p>
+            <p style={{ fontSize: 9, color: "rgba(155,137,204,.4)", textTransform: "uppercase", letterSpacing: 1.5 }}>dni</p>
+          </div>
+        )}
+        {days > 0 && <span style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: "rgba(107,33,232,.5)", marginBottom: 4 }}>:</span>}
+        {[["hrs", hrs], ["min", mins], ["sek", s]].map(([label, val]) => (
+          <div key={label} style={{ textAlign: "center" }}>
+            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1, letterSpacing: 2 }}>{pad(val)}</p>
+            <p style={{ fontSize: 9, color: "rgba(155,137,204,.4)", textTransform: "uppercase", letterSpacing: 1.5 }}>{label}</p>
+          </div>
+        )).reduce((acc, el, i) => i === 0 ? [el] : [...acc, <span key={i} style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: "rgba(107,33,232,.5)", marginBottom: 4 }}>:</span>, el], [])}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab: Główna ─────────────────────────────────────────────────────────────
 
 // Elegant floating shape (inspired by HeroGeometric)
@@ -295,14 +353,9 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
           </button>
         </div>
 
-        {/* Stats row */}
-        <div style={{ animation: "blurIn .5s .78s ease both", display: "flex", gap: 24, justifyContent: "center", marginTop: 36 }}>
-          {[["5", "Miast"], ["5", "Modułów"], ["2", "Etapy"]].map(([v, l]) => (
-            <div key={l} style={{ textAlign: "center" }}>
-              <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: "#6B21E8", lineHeight: 1 }}>{v}</p>
-              <p style={{ fontSize: 10, color: "rgba(155,137,204,.45)", textTransform: "uppercase", letterSpacing: 1.5, marginTop: 2 }}>{l}</p>
-            </div>
-          ))}
+        {/* Countdown */}
+        <div style={{ animation: "blurIn .5s .78s ease both", marginTop: 36 }}>
+          <CountdownDisplay />
         </div>
       </div>
     </div>

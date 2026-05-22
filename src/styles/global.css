@@ -42,14 +42,14 @@ button { cursor: pointer; }
 .fue-input {
   width: 100%; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
   border-radius: 12px; padding: 14px 16px; color: #EDE9FE; font-size: 15px;
-  transition: border-color .2s; font-family: 'Outfit', sans-serif;
+  transition: border-color .2s; font-family: 'Space Grotesk', sans-serif;
 }
 .fue-input:focus { border-color: #6B21E8; outline: none; }
 .fue-input::placeholder { color: rgba(155,137,204,.45); }
 
 .fue-tab { flex: 1; padding: 13px 8px; background: transparent; color: #9B89CC;
   font-size: 13px; font-weight: 600; border-bottom: 2px solid transparent;
-  transition: all .2s; font-family: 'Outfit', sans-serif; }
+  transition: all .2s; font-family: 'Space Grotesk', sans-serif; }
 .fue-tab.active { color: #EDE9FE; border-bottom-color: #6B21E8; }
 .fue-tab:hover:not(.active) { color: #C4B5FD; }
 

@@ -52,13 +52,12 @@ export async function validateParticipantCode(rawCode) {
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
     const entry = codes.find((c) => c.code === code);
     if (!entry) return { error: "Nie znaleziono kodu." };
-    if (entry.used) return { error: "Ten kod został już wykorzystany." };
     return { data: entry, error: null };
   }
   const { data, error } = await supabase
     .from("participant_codes").select("*").eq("code", code).single();
   if (error || !data) return { error: "Nie znaleziono kodu." };
-  if (data.used) return { error: "Ten kod został już wykorzystany." };
+  // Kod istnieje — można dołączyć (nawet po przypadkowym zamknięciu przeglądarki)
   return { data, error: null };
 }
 

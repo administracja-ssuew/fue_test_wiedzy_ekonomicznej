@@ -541,19 +541,29 @@ function LiveTab({ city }) {
   const currentQ = questions[gIdx];
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
 
-  // Start live view — sync with session's current question and elapsed time
+  // Start live view — load fresh session + questions then sync timer
   const startLive = async () => {
-    const { data: freshSession } = await getOrCreateSession(city, null, false);
+    setPhase("loading");
+
+    // Fetch fresh data in parallel
+    const [{ data: freshSession }, freshQs] = await Promise.all([
+      getOrCreateSession(city, null, false),
+      import("../lib/supabase.js").then(({ getQuestions: gq }) => gq(city)),
+    ]);
+
     setSession(freshSession);
+    if (freshQs.length > 0) setQuestions(freshQs);
 
-    let startIdx = freshSession?.current_question_idx || 0;
-    let startTimer = mod?.timePerQ || 60;
+    const qs = freshQs.length > 0 ? freshQs : questions;
+    const startIdx = Math.min(freshSession?.current_question_idx || 0, qs.length - 1);
+    const q        = qs[startIdx];
+    const qMod     = MODULES.find((m) => m.id === q?.module);
+    const timePerQ = qMod?.timePerQ || 60;
 
+    let startTimer = timePerQ;
     if (freshSession?.q_started_at) {
       const elapsedSec = Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000);
-      const q = questions[startIdx];
-      const qMod = MODULES.find((m) => m.id === q?.module);
-      startTimer = Math.max(0, (qMod?.timePerQ || 60) - elapsedSec);
+      startTimer = Math.max(1, timePerQ - elapsedSec);
     }
 
     setGIdx(startIdx);
@@ -562,10 +572,9 @@ function LiveTab({ city }) {
     setPhase("quiz");
   };
 
-  // Timer effect — use pre-set timer value, not reset from timePerQ
+  // Timer effect — starts from whatever `timer` was set to by startLive / skipReveal
   useEffect(() => {
     if (phase !== "quiz" || !mod || !currentQ) return;
-    // Only reset timer when gIdx changes (new question), not on every render
     clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setTimer((t) => {
@@ -624,12 +633,19 @@ function LiveTab({ city }) {
   const timerPct  = timer / (mod?.timePerQ || 60);
   const tColor    = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
-  if (phase === "idle" || questions.length === 0) return (
+  if (phase === "loading") return (
+    <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
+      <div className="spinner" style={{ width: 32, height: 32, border: "3px solid rgba(107,33,232,.2)", borderTop: "3px solid #6B21E8", borderRadius: "50%", margin: "0 auto 16px" }} />
+      <p>Synchronizuję z sesją…</p>
+    </div>
+  );
+
+  if (phase === "idle") return (
     <div style={{ textAlign: "center", padding: "48px 0" }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>👁️</div>
       <p style={{ color: "#9B89CC", marginBottom: 24, fontSize: 14, lineHeight: 1.6 }}>
         Widok duchy — obserwujesz quiz jak uczestnik, bez możliwości odpowiadania.<br />
-        Po każdym pytaniu widzisz pełną tabelę odpowiedzi.
+        Po każdym pytaniu widzisz pełną tabelę odpowiedzi z kodami i wynikami.
       </p>
       <button onClick={startLive} style={{ ...C.btn("primary", { width: "auto", padding: "12px 32px" }) }}>▶ Start podglądu live</button>
     </div>

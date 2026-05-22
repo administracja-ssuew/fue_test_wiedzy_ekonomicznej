@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { MODULES } from "./data/questions.js";
-import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession } from "./lib/supabase.js";
+import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -44,7 +44,10 @@ export default function App() {
 
   const timerRef  = useRef(null);
   const pickTime  = useRef(null);
+  const screenRef = useRef(screen); // always-current screen value (avoids stale closures)
   const isDesktop = useWindowWidth() >= 900;
+
+  useEffect(() => { screenRef.current = screen; }, [screen]);
 
   // Only DB questions — no hardcoded fallback
   const activeQuestions = cityQuestions;
@@ -66,24 +69,37 @@ export default function App() {
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
 
-  // ── Admin pause subscription (during quiz) ───────────────────────
+  // ── Admin pause — active from quiz start until session ends ─────────
   useEffect(() => {
     if (!quizSession?.id || !participant) return;
-    const quizScreens = ["quiz", "module_intro", "feedback"];
-    if (!quizScreens.includes(screen)) return;
 
-    let pollInterval = setInterval(async () => {
-      const s = await getSessionForCity(participant.city);
-      if (s?.status === "paused" && screen === "quiz") {
+    const handlePause = (status) => {
+      const cur = screenRef.current;
+      if (status === "paused" && ["quiz", "module_intro"].includes(cur)) {
         clearInterval(timerRef.current);
-        clearInterval(pollInterval);
-        setAnswered(true); // freeze question
-        // Show break/pause screen
+        setAnswered(true);
         setScreen("admin_pause");
       }
-    }, 4000);
-    return () => clearInterval(pollInterval);
-  }, [quizSession?.id, screen, participant]);
+    };
+
+    if (DEMO) {
+      // DEMO: poll every 2s (no Realtime)
+      const poll = setInterval(async () => {
+        const s = await getSessionForCity(participant.city);
+        handlePause(s?.status);
+      }, 2000);
+      return () => clearInterval(poll);
+    }
+
+    // Production: instant via Supabase Realtime
+    const ch = supabase.channel(`admin-pause-${quizSession.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "quiz_sessions",
+        filter: `id=eq.${quizSession.id}`,
+      }, ({ new: s }) => handlePause(s.status))
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [quizSession?.id, participant?.code]); // stable deps — uses screenRef internally
 
   // ── Quiz logic ───────────────────────────────────────────────────
 
@@ -128,12 +144,12 @@ export default function App() {
   const advanceQuestion = () => {
     const nextIdx = qIdx + 1;
     if (nextIdx < qs.length) {
-      setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
-      // Track question start time for Live View sync
+      // Save q_started_at BEFORE setScreen so Live View reads accurate time
       if (quizSession) {
         const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + nextIdx;
         updateSession(quizSession.id, { q_started_at: new Date().toISOString(), current_question_idx: globalIdx });
       }
+      setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
     } else {
       const nextMod = currentMod + 1;
       if (BREAK_AFTER.includes(currentMod)) {
@@ -235,7 +251,16 @@ export default function App() {
     return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
 
   if (screen === "module_intro")
-    return <ModuleIntro currentMod={currentMod} onStart={() => { setTimer(mod?.timePerQ || 60); setScreen("quiz"); }} />;
+    return <ModuleIntro currentMod={currentMod} onStart={() => {
+      const timePerQ = mod?.timePerQ || 60;
+      setTimer(timePerQ);
+      setScreen("quiz");
+      // Save exact timer start moment so Live View can sync accurately
+      if (quizSession) {
+        const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
+        updateSession(quizSession.id, { q_started_at: new Date().toISOString(), current_question_idx: globalIdx });
+      }
+    }} />;
 
   if (screen === "quiz" && currentQ && mod)
     return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;

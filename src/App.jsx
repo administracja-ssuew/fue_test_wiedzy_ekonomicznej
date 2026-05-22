@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { MODULES } from "./data/questions.js";
-import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg } from "./lib/supabase.js";
+import { logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed } from "./lib/supabase.js";
 import { calcPts, getModule, moduleQuestions } from "./lib/gameLogic.js";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -118,19 +118,22 @@ export default function App() {
     }
   };
 
-  // Participant enters lobby after code validation
+  // Participant validates code → enters lobby
   const handleCodeSuccess = async (participantData) => {
     setParticipant(participantData);
     const session = await getSessionForCity(participantData.city);
-    if (session) setQuizSession(session);
+    if (session) {
+      setQuizSession(session);
+      markCodeUsed(participantData.code, session.id);
+    }
     // Apply city-specific background
     const bg = session?.bg || await getCityBg(participantData.city);
     if (bg) document.documentElement.style.setProperty("--fue-bg", bg);
     setScreen("lobby");
   };
 
-  // Called when admin starts quiz (from Lobby via real-time or manually)
-  const startQuiz = (session, questions) => {
+  // Called automatically by Lobby when admin changes status to "running"
+  const startQuiz = (session) => {
     setQuizSession(session);
     setCurrentMod(1); setQIdx(0); setMyPts(0); setAllAnswers([]);
     setPicked(null); setAnswered(false); setTimer(MODULES[0].timePerQ);

@@ -308,10 +308,10 @@ export async function getLiveQuestionStats(sessionId, questionId) {
 
 // ─── PER-CITY BACKGROUND ──────────────────────────────────────────────────────
 
+const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";
+
 export async function getCityBg(city) {
-  if (DEMO) {
-    return localStorage.getItem(`fue_bg_${city}`) || null;
-  }
+  if (DEMO) return localStorage.getItem(`fue_bg_${city}`) || null;
   const { data } = await supabase.from("quiz_sessions")
     .select("bg").eq("city", city).neq("status", "ended")
     .order("created_at", { ascending: false }).limit(1).single();
@@ -321,9 +321,7 @@ export async function getCityBg(city) {
 export async function setCityBg(city, bg) {
   if (DEMO) {
     localStorage.setItem(`fue_bg_${city}`, bg);
-    // Also update the active session object in localStorage
-    const keys = [`fue_session_${city}`, `fue_session_${city}_practice`];
-    for (const key of keys) {
+    for (const key of [`fue_session_${city}`, `fue_session_${city}_practice`]) {
       const s = localStorage.getItem(key);
       if (s) localStorage.setItem(key, JSON.stringify({ ...JSON.parse(s), bg }));
     }
@@ -333,3 +331,26 @@ export async function setCityBg(city, bg) {
     .update({ bg }).eq("city", city).neq("status", "ended");
   return { error: error?.message || null };
 }
+
+// Upload image to Supabase Storage bucket "backgrounds"
+export async function uploadCityBg(city, file) {
+  if (DEMO) {
+    // In demo mode: read as data URL (base64) and store locally
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve({ url: e.target.result, error: null });
+      reader.onerror = () => resolve({ url: null, error: "Błąd odczytu pliku." });
+      reader.readAsDataURL(file);
+    });
+  }
+  const ext = file.name.split(".").pop().toLowerCase();
+  const path = `${city}/bg.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from("backgrounds")
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (uploadError) return { url: null, error: uploadError.message };
+  const { data: { publicUrl } } = supabase.storage.from("backgrounds").getPublicUrl(path);
+  return { url: publicUrl, error: null };
+}
+
+export { DEFAULT_BG };

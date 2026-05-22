@@ -3,7 +3,7 @@ import {
   getQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
-  getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg,
+  getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
 } from "../lib/supabase.js";
 import { CITIES, MODULES } from "../data/questions.js";
 
@@ -386,69 +386,100 @@ function SesjaTab({ city, adminId }) {
 
 // ─── Tab: Ustawienia ─────────────────────────────────────────────────────────
 
-const BG_PRESETS = [
-  { name: "Fioletowy (domyślny)", value: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)" },
-  { name: "Granatowy",            value: "linear-gradient(160deg,#020B18 0%,#05224B 50%,#020B18 100%)" },
-  { name: "Zielony",              value: "linear-gradient(160deg,#021207 0%,#052A0E 50%,#021207 100%)" },
-  { name: "Czerwony",             value: "linear-gradient(160deg,#160202 0%,#2A0505 50%,#160202 100%)" },
-  { name: "Turkusowy",            value: "linear-gradient(160deg,#011212 0%,#022B2B 50%,#011212 100%)" },
-  { name: "Czarny",               value: "linear-gradient(160deg,#000000 0%,#0A0A0A 50%,#000000 100%)" },
-];
-
 function UstawieniaTab({ city }) {
-  const [current, setCurrent] = useState(null);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [uploading, setUploading]   = useState(false);
+  const [status, setStatus]         = useState(""); // "", "uploading", "ok", "error"
+  const fileRef = useRef(null);
 
   useEffect(() => {
-    getCityBg(city).then((bg) => setCurrent(bg || BG_PRESETS[0].value));
-    setSaved(false);
+    setPreviewUrl(null); setStatus("");
+    getCityBg(city).then((bg) => {
+      const match = bg?.match(/url\(["']?([^"')]+)["']?\)/);
+      if (match) setPreviewUrl(match[1]);
+    });
   }, [city]);
 
-  const apply = async (value) => {
-    setCurrent(value);
-    // Preview immediately for admin
-    document.documentElement.style.setProperty("--fue-bg", value);
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return setStatus("error:Plik musi być obrazem (PNG, JPG, WEBP).");
+    if (file.size > 5 * 1024 * 1024) return setStatus("error:Plik za duży — max 5 MB.");
+
+    setUploading(true); setStatus("uploading");
+    const { url, error } = await uploadCityBg(city, file);
+    if (error) { setUploading(false); setStatus("error:" + error); return; }
+
+    // Overlay ciemny + obraz — tekst zawsze czytelny
+    const bgCss = `linear-gradient(rgba(7,2,21,.72),rgba(14,4,53,.72)), url("${url}") center/cover no-repeat fixed`;
+    await setCityBg(city, bgCss);
+    document.documentElement.style.setProperty("--fue-bg", bgCss);
+    setPreviewUrl(url);
+    setUploading(false); setStatus("ok");
+    setTimeout(() => setStatus(""), 3000);
+    e.target.value = "";
   };
 
-  const save = async () => {
-    if (!current) return;
-    setSaving(true);
-    await setCityBg(city, current);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleReset = async () => {
+    await setCityBg(city, DEFAULT_BG);
+    document.documentElement.style.setProperty("--fue-bg", DEFAULT_BG);
+    setPreviewUrl(null); setStatus("ok");
+    setTimeout(() => setStatus(""), 2000);
   };
+
+  const isError = status.startsWith("error:");
+  const errMsg  = isError ? status.slice(6) : "";
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontWeight: 700, fontSize: 16 }}>Tło dla: <span style={{ color: CITY_COLORS[city] }}>{city}</span></p>
-          <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>Uczestnicy z {city} zobaczą wybrane tło po dołączeniu do quizu.</p>
-        </div>
-        <button onClick={save} disabled={saving}
-          style={{ ...C.btn(saved ? "success" : "primary", { whiteSpace: "nowrap", padding: "10px 20px" }) }}>
-          {saving ? "Zapisuję…" : saved ? "✓ Zapisano!" : "💾 Zapisz dla " + city}
-        </button>
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontWeight: 700, fontSize: 16 }}>
+          Tło dla: <span style={{ color: CITY_COLORS[city] }}>{city}</span>
+        </p>
+        <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>
+          Wgraj plik graficzny — zostanie ustawiony jako tło quizu dla uczestników z {city}.
+        </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12, marginBottom: 16 }}>
-        {BG_PRESETS.map((p) => {
-          const isActive = current === p.value;
-          return (
-            <button key={p.name} onClick={() => apply(p.value)}
-              style={{ background: p.value, border: `2px solid ${isActive ? "#fff" : "rgba(255,255,255,.15)"}`, borderRadius: 12, padding: "32px 12px 12px", cursor: "pointer", textAlign: "left", position: "relative", transition: "border-color .2s", fontFamily: '"Outfit",sans-serif' }}>
-              {isActive && <span style={{ position: "absolute", top: 8, right: 8, fontSize: 16 }}>✓</span>}
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#EDE9FE" }}>{p.name}</span>
+      {/* Aktualne tło */}
+      {previewUrl && (
+        <div style={{ ...C.card({ padding: 0, overflow: "hidden", marginBottom: 20 }), position: "relative" }}>
+          <img src={previewUrl} alt="Aktualne tło" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
+          <div style={{ position: "absolute", inset: 0, background: "rgba(7,2,21,.65)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px" }}>
+            <span style={{ fontSize: 13, color: "#EDE9FE", fontWeight: 600 }}>✓ Aktualne tło — {city}</span>
+            <button onClick={handleReset} style={{ ...C.btn("danger", { padding: "7px 14px", fontSize: 12, width: "auto" }) }}>
+              ✕ Usuń (przywróć domyślne)
             </button>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
 
-      <div style={{ ...C.card({ padding: "12px 16px", borderColor: "rgba(245,197,24,.2)", background: "rgba(245,197,24,.04)" }) }}>
+      {/* Upload area */}
+      <div onClick={() => !uploading && fileRef.current?.click()}
+        style={{ ...C.card({ padding: "36px 20px", borderColor: uploading ? "rgba(107,33,232,.5)" : "rgba(255,255,255,.15)", background: uploading ? "rgba(107,33,232,.08)" : "rgba(255,255,255,.03)", textAlign: "center", cursor: uploading ? "wait" : "pointer", transition: "all .2s" }) }}>
+        <div style={{ fontSize: 36, marginBottom: 10 }}>{uploading ? "⏳" : "📁"}</div>
+        <p style={{ fontWeight: 600, fontSize: 14, color: "#EDE9FE" }}>
+          {uploading ? "Wgrywanie…" : "Kliknij aby wybrać plik"}
+        </p>
+        <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 6 }}>PNG, JPG, WEBP — max 5 MB</p>
+      </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleFile} style={{ display: "none" }} />
+
+      {/* Status */}
+      {status === "ok" && (
+        <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(11,158,107,.15)", border: "1px solid rgba(11,158,107,.35)", borderRadius: 10, fontSize: 13, color: "#10D9A0" }}>
+          ✓ Tło zapisane — uczestnicy {city} zobaczą je po dołączeniu do quizu.
+        </div>
+      )}
+      {isError && (
+        <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(232,55,107,.12)", border: "1px solid rgba(232,55,107,.3)", borderRadius: 10, fontSize: 13, color: "#E8376B" }}>
+          ⚠️ {errMsg}
+        </div>
+      )}
+
+      <div style={{ ...C.card({ padding: "12px 16px", borderColor: "rgba(245,197,24,.2)", background: "rgba(245,197,24,.04)", marginTop: 16 }) }}>
         <p style={{ fontSize: 12, color: "#9B89CC" }}>
-          ℹ️ Kliknij preset → podgląd natychmiastowy. Naciśnij <strong style={{ color: "#EDE9FE" }}>Zapisz</strong> żeby utrwalić — dopiero wtedy uczestnicy nowo dołączający do {city} zobaczą zmianę.
+          ℹ️ Na obraz nakładamy ciemny overlay — tekst quizu pozostaje czytelny. Wymagane: bucket <strong style={{ color: "#EDE9FE" }}>backgrounds</strong> w Supabase Storage (publiczny).
         </p>
       </div>
     </div>

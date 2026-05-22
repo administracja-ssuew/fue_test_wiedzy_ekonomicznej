@@ -130,6 +130,23 @@ CREATE POLICY "answers_public_insert" ON public.answers FOR INSERT WITH CHECK (t
 CREATE POLICY "answers_admin_select"  ON public.answers FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
 
+-- ─── VIOLATIONS (anti-cheat) ─────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.violations (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  participant_code TEXT NOT NULL,
+  session_id       UUID REFERENCES public.quiz_sessions(id) ON DELETE CASCADE,
+  type             TEXT NOT NULL CHECK (type IN ('tab_switch','screenshot_attempt')),
+  count            INT NOT NULL DEFAULT 1,
+  created_at       TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.violations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "violations_anon_insert"   ON public.violations FOR INSERT WITH CHECK (true);
+CREATE POLICY "violations_admin_select"  ON public.violations FOR SELECT
+  USING (get_my_role() IN ('city_admin', 'superadmin'));
+
 -- ─── REALTIME ─────────────────────────────────────────────────────
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_sessions;

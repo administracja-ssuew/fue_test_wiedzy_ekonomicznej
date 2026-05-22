@@ -4,6 +4,7 @@ import {
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
   getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
+  getViolationsForSession,
 } from "../lib/supabase.js";
 import { CITIES, MODULES } from "../data/questions.js";
 
@@ -220,6 +221,7 @@ function SesjaTab({ city, adminId }) {
   const [participants, setParticipants] = useState([]);
   const [results, setResults]           = useState([]);
   const [liveStats, setLiveStats]       = useState(null);
+  const [violations, setViolations]     = useState([]);
   const [loading, setLoading]           = useState(true);
   const [isPractice, setIsPractice]     = useState(false);
   const pollRef = useRef(null);
@@ -249,8 +251,11 @@ function SesjaTab({ city, adminId }) {
           const stats = await getLiveQuestionStats(session.id, q.id);
           setLiveStats(stats);
         }
-        // Also refresh participant count
         setParticipants(await getParticipantsInSession(city));
+        if (session.id) {
+          const v = await getViolationsForSession(session.id);
+          setViolations(v);
+        }
       }, 3000);
     }
     return () => clearInterval(pollRef.current);
@@ -346,6 +351,21 @@ function SesjaTab({ city, adminId }) {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Anti-cheat violations */}
+      {violations.length > 0 && (
+        <div style={{ ...C.card({ padding: "14px 18px", marginBottom: 20, borderColor: "rgba(232,55,107,.3)", background: "rgba(232,55,107,.06)" }) }}>
+          <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>⚠️ Naruszenia regulaminu ({violations.length})</p>
+          {violations.slice(0, 5).map((v, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: i ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+              <span style={{ fontSize: 13 }}>{v.type === "tab_switch" ? "🔀" : "📸"}</span>
+              <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1 }}>{v.participant_code || v.participantCode}</span>
+              <span style={{ fontSize: 12, color: "#E8376B", flex: 1 }}>{v.type === "tab_switch" ? "Zmiana zakładki" : "Próba screenshota"}</span>
+              <span style={{ fontSize: 11, color: "#9B89CC" }}>×{v.count}</span>
+            </div>
+          ))}
         </div>
       )}
 

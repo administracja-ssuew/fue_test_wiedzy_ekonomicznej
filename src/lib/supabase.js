@@ -357,3 +357,32 @@ export async function uploadCityBg(city, file) {
 }
 
 export { DEFAULT_BG };
+
+// ─── ANTI-CHEAT VIOLATIONS ────────────────────────────────────────────────────
+
+export async function recordViolation({ participantCode, sessionId, type, count }) {
+  if (DEMO) {
+    const v = JSON.parse(localStorage.getItem("fue_violations") || "[]");
+    v.push({ participantCode, sessionId, type, count, at: new Date().toISOString() });
+    localStorage.setItem("fue_violations", JSON.stringify(v));
+    return;
+  }
+  try {
+    await supabase.from("violations").insert({
+      participant_code: participantCode,
+      session_id: sessionId || null,
+      type,
+      count,
+    });
+  } catch (_) { /* graceful fail if table doesn't exist yet */ }
+}
+
+export async function getViolationsForSession(sessionId) {
+  if (DEMO) {
+    return JSON.parse(localStorage.getItem("fue_violations") || "[]")
+      .filter((v) => v.sessionId === sessionId);
+  }
+  const { data } = await supabase.from("violations")
+    .select("*").eq("session_id", sessionId).order("at", { ascending: false });
+  return data || [];
+}

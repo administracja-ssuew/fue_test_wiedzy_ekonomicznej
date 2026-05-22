@@ -15,6 +15,11 @@ button { cursor: pointer; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 @keyframes ticker { from{transform:translateX(0)} to{transform:translateX(-33.333%)} }
+@keyframes float1 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(22px,-28px) scale(1.04)} 66%{transform:translate(-16px,18px) scale(.97)} }
+@keyframes float2 { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(-26px,14px) scale(.96)} 66%{transform:translate(20px,-22px) scale(1.03)} }
+@keyframes float3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-18px,-14px) scale(1.06)} }
+@keyframes slideUp { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
+@keyframes revealLine { from{width:0;opacity:0} to{width:80px;opacity:1} }
 
 .su { animation: su .35s ease both; }
 .pi { animation: pi .45s cubic-bezier(.34,1.56,.64,1) both; }

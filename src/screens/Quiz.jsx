@@ -1,5 +1,6 @@
 import { MODULES } from "../data/questions.js";
 import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
+import useAntiCheat from "../hooks/useAntiCheat.js";
 
 const W = {
   wrap: {
@@ -33,8 +34,14 @@ const W = {
   ),
 };
 
-export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, onPick }) {
+export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
   if (!currentQ || !mod) return null;
+
+  const { violations, showWarning, lastType, dismiss } = useAntiCheat({
+    active: true,
+    participantCode,
+    sessionId,
+  });
   const timerPct = timer / mod.timePerQ;
   const r = 22, circ = 2 * Math.PI * r;
   const tColor = timer > mod.timePerQ * 0.5 ? "#10D9A0" : timer > mod.timePerQ * 0.25 ? "#FF9A3C" : "#E8376B";
@@ -146,12 +153,44 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
     </div>
   );
 
+  const warningMsg = lastType === "screenshot_attempt"
+    ? "Wykryto próbę wykonania zrzutu ekranu."
+    : "Wykryto przełączenie zakładki / opuszczenie okna testu.";
+
   return (
     <div style={W.wrap}>
       <div className="fue-quiz-layout" style={{ width: "100%", maxWidth: isDesktop ? 1240 : 460 }}>
         <QuizContent />
         <Sidebar />
       </div>
+
+      {/* Anti-cheat warning overlay */}
+      {showWarning && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.95)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Outfit",sans-serif', padding: 24 }}>
+          <div style={{ maxWidth: 400, width: "100%", textAlign: "center" }}>
+            <div style={{ fontSize: 56, marginBottom: 16 }} className="pi">⚠️</div>
+            <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 36, letterSpacing: 1, color: "#E8376B", marginBottom: 12 }}>
+              Administrator poinformowany!
+            </h2>
+            <p style={{ color: "#EDE9FE", fontSize: 15, lineHeight: 1.6, marginBottom: 8 }}>
+              {warningMsg}
+            </p>
+            <p style={{ color: "#9B89CC", fontSize: 13, marginBottom: 28, lineHeight: 1.6 }}>
+              Wykonuj test <strong style={{ color: "#EDE9FE" }}>samodzielnie</strong> bez opuszczania ekranu quizu.<br />
+              Naruszenia są rejestrowane i widoczne dla administratora.
+            </p>
+            {violations > 1 && (
+              <p style={{ background: "rgba(232,55,107,.15)", border: "1px solid rgba(232,55,107,.3)", borderRadius: 10, padding: "8px 16px", color: "#E8376B", fontSize: 13, marginBottom: 20 }}>
+                Łączna liczba naruszeń: <strong>{violations}</strong>
+              </p>
+            )}
+            <button onClick={dismiss}
+              style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "14px 32px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: '"Outfit",sans-serif' }}>
+              Rozumiem — wracam do testu
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

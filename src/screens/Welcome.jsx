@@ -188,89 +188,60 @@ function ContactRows({ coord }) {
 
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   return (
-    <div style={{ display: "flex", justifyContent: "center" }}>
-      <div className="fue-page" style={{ position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -100, left: -100, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle,rgba(107,33,232,.2) 0%,transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: 60, right: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(245,197,24,.08) 0%,transparent 70%)", pointerEvents: "none" }} />
+    <div style={{ position: "relative", minHeight: "calc(100vh - 120px)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      {/* Animated background blobs */}
+      <div style={{ position: "absolute", top: "8%", left: "5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle,rgba(107,33,232,.16) 0%,transparent 70%)", animation: "float1 9s ease-in-out infinite", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: "10%", right: "3%", width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(245,197,24,.07) 0%,transparent 70%)", animation: "float2 11s ease-in-out infinite", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: "45%", right: "20%", width: 240, height: 240, borderRadius: "50%", background: "radial-gradient(circle,rgba(78,205,196,.06) 0%,transparent 70%)", animation: "float3 13s ease-in-out infinite", pointerEvents: "none" }} />
 
-        <div className={isDesktop ? "fue-welcome-grid" : ""} style={!isDesktop ? { display: "flex", flexDirection: "column", minHeight: "calc(100vh - 120px)", padding: "36px 0 40px" } : { padding: "40px 0 48px" }}>
+      {/* Central content */}
+      <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: "40px 32px" }}>
 
-          {/* Branding */}
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", zIndex: 1 }}>
-            <div className="su" style={{ display: "inline-flex", alignSelf: "flex-start", background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.45)", borderRadius: 20, padding: "5px 14px", fontSize: 12, fontWeight: 600, color: "#C4B5FD", letterSpacing: .8, marginBottom: 20 }}>
-              🐐 FORUM UCZELNI EKONOMICZNYCH
-            </div>
-            <h1 className="su" style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 110 : 78, lineHeight: .88, letterSpacing: 2, color: "#fff", animationDelay: ".06s" }}>
-              TEST<br />
-              <span style={{ color: "#C4B5FD" }}>WIEDZY</span><br />
-              <span style={{ color: "#6B21E8" }}>EKONO</span><span style={{ color: "#F5C518" }}>MICZNEJ</span>
+        {/* Eyebrow */}
+        <p style={{ animation: "slideUp .5s ease both", fontSize: 11, letterSpacing: 4, color: "#9B89CC", textTransform: "uppercase", fontWeight: 600, marginBottom: 28 }}>
+          Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
+        </p>
+
+        {/* Title — staggered lines */}
+        <div style={{ lineHeight: 1, marginBottom: 12 }}>
+          <div style={{ overflow: "hidden" }}>
+            <h1 style={{ animation: "slideUp .5s .08s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 130 : 88, letterSpacing: 4, color: "#fff", lineHeight: .9 }}>
+              TEST
             </h1>
-            <p className="su" style={{ fontSize: isDesktop ? 16 : 14, color: "#9B89CC", marginTop: 18, lineHeight: 1.7, animationDelay: ".14s", maxWidth: 480 }}>
-              Ogólnopolski quiz wiedzy ekonomicznej dla studentów i pracowników akademickich.<br />
-              <strong style={{ color: "#EDE9FE" }}>4 moduły · 32 pytania · 5 miast · 2 etapy</strong>
-            </p>
-            <div className="su" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 22, animationDelay: ".2s" }}>
-              {MODULES.map((m) => (
-                <div key={m.id} style={{ background: `${m.color}20`, border: `1px solid ${m.color}40`, borderRadius: 20, padding: "5px 13px", fontSize: 12, color: "#C4B5FD", display: "flex", alignItems: "center", gap: 5 }}>
-                  {m.icon} {m.name} <span style={{ color: "#9B89CC", fontSize: 11 }}>·{m.timePerQ}s</span>
-                </div>
-              ))}
-            </div>
-            <div className="su" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10, animationDelay: ".23s" }}>
-              {CITIES.map((c) => (
-                <div key={c.name} style={{ background: "rgba(255,255,255,.06)", borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#C4B5FD", display: "flex", alignItems: "center", gap: 5 }}>
-                  <span>{c.icon}</span>{c.name}
-                </div>
-              ))}
-            </div>
-            {!isDesktop && (
-              <div className="su" style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 36, animationDelay: ".28s" }}>
-                <button style={W.btn("primary")} onClick={() => onEnterCode()}>🎟️ Mam kod — dołącz do quizu</button>
-                <button style={W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.3)" })} onClick={() => onAdminLogin()}>🔐 Panel Admina</button>
-              </div>
-            )}
           </div>
-
-          {/* Prawa kolumna — tylko desktop */}
-          {isDesktop && (
-            <div className="su" style={{ display: "flex", flexDirection: "column", gap: 16, justifyContent: "center", animationDelay: ".1s", zIndex: 1 }}>
-              <div style={{ ...W.card({ padding: "36px 32px" }), background: "rgba(255,255,255,.04)" }}>
-                <p style={{ fontSize: 13, color: "#9B89CC", marginBottom: 20, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Dołącz do testu</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <button style={W.btn("primary", { fontSize: 16, padding: "18px 24px" })} onClick={() => onEnterCode()}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = "")}>
-                    🎟️ Mam kod — dołącz do quizu
-                  </button>
-                  <button style={W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.3)", fontSize: 14, padding: "14px 24px" })} onClick={() => onAdminLogin()}>
-                    🔐 Panel Administratora
-                  </button>
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                {[["32", "Pytań"], ["4", "Moduły"], ["5", "Miast"]].map(([v, l]) => (
-                  <div key={l} style={{ ...W.card({ padding: "20px", textAlign: "center" }) }}>
-                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 40, color: "#F5C518", lineHeight: 1 }}>{v}</p>
-                    <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>{l}</p>
-                  </div>
-                ))}
-              </div>
-              <div style={{ ...W.card({ padding: "20px 24px", borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.05)" }) }}>
-                <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 10 }}>Jak to działa?</p>
-                {[
-                  ["1.", "Otrzymaj indywidualny kod od koordynatora swojego miasta"],
-                  ["2.", "Wpisz kod i dołącz do lobby — rywalizuj z uczestnikami z Twojego miasta"],
-                  ["3.", "Top 5 z każdego miasta przechodzi do Etapu Ogólnopolskiego"],
-                ].map(([n, t]) => (
-                  <div key={n} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
-                    <span style={{ background: "rgba(107,33,232,.3)", borderRadius: 6, padding: "1px 7px", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0 }}>{n}</span>
-                    <p style={{ fontSize: 13, color: "#EDE9FE", lineHeight: 1.5 }}>{t}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div style={{ overflow: "hidden" }}>
+            <h1 style={{ animation: "slideUp .5s .18s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 130 : 88, letterSpacing: 4, color: "#C4B5FD", lineHeight: .9 }}>
+              WIEDZY
+            </h1>
+          </div>
+          <div style={{ overflow: "hidden" }}>
+            <h1 style={{ animation: "slideUp .5s .28s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 86 : 58, letterSpacing: 3, lineHeight: 1.1, color: "transparent", WebkitTextStroke: `1.5px rgba(107,33,232,.75)` }}>
+              EKONOMICZNEJ
+            </h1>
+          </div>
         </div>
+
+        {/* Animated separator */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 36, marginTop: 16 }}>
+          <div style={{ height: 2, background: "linear-gradient(90deg,transparent,#6B21E8 40%,#F5C518 60%,transparent)", animation: "revealLine .8s .4s ease both", width: 0 }} />
+        </div>
+
+        {/* Buttons */}
+        <div style={{ animation: "slideUp .5s .48s ease both", display: "flex", flexDirection: "column", gap: 12, maxWidth: 340, margin: "0 auto" }}>
+          <button style={W.btn("primary", { fontSize: 16, padding: "18px 28px" })} onClick={() => onEnterCode()}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-3px) scale(1.02)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "")}>
+            🎟️ Mam kod — dołącz do quizu
+          </button>
+          <button style={W.btn("ghost", { color: "#F5C518", borderColor: "rgba(245,197,24,.25)", fontSize: 13, padding: "13px 24px" })} onClick={() => onAdminLogin()}>
+            🔐 Panel Administratora
+          </button>
+        </div>
+
+        {/* Subtle bottom info */}
+        <p style={{ animation: "slideUp .5s .58s ease both", marginTop: 32, fontSize: 11, color: "rgba(155,137,204,.35)", letterSpacing: 1 }}>
+          5 MIAST · 4 MODUŁY · 2 ETAPY
+        </p>
       </div>
     </div>
   );

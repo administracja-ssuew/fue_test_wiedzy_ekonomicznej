@@ -175,6 +175,7 @@ export default function App() {
 
   // Called when timer hits 0 — reveals correct answer to participant
   const handleTimeout = () => {
+    clearInterval(timerRef.current);
     if (answered) return;
     const userPicked  = picked;               // may be null (no answer)
     const timeWhenPicked = pickTime.current;  // timer value when they clicked

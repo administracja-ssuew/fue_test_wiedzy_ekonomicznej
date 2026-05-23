@@ -1,6 +1,5 @@
 import { CITIES, MODULES, QUESTIONS } from "../data/questions.js";
 
-export const ADMIN_CODE = "FUE2025";
 export const ANSWER_BG = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 export const ANSWER_LABELS = ["A", "B", "C", "D"];
 

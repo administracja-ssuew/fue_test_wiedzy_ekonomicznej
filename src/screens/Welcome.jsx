@@ -306,6 +306,11 @@ function Shape({ style, gradient, delay = 0 }) {
 }
 
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
+  const [play, setPlay] = useState(() => document.fonts.status === "loaded" ? "running" : "paused");
+  useEffect(() => {
+    if (play === "paused") document.fonts.ready.then(() => setPlay("running"));
+  }, []);
+
   return (
     <div style={{ position: "relative", minHeight: "calc(100vh - 120px)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
 
@@ -316,7 +321,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
       <img src="/fue.png" alt="" aria-hidden="true"
         style={{ position: "absolute", width: "min(520px, 75%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkA 14s ease-in-out infinite" }} />
       <img src="/twe.png" alt="" aria-hidden="true"
-        style={{ position: "absolute", width: "min(1080px, 140%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkB 14s ease-in-out infinite" }} />
+        style={{ position: "absolute", width: "min(1500px, 180%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkB 14s ease-in-out infinite" }} />
 
       {/* Animated elegant shapes */}
       <Shape gradient="rgba(107,33,232,.14)" delay={0}   style={{ width: 580, height: 120, top: "12%",  left: "-8%",  anim: 1, dur: 10 }} />
@@ -329,7 +334,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
       <div style={{ textAlign: "center", position: "relative", zIndex: 1, padding: "40px 32px", maxWidth: 700 }}>
 
         {/* Eyebrow badge */}
-        <div style={{ animation: "blurIn .7s .05s ease both", display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 32 }}>
+        <div style={{ animation: "blurIn .7s .05s ease both", animationPlayState: play, display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 32 }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6B21E8", animation: "pulse 2s infinite" }} />
           <span style={{ fontSize: 11, letterSpacing: 3.5, color: "#9B89CC", textTransform: "uppercase", fontWeight: 500 }}>
             Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
@@ -339,21 +344,21 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
 
         {/* Title — staggered blur-in */}
         <div style={{ marginBottom: 8 }}>
-          <h1 style={{ animation: "blurIn .65s .15s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, color: "#ffffff", lineHeight: .85, margin: 0 }}>
+          <h1 style={{ animation: "blurIn .65s .15s ease both", animationPlayState: play, fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, color: "#ffffff", lineHeight: .85, margin: 0 }}>
             TEST
           </h1>
-          <h1 style={{ animation: "blurIn .65s .28s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, lineHeight: .85, margin: 0,
+          <h1 style={{ animation: "blurIn .65s .28s ease both", animationPlayState: play, fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, lineHeight: .85, margin: 0,
             background: "linear-gradient(135deg, #C4B5FD, #8B5CF6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
             WIEDZY
           </h1>
-          <h1 style={{ animation: "blurIn .65s .41s ease both", fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 90 : 60, letterSpacing: 3, lineHeight: 1.05, margin: 0,
+          <h1 style={{ animation: "blurIn .65s .41s ease both", animationPlayState: play, fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 90 : 60, letterSpacing: 3, lineHeight: 1.05, margin: 0,
             color: "transparent", WebkitTextStroke: `1.5px rgba(107,33,232,.6)` }}>
             EKONOMICZNEJ
           </h1>
         </div>
 
         {/* Shimmer separator */}
-        <div style={{ animation: "blurIn .5s .55s ease both", display: "flex", justifyContent: "center", margin: "24px 0 32px" }}>
+        <div style={{ animation: "blurIn .5s .55s ease both", animationPlayState: play, display: "flex", justifyContent: "center", margin: "24px 0 32px" }}>
           <div style={{
             height: 1, width: 160,
             background: "linear-gradient(90deg, transparent, #6B21E8, #C4B5FD, #F5C518, transparent)",
@@ -363,7 +368,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
         </div>
 
         {/* Buttons */}
-        <div style={{ animation: "blurIn .6s .65s ease both", display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 12, justifyContent: "center" }}>
+        <div style={{ animation: "blurIn .6s .65s ease both", animationPlayState: play, display: "flex", flexDirection: isDesktop ? "row" : "column", gap: 12, justifyContent: "center" }}>
           <button
             onClick={onEnterCode}
             onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px) scale(1.03)"; e.currentTarget.style.boxShadow = "0 16px 40px rgba(107,33,232,.6)"; }}
@@ -381,7 +386,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
         </div>
 
         {/* Countdown */}
-        <div style={{ animation: "blurIn .5s .78s ease both", marginTop: 36 }}>
+        <div style={{ animation: "blurIn .5s .78s ease both", animationPlayState: play, marginTop: 36 }}>
           <CountdownDisplay />
         </div>
       </div>

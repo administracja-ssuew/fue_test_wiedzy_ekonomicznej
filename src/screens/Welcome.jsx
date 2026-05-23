@@ -50,8 +50,8 @@ const ORGANIZERS = [
       { name: "Dawid Rutkowski",  role: "Przewodniczący FUE",                                        univ: "UEW",  photo: "/przewo_wro.png" },
       { name: "Helena Popek",     role: "Wiceprzewodnicząca, Członkini Prezydium ds. Projektów",                          univ: "SGH",   photo: "/pre_proj_wwa.png" },
       { name: "Jan Peciak",       role: "Członek Prezydium ds. Kontaktów Zewnętrznych",               univ: "UEKat", photo: "/pre_kz_kat.png" },
-      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",                     univ: "UEK",   photo: "/pre_pr_uek.png" },
-      { name: "Jakub Kliński",    role: "Członek Prezydium ds. Administracji",                        univ: "UEP",   photo: "/pre_adm_uep.png" },
+      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",                     univ: "UEK",   photo: "/pre_pr_krk.png" },
+      { name: "Jakub Kliński",    role: "Członek Prezydium ds. Administracji",                        univ: "UEP",   photo: "/pre_adm_poz.png" },
     ],
   },
   {
@@ -316,7 +316,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
       <img src="/fue.png" alt="" aria-hidden="true"
         style={{ position: "absolute", width: "min(520px, 75%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkA 14s ease-in-out infinite" }} />
       <img src="/twe.png" alt="" aria-hidden="true"
-        style={{ position: "absolute", width: "min(520px, 75%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkB 14s ease-in-out infinite" }} />
+        style={{ position: "absolute", width: "min(1080px, 140%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkB 14s ease-in-out infinite" }} />
 
       {/* Animated elegant shapes */}
       <Shape gradient="rgba(107,33,232,.14)" delay={0}   style={{ width: 580, height: 120, top: "12%",  left: "-8%",  anim: 1, dur: 10 }} />

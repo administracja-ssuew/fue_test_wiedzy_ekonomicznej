@@ -4,7 +4,9 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const DEMO = !SUPABASE_URL || !SUPABASE_KEY;
-export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
+export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false }, // never cache login in localStorage — always start fresh
+});
 
 const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
 
@@ -294,13 +296,14 @@ export async function getSessionForCity(city) {
   return data?.[0] || null;
 }
 
-export async function getParticipantsInSession(city) {
+export async function getParticipantsInSession(city, sessionId = null) {
   if (DEMO) {
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
-    return codes.filter((c) => c.city === city && c.used);
+    return codes.filter((c) => c.city === city && c.used && (!sessionId || c.session_id === sessionId));
   }
-  const { data } = await supabase.from("participant_codes")
-    .select("*").eq("city", city).eq("used", true);
+  let q = supabase.from("participant_codes").select("*").eq("city", city).eq("used", true);
+  if (sessionId) q = q.eq("session_id", sessionId);
+  const { data } = await q;
   return data || [];
 }
 

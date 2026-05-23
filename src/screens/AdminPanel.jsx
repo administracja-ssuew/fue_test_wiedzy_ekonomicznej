@@ -246,7 +246,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     const { data } = await getOrCreateSession(city, adminId, practice);
     setSession(data);
     if (data) {
-      setParticipants(await getParticipantsInSession(city));
+      setParticipants(await getParticipantsInSession(city, data.id));
       if (data.status === "ended") setResults(await getSessionResults(data.id));
     }
     const qs = await getQuestions(city);
@@ -269,7 +269,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         const q = cityQuestions[session.current_question_idx];
         const [stats, participants, violations] = await Promise.all([
           q && session.id ? getLiveQuestionStats(session.id, q.id) : Promise.resolve(null),
-          getParticipantsInSession(city),
+          getParticipantsInSession(city, session?.id),
           session.id ? getViolationsForSession(session.id) : Promise.resolve([]),
         ]);
         if (stats) setLiveStats(stats);
@@ -394,7 +394,7 @@ function SesjaTab({ city, adminId, onPodium }) {
 
       {participants.length > 0 && session?.status !== "ended" && (
         <div style={{ marginBottom: 24 }}>
-          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Uczestnicy w lobby ({participants.length})</p>
+          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Kody aktywowane ({participants.length})</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: 8 }}>
             {participants.map((p) => (
               <div key={p.id} style={{ ...C.card({ padding: "10px 12px" }), display: "flex", alignItems: "center", gap: 8 }}>

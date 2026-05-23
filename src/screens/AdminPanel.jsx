@@ -242,6 +242,7 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   const load = async (practice = isPractice) => {
     setLoading(true);
+    setResults([]); setLiveStats(null);
     const { data } = await getOrCreateSession(city, adminId, practice);
     setSession(data);
     if (data) {
@@ -251,6 +252,13 @@ function SesjaTab({ city, adminId, onPodium }) {
     const qs = await getQuestions(city);
     setCityQuestions(qs);
     setLoading(false);
+  };
+
+  const newQuiz = async () => {
+    if (!confirm("Zresetować i przygotować nową sesję quizu?")) return;
+    setLoading(true);
+    await endAndResetSession(city, adminId, isPractice);
+    await load(isPractice);
   };
 
   // Poll live stats every 3s when quiz is running
@@ -327,48 +335,37 @@ function SesjaTab({ city, adminId, onPodium }) {
               🏆 Ogłoś wyniki
             </button>
           </>}
-          {session?.status === "ended" && (
+          {session?.status === "ended" && <>
             <button style={C.btn("ghost", { flex: 1 })} onClick={load}>🔄 Odśwież wyniki</button>
-          )}
+            <button style={C.btn("primary", { flex: 1 })} onClick={newQuiz}>➕ Nowy quiz</button>
+          </>}
         </div>
       </div>
 
-      {/* Live stats — visible while quiz is running */}
+      {/* Live stats — admin-private, NOT for projector (correctness hidden from projector via LiveTab below) */}
       {session?.status === "running" && liveStats && (
         <div style={{ ...C.card({ padding: "16px 20px", marginBottom: 20, borderColor: "rgba(16,217,160,.25)", background: "rgba(16,217,160,.06)" }) }}>
-          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>📊 Live — bieżące pytanie</p>
-          <div style={{ display: "flex", gap: 16, marginBottom: liveStats.answers.length ? 16 : 0 }}>
-            {[
-              ["Odpowiedziało", liveStats.total, "#EDE9FE"],
-              ["Poprawnie", liveStats.correct, "#10D9A0"],
-              ["Błędnie", liveStats.total - liveStats.correct, "#E8376B"],
-            ].map(([l, v, col]) => (
-              <div key={l} style={{ textAlign: "center" }}>
-                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: col, lineHeight: 1 }}>{v}</p>
-                <p style={{ fontSize: 11, color: "#9B89CC" }}>{l}</p>
-              </div>
-            ))}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>📊 Postęp odpowiedzi — bieżące pytanie</p>
+            <span style={{ fontSize: 10, color: "#F5C518", background: "rgba(245,197,24,.1)", border: "1px solid rgba(245,197,24,.25)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>🔒 Tylko admin</span>
+          </div>
+          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{liveStats.total}</p>
+              <p style={{ fontSize: 11, color: "#9B89CC" }}>Odpowiedziało</p>
+            </div>
             <div style={{ flex: 1 }}>
-              <div style={{ height: 8, background: "rgba(255,255,255,.1)", borderRadius: 4, overflow: "hidden", marginTop: 10 }}>
-                <div style={{ height: "100%", background: "#10D9A0", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
+              <div style={{ height: 10, background: "rgba(255,255,255,.1)", borderRadius: 5, overflow: "hidden" }}>
+                <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
               </div>
-              <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 4 }}>
-                {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych
+              <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 5 }}>
+                {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych · {liveStats.correct} dobrze · {liveStats.total - liveStats.correct} źle
               </p>
             </div>
           </div>
-          {liveStats.answers.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
-              {liveStats.answers.map((a) => (
-                <div key={a.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: "rgba(0,0,0,.2)", borderRadius: 8 }}>
-                  <span style={{ fontSize: 14 }}>{a.isCorrect ? "✅" : "❌"}</span>
-                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1 }}>{a.code}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{a.name}</span>
-                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 14, color: "#F5C518" }}>{a.points} pkt</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <p style={{ fontSize: 10, color: "rgba(155,137,204,.5)", marginTop: 10 }}>
+            Szczegóły kto odpowiedział poprawnie są widoczne w widoku Live poniżej — dopiero po upływie czasu.
+          </p>
         </div>
       )}
 
@@ -426,6 +423,9 @@ function SesjaTab({ city, adminId, onPodium }) {
             <div key={r.code} style={{ ...C.card({ padding: "12px 16px", marginBottom: 8 }), display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center" }}>{i + 1}</span>
               <p style={{ flex: 1, fontWeight: 600 }}>{r.name}</p>
+              {r.avgResponseTime != null && (
+                <p style={{ fontSize: 11, color: "#9B89CC", marginRight: 4 }}>⏱ {r.avgResponseTime}s</p>
+              )}
               <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#F5C518" }}>{r.points} pkt</p>
             </div>
           ))}
@@ -676,9 +676,9 @@ function LiveTab({ city, autoStart = false }) {
 
   const correct   = revealData.filter((a) => a.isCorrect);
   const incorrect = revealData.filter((a) => !a.isCorrect);
-  const avgPts    = revealData.length ? Math.round(revealData.reduce((s, a) => s + a.points, 0) / revealData.length) : 0;
   const timePerQ  = mod?.timePerQ || 60;
-  const avgTimeSec = revealData.length && avgPts > 0 ? Math.round(timePerQ * (1 - (avgPts - 500) / 500)) : timePerQ;
+  const timedAnswers = revealData.filter((a) => a.responseTime != null);
+  const avgTimeSec   = timedAnswers.length ? Math.round(timedAnswers.reduce((s, a) => s + a.responseTime, 0) / timedAnswers.length) : null;
   const timerPct  = timer / (mod?.timePerQ || 60);
   const tColor    = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
@@ -761,7 +761,7 @@ function LiveTab({ city, autoStart = false }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 12 }}>
-              {[["Odpowiedzi", revealData.length, "#EDE9FE"], ["✅", correct.length, "#10D9A0"], ["❌", incorrect.length, "#E8376B"], ["⌀ czas", `${Math.max(1, Math.min(timePerQ, avgTimeSec))}s`, "#F5C518"]].map(([l, v, c]) => (
+              {[["Odpowiedzi", revealData.length, "#EDE9FE"], ["✅", correct.length, "#10D9A0"], ["❌", incorrect.length, "#E8376B"], ["⌀ czas", avgTimeSec != null ? `${avgTimeSec}s` : "—", "#F5C518"]].map(([l, v, c]) => (
                 <div key={l} style={{ flex: 1, textAlign: "center" }}>
                   <p style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: c, lineHeight: 1 }}>{v}</p>
                   <p style={{ fontSize: 10, color: "#9B89CC" }}>{l}</p>
@@ -779,6 +779,9 @@ function LiveTab({ city, autoStart = false }) {
                 <span style={{ fontSize: 14 }}>{a.isCorrect ? "✅" : "❌"}</span>
                 <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1, minWidth: 80 }}>{a.code}</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                {a.responseTime != null && (
+                  <span style={{ fontSize: 11, color: "#9B89CC", minWidth: 32, textAlign: "right" }}>{a.responseTime}s</span>
+                )}
                 <span style={{ fontFamily: '"Bebas Neue"', fontSize: 16, color: a.isCorrect ? "#F5C518" : "#E8376B" }}>{a.points} pkt</span>
               </div>
             ))}

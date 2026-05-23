@@ -159,6 +159,9 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Migration: add response time column (seconds from question start to answer)
+ALTER TABLE public.answers ADD COLUMN IF NOT EXISTS response_time_s INT;
+
 ALTER TABLE public.answers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "answers_public_insert" ON public.answers;
@@ -238,17 +241,23 @@ END $$;
 -- Uses SECURITY DEFINER to bypass RLS row-count limits on answers table.
 CREATE OR REPLACE FUNCTION public.get_session_results(p_session_id UUID)
 RETURNS TABLE (
-  participant_code TEXT,
-  participant_name TEXT,
-  city             TEXT,
-  total_points     BIGINT
+  participant_code      TEXT,
+  participant_name      TEXT,
+  city                  TEXT,
+  total_points          BIGINT,
+  avg_response_time_s   INT
 )
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT participant_code, participant_name, city, SUM(points)::BIGINT AS total_points
+  SELECT
+    participant_code,
+    participant_name,
+    city,
+    SUM(points)::BIGINT AS total_points,
+    ROUND(AVG(response_time_s))::INT AS avg_response_time_s
   FROM public.answers
   WHERE session_id = p_session_id
   GROUP BY participant_code, participant_name, city

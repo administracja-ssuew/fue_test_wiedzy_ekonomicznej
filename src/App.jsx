@@ -217,7 +217,7 @@ export default function App() {
 
     // Save missed answers to DB (picked answers saved immediately in handlePick)
     if (userPicked === null && currentQ && participant && quizSession) {
-      saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: null, isCorrect: false, points: 0 });
+      saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: null, isCorrect: false, points: 0, responseTimeS: null });
     }
 
     setAnswered(true); // NOW reveal correct/wrong colors — 2s result screen then advance
@@ -232,9 +232,10 @@ export default function App() {
 
     // Save to DB immediately so admin sees live responses
     if (currentQ && participant && quizSession) {
-      const correct = i === currentQ.ans;
-      const pts     = calcPts(timer, mod.timePerQ, correct);
-      saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: i, isCorrect: correct, points: pts });
+      const correct       = i === currentQ.ans;
+      const pts           = calcPts(timer, mod.timePerQ, correct);
+      const responseTimeS = mod.timePerQ - timer; // seconds elapsed since question start
+      saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: i, isCorrect: correct, points: pts, responseTimeS });
     }
     // Timer keeps running — handleTimeout will reveal the answer
   };

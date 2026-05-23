@@ -306,16 +306,17 @@ export async function getParticipantsInSession(city) {
 
 // ─── ANSWERS ──────────────────────────────────────────────────────────────────
 
-export async function saveAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect, points }) {
+export async function saveAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect, points, responseTimeS }) {
   if (DEMO) {
     const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]");
-    answers.push({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect, points, answeredAt: new Date().toISOString() });
+    answers.push({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect, points, responseTimeS: responseTimeS ?? null, answeredAt: new Date().toISOString() });
     localStorage.setItem("fue_answers", JSON.stringify(answers));
     return { error: null };
   }
   const { error } = await supabase.from("answers").upsert({
     session_id: sessionId, participant_code: participantCode, participant_name: participantName,
     city, question_id: questionId, module, chosen, is_correct: isCorrect, points,
+    response_time_s: responseTimeS ?? null,
   }, { onConflict: "session_id,participant_code,question_id" });
   return { error: error?.message || null };
 }
@@ -326,17 +327,21 @@ export async function getSessionResults(sessionId) {
       .filter((a) => a.sessionId === sessionId);
     const grouped = {};
     for (const a of answers) {
-      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: a.participantName, city: a.city || "", points: 0, answers: 0 };
+      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: a.participantName, city: a.city || "", points: 0, answers: 0, totalTime: 0, timedAnswers: 0 };
       grouped[a.participantCode].points += a.points;
       grouped[a.participantCode].answers += 1;
+      if (a.responseTimeS != null) { grouped[a.participantCode].totalTime += a.responseTimeS; grouped[a.participantCode].timedAnswers += 1; }
     }
-    return Object.values(grouped).sort((a, b) => b.points - a.points);
+    return Object.values(grouped).sort((a, b) => b.points - a.points).map((g) => ({
+      code: g.code, name: g.name, city: g.city, points: g.points,
+      avgResponseTime: g.timedAnswers ? Math.round(g.totalTime / g.timedAnswers) : null,
+    }));
   }
   // Use RPC to aggregate on DB side — avoids PostgREST 1000-row default limit
   // which would truncate results for 500 participants × 32 questions = 16 000 rows
   const { data } = await supabase.rpc("get_session_results", { p_session_id: sessionId });
   if (!data) return [];
-  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, points: Number(r.total_points) }));
+  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, points: Number(r.total_points), avgResponseTime: r.avg_response_time_s ?? null }));
 }
 
 // Live stats for current question (admin panel)
@@ -351,16 +356,18 @@ export async function getLiveQuestionStats(sessionId, questionId) {
     };
   }
   const { data } = await supabase.from("answers")
-    .select("participant_code, participant_name, is_correct, points, answered_at")
+    .select("participant_code, participant_name, is_correct, points, answered_at, response_time_s")
     .eq("session_id", sessionId)
     .eq("question_id", questionId);
   if (!data) return { total: 0, correct: 0, avgTime: 0, answers: [] };
   const correct = data.filter((a) => a.is_correct).length;
+  const timed   = data.filter((a) => a.response_time_s != null);
+  const avgTime = timed.length ? Math.round(timed.reduce((s, a) => s + a.response_time_s, 0) / timed.length) : 0;
   return {
     total: data.length,
     correct,
-    avgTime: 0, // would need response_time column for accurate avg
-    answers: data.map((a) => ({ code: a.participant_code, name: a.participant_name, isCorrect: a.is_correct, points: a.points })),
+    avgTime,
+    answers: data.map((a) => ({ code: a.participant_code, name: a.participant_name, isCorrect: a.is_correct, points: a.points, responseTime: a.response_time_s ?? null })),
   };
 }
 

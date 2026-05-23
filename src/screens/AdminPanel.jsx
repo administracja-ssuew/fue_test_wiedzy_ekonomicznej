@@ -617,12 +617,12 @@ function LiveTab({ city }) {
   }, [gIdx, phase]);
 
   const doReveal = async () => {
-    setPhase("reveal"); setAutoSec(8); clearInterval(liveRef.current);
+    setPhase("reveal"); setAutoSec(2); clearInterval(liveRef.current);
     if (session && currentQ) {
       const stats = await getLiveQuestionStats(session.id, currentQ.id);
       setRevealData(stats.answers || []);
     }
-    let cd = 8;
+    let cd = 2;
     clearInterval(revealRef.current);
     revealRef.current = setInterval(() => {
       cd--;

@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from "react";
 import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
 import useAntiCheat from "../hooks/useAntiCheat.js";
 import { useModules } from "../context/ModulesContext.jsx";
@@ -36,7 +37,6 @@ const W = {
 };
 
 export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
-  const MODULES = useModules();
   if (!currentQ || !mod) return null;
 
   const { violations, showWarning, lastType, dismiss } = useAntiCheat({
@@ -44,6 +44,16 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
     participantCode,
     sessionId,
   });
+
+  // 2-second result countdown shown after timer hits 0
+  const [resultSec, setResultSec] = useState(null);
+  useEffect(() => {
+    if (!answered) { setResultSec(null); return; }
+    setResultSec(2);
+    const t = setInterval(() => setResultSec((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [answered]);
+
   const timerPct = timer / mod.timePerQ;
   const r = 22, circ = 2 * Math.PI * r;
   const tColor = timer > mod.timePerQ * 0.5 ? "#10D9A0" : timer > mod.timePerQ * 0.25 ? "#FF9A3C" : "#E8376B";
@@ -131,6 +141,23 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       <div className="fue-quiz-layout" style={{ width: "100%" }}>
         <QuizContent />
       </div>
+
+      {/* 2-second result bar — shown after timer hits 0 */}
+      {answered && resultSec !== null && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.96)", borderTop: "1px solid rgba(255,255,255,.1)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: '"Space Grotesk",sans-serif' }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 22 }}>✅</span>
+            <div>
+              <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 2, textTransform: "uppercase", letterSpacing: 1 }}>Poprawna odpowiedź</p>
+              <p style={{ fontSize: 15, fontWeight: 700, color: "#10D9A0" }}>{currentQ?.opts[currentQ?.ans]}</p>
+            </div>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 40, color: "#F5C518", lineHeight: 1 }}>{resultSec}</p>
+            <p style={{ fontSize: 9, color: "#9B89CC", textTransform: "uppercase", letterSpacing: 1 }}>następne</p>
+          </div>
+        </div>
+      )}
 
       {/* Anti-cheat warning overlay */}
       {showWarning && (

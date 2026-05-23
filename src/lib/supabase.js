@@ -231,12 +231,11 @@ export async function getSessionForCity(city) {
   if (DEMO) {
     const s = localStorage.getItem(`fue_session_${city}`);
     if (!s) return null;
-    const parsed = JSON.parse(s);
-    // Participants only join real (non-practice) sessions
-    return parsed.is_practice ? null : parsed;
+    return JSON.parse(s);
   }
+  // Return the most recent non-ended session (practice or regular — admin controls which is active)
   const { data } = await supabase.from("quiz_sessions")
-    .select("*").eq("city", city).eq("is_practice", false).neq("status", "ended")
+    .select("*").eq("city", city).neq("status", "ended")
     .order("created_at", { ascending: false }).limit(1);
   return data?.[0] || null;
 }
@@ -295,13 +294,13 @@ export async function getSessionResults(sessionId) {
 // Live stats for current question (admin panel)
 export async function getLiveQuestionStats(sessionId, questionId) {
   if (DEMO) {
-    const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+    const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
       .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
-    const correct = answers.filter((a) => a.isCorrect).length;
-    const avgTime = answers.length
-      ? answers.reduce((s, a) => s + (a.responseTime || 0), 0) / answers.length
-      : 0;
-    return { total: answers.length, correct, avgTime: Math.round(avgTime), answers };
+    const correct = raw.filter((a) => a.isCorrect).length;
+    return {
+      total: raw.length, correct, avgTime: 0,
+      answers: raw.map((a) => ({ code: a.participantCode, name: a.participantName, isCorrect: a.isCorrect, points: a.points })),
+    };
   }
   const { data } = await supabase.from("answers")
     .select("participant_code, participant_name, is_correct, points, answered_at")

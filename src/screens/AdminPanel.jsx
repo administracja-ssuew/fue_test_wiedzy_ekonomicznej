@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  getQuestions, addQuestion, updateQuestion, deleteQuestion,
+  getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
   getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
@@ -52,14 +52,16 @@ const EMPTY = { module: 1, q: "", opts: ["", "", "", ""], ans: 0, exp: "" };
 
 function PytaniaTab({ city }) {
   const MODULES = useModules();
+  const [isPractice, setIsPractice] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [mod, setMod] = useState(1);
   const [form, setForm] = useState(null);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { getQuestions(city).then(setQuestions); }, [city]);
-  const reload = () => getQuestions(city).then(setQuestions);
+  const loadQs = (practice = isPractice) => practice ? getPracticeQuestions(city) : getQuestions(city);
+  useEffect(() => { loadQs().then(setQuestions); }, [city, isPractice]);
+  const reload = () => loadQs().then(setQuestions);
 
   const openAdd  = () => { setForm({ ...EMPTY, module: mod }); setEditId(null); };
   const openEdit = (q) => { setForm({ module: q.module, q: q.q, opts: [...q.opts], ans: q.ans, exp: q.exp || "" }); setEditId(q.id); };
@@ -67,7 +69,7 @@ function PytaniaTab({ city }) {
   const save = async () => {
     if (!form.q || form.opts.some((o) => !o)) return alert("Wypełnij pytanie i wszystkie odpowiedzi.");
     setSaving(true);
-    editId ? await updateQuestion(editId, form) : await addQuestion({ ...form, city, createdBy: null });
+    editId ? await updateQuestion(editId, form) : await addQuestion({ ...form, city, createdBy: null, isPractice });
     setSaving(false); setForm(null); setEditId(null); reload();
   };
 
@@ -76,6 +78,12 @@ function PytaniaTab({ city }) {
 
   return (
     <div>
+      {/* Główne / Próbne toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button onClick={() => { setIsPractice(false); setForm(null); }} style={{ ...C.btn(!isPractice ? "primary" : "ghost", { fontSize: 13, padding: "8px 18px" }) }}>🏆 Pytania główne</button>
+        <button onClick={() => { setIsPractice(true); setForm(null); }}  style={{ ...C.btn(isPractice  ? "success" : "ghost", { fontSize: 13, padding: "8px 18px" }) }}>🔬 Pytania próbne</button>
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         {MODULES.map((m) => (
           <button key={m.id} onClick={() => setMod(m.id)} style={{ ...C.btn("ghost"), background: mod === m.id ? `${m.color}25` : undefined, borderColor: mod === m.id ? `${m.color}55` : undefined, color: mod === m.id ? "#EDE9FE" : "#9B89CC" }}>

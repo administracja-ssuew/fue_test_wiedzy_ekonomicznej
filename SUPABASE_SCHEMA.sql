@@ -61,17 +61,21 @@ CREATE POLICY "codes_admin_delete"  ON public.participant_codes FOR DELETE
 -- Each city has its own question bank managed by its admin.
 
 CREATE TABLE IF NOT EXISTS public.questions (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  city       TEXT NOT NULL,
-  module     INT NOT NULL CHECK (module BETWEEN 1 AND 4),
-  q          TEXT NOT NULL,
-  opts       TEXT[] NOT NULL,
-  ans        INT NOT NULL CHECK (ans BETWEEN 0 AND 3),
-  exp        TEXT,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  city        TEXT NOT NULL,
+  module      INT NOT NULL,
+  q           TEXT NOT NULL,
+  opts        TEXT[] NOT NULL,
+  ans         INT NOT NULL CHECK (ans BETWEEN 0 AND 3),
+  exp         TEXT,
+  is_practice BOOLEAN NOT NULL DEFAULT false,
+  sort_order  INT NOT NULL DEFAULT 0,
+  created_by  UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add is_practice to existing installations:
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS is_practice BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 

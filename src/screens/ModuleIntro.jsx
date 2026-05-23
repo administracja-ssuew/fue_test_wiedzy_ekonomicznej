@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from "react";
 import { getModule, moduleQuestions } from "../lib/gameLogic.js";
 import { useModules } from "../context/ModulesContext.jsx";
 
@@ -37,6 +38,14 @@ const W = {
 export default function ModuleIntro({ currentMod, onStart }) {
   const MODULES = useModules();
   const mod = getModule(currentMod, MODULES);
+  const [countdown, setCountdown] = useState(3);
+
+  useEffect(() => {
+    if (countdown <= 0) { onStart(); return; }
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
   return (
     <div style={W.wrap}>
       <div className="fue-page" style={{ justifyContent: "center", alignItems: "center", padding: "40px 28px", textAlign: "center" }}>
@@ -54,10 +63,11 @@ export default function ModuleIntro({ currentMod, onStart }) {
         <p className="su" style={{ color: "#9B89CC", fontSize: 14, marginTop: 4, animationDelay: ".14s" }}>
           {mod?.desc}
         </p>
-        <div className="su" style={{ marginTop: 36, width: "100%", animationDelay: ".2s" }}>
-          <button style={W.btn("primary")} onClick={() => onStart()}>
-            Zacznij moduł →
-          </button>
+        <div className="su" style={{ marginTop: 40, animationDelay: ".2s" }}>
+          <p style={{ fontSize: 13, color: "#9B89CC", marginBottom: 8 }}>Start za</p>
+          <p style={{ fontFamily: '"Bebas Neue"', fontSize: 96, color: mod?.color || "#6B21E8", lineHeight: 1, transition: "color .3s" }}>
+            {countdown}
+          </p>
         </div>
       </div>
     </div>

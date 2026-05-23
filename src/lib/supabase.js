@@ -118,26 +118,35 @@ export async function deleteParticipantCode(id) {
 
 export async function getQuestions(city) {
   if (DEMO) {
-    const qs = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
-    return qs;
+    return JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
   }
   const { data } = await supabase.from("questions").select("*")
-    .eq("city", city).order("module").order("sort_order");
+    .eq("city", city).neq("is_practice", true).order("module").order("sort_order");
   return data || [];
 }
 
-export async function addQuestion({ city, module, q, opts, ans, exp, createdBy }) {
+export async function getPracticeQuestions(city) {
   if (DEMO) {
-    const questions = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
-    const entry = { id: crypto.randomUUID(), city, module, q, opts, ans, exp: exp || "", sort_order: questions.length, created_at: new Date().toISOString() };
+    return JSON.parse(localStorage.getItem(`fue_practice_${city}`) || "[]");
+  }
+  const { data } = await supabase.from("questions").select("*")
+    .eq("city", city).eq("is_practice", true).order("module").order("sort_order");
+  return data || [];
+}
+
+export async function addQuestion({ city, module, q, opts, ans, exp, createdBy, isPractice = false }) {
+  if (DEMO) {
+    const key = isPractice ? `fue_practice_${city}` : `fue_questions_${city}`;
+    const questions = JSON.parse(localStorage.getItem(key) || "[]");
+    const entry = { id: crypto.randomUUID(), city, module, q, opts, ans, exp: exp || "", is_practice: isPractice, sort_order: questions.length, created_at: new Date().toISOString() };
     questions.push(entry);
-    localStorage.setItem(`fue_questions_${city}`, JSON.stringify(questions));
+    localStorage.setItem(key, JSON.stringify(questions));
     return { data: entry, error: null };
   }
-  const existing = await getQuestions(city);
+  const existing = isPractice ? await getPracticeQuestions(city) : await getQuestions(city);
   const sort_order = existing.filter((x) => x.module === module).length;
   const { data, error } = await supabase.from("questions")
-    .insert({ city, module, q, opts, ans, exp: exp || null, sort_order, created_by: createdBy })
+    .insert({ city, module, q, opts, ans, exp: exp || null, sort_order, is_practice: isPractice, created_by: createdBy })
     .select().single();
   return { data, error: error?.message || null };
 }

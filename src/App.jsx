@@ -282,14 +282,13 @@ export default function App() {
     setCityQuestions(dbQs);
     setMyPts(0); setAllAnswers([]);
 
-    // Powrót uczestnika mid-quiz — sync do aktualnego pytania
-    const isRunningMidQuiz = session?.status === "running" && (session?.current_question_idx || 0) > 0;
-    if (isRunningMidQuiz && syncToSession(session, dbQs)) {
+    // Admin ustawił q_started_at → idź od razu do pytania (bez kliku uczestnika)
+    if (session?.q_started_at && syncToSession(session, dbQs)) {
       setScreen("quiz");
       return;
     }
 
-    // Pierwsza sesja — zacznij od początku (module_intro)
+    // Fallback — sesja bez q_started_at (edge case: admin nie kliknął start)
     setCurrentMod(1); setQIdx(0);
     setPicked(null); setAnswered(false); setTimer(MODULES[0]?.timePerQ ?? 60);
     setScreen("module_intro");
@@ -332,7 +331,7 @@ export default function App() {
     return <WaitingResults participant={participant} onReveal={() => setScreen("ended")} />;
 
   if (screen === "practice")
-    return <Practice onBack={() => setScreen(participant ? "lobby" : "welcome")} />;
+    return <Practice city={participant?.city} onBack={() => setScreen(participant ? "lobby" : "welcome")} />;
 
   if (screen === "no_questions") return (
     <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", textAlign: "center", padding: 32 }}>

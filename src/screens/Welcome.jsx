@@ -30,28 +30,28 @@ const IconGlobe = () => (
 );
 
 const SOCIAL_LINKS = [
-  { label: "FUE Instagram", icon: IconInstagram, href: "https://www.instagram.com/tylkofue/", color: "#E1306C" },
   { label: "FUE Facebook",  icon: IconFacebook,  href: "https://www.facebook.com/ForumUczelniEkonomicznych/", color: "#1877F2" },
+  { label: "FUE Instagram", icon: IconInstagram, href: "https://www.instagram.com/tylkofue/", color: "#E1306C" },
   { label: "Strona FUE",    icon: IconGlobe,     href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
 ];
 
 const UNIVERSITIES = [
-  { abbr: "UEK",   city: "Kraków",    logo: "/uek.jpg",   color: "#FFA653" },
-  { abbr: "SGH",   city: "Warszawa",  logo: "/sgh.png",   color: "#FF6B6B" },
-  { abbr: "UEP",   city: "Poznań",    logo: "/uep.png",   color: "#4ECDC4" },
-  { abbr: "UEW",  city: "Wrocław",   logo: "/uewr.png",  color: "#45B7D1" },
-  { abbr: "UEKat", city: "Katowice",  logo: "/uekat.png", color: "#FF6B9D" },
+  { abbr: "UEK",   city: "Kraków",    logo: "/uek.jpg",   color: "#D41D1F" },
+  { abbr: "SGH",   city: "Warszawa",  logo: "/sgh.png",   color: "#82179F" },
+  { abbr: "UEP",   city: "Poznań",    logo: "/uep.png",   color: "#699BF2" },
+  { abbr: "UEW",  city: "Wrocław",   logo: "/uewr.png",  color: "#00A74D" },
+  { abbr: "UEKat", city: "Katowice",  logo: "/uekat.png", color: "#FFCC3C" },
 ];
 
 const ORGANIZERS = [
   {
     group: "Prezydium Forum Uczelni Ekonomicznych",
     members: [
-      { name: "Dawid Rutkowski",  role: "Przewodniczący FUE",                                        univ: "UEW",  photo: null },
-      { name: "Helena Popek",     role: "Wiceprzewodnicząca, Członkini Prezydium ds. Projektów",                          univ: "SGH",   photo: null },
-      { name: "Jan Peciak",       role: "Członek Prezydium ds. Kontaktów Zewnętrznych",               univ: "UEKat", photo: null },
-      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",                     univ: "UEK",   photo: null },
-      { name: "Jakub Kliński",    role: "Członek Prezydium ds. Administracji",                        univ: "UEP",   photo: null },
+      { name: "Dawid Rutkowski",  role: "Przewodniczący FUE",                                        univ: "UEW",  photo: "/przewo_wro.png" },
+      { name: "Helena Popek",     role: "Wiceprzewodnicząca, Członkini Prezydium ds. Projektów",                          univ: "SGH",   photo: "/pre_proj_wwa.png" },
+      { name: "Jan Peciak",       role: "Członek Prezydium ds. Kontaktów Zewnętrznych",               univ: "UEKat", photo: "/pre_kz_kat.png" },
+      { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",                     univ: "UEK",   photo: "/pre_pr_uek.png" },
+      { name: "Jakub Kliński",    role: "Członek Prezydium ds. Administracji",                        univ: "UEP",   photo: "/pre_adm_uep.png" },
     ],
   },
   {
@@ -69,7 +69,7 @@ const ORGANIZERS = [
 // i wgraj plik do katalogu public/zdjecia/
 
 const UNIV_COLORS = {
-  UEK: "#FFA653", SGH: "#FF6B6B", UEP: "#4ECDC4", UEW: "#45B7D1", UEKat: "#FF6B9D",
+  UEK: "#D41D1F", SGH: "#82179F", UEP: "#699BF2", UEW: "#00A74D", UEKat: "#FFCC3C",
 };
 
 const COORDINATORS_DATA = {
@@ -312,9 +312,11 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
       {/* Background gradient overlay */}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(107,33,232,.06) 0%, transparent 50%, rgba(245,197,24,.04) 100%)", pointerEvents: "none" }} />
 
-      {/* FUE logo watermark */}
+      {/* Crossfading FUE / TWE watermark */}
       <img src="/fue.png" alt="" aria-hidden="true"
-        style={{ position: "absolute", width: "min(520px, 75%)", opacity: .055, pointerEvents: "none", userSelect: "none", zIndex: 0 }} />
+        style={{ position: "absolute", width: "min(520px, 75%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkA 14s ease-in-out infinite" }} />
+      <img src="/twe.png" alt="" aria-hidden="true"
+        style={{ position: "absolute", width: "min(520px, 75%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkB 14s ease-in-out infinite" }} />
 
       {/* Animated elegant shapes */}
       <Shape gradient="rgba(107,33,232,.14)" delay={0}   style={{ width: 580, height: 120, top: "12%",  left: "-8%",  anim: 1, dur: 10 }} />

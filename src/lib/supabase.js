@@ -22,8 +22,9 @@ export async function loginAdmin({ email, password }) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
   const { data: profile, error: pErr } = await supabase
-    .from("profiles").select("*").eq("id", data.user.id).single();
-  if (pErr) return { error: "Brak profilu admina." };
+    .from("profiles").select("*").eq("id", data.user.id).maybeSingle();
+  if (pErr) return { error: "Błąd bazy danych: " + pErr.message };
+  if (!profile) return { error: "Brak profilu admina. Skontaktuj się z administratorem systemu." };
   return { data: { ...data.user, ...profile }, error: null };
 }
 

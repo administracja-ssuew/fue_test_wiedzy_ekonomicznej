@@ -237,6 +237,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [isPractice, setIsPractice]     = useState(false);
   const [cityQuestions, setCityQuestions] = useState([]);
   const [showAdminStats, setShowAdminStats] = useState(false);
+  const [liveExpanded, setLiveExpanded] = useState(false);
   const pollRef = useRef(null);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
@@ -262,20 +263,24 @@ function SesjaTab({ city, adminId, onPodium }) {
     await load(isPractice);
   };
 
-  // Poll live stats every 3s when quiz is running
+  // Poll participants every 4s during waiting; live stats + participants every 3s during running
   useEffect(() => {
     clearInterval(pollRef.current);
-    if (session?.status === "running") {
+    if (session?.status === "waiting") {
+      pollRef.current = setInterval(async () => {
+        setParticipants(await getParticipantsInSession(city));
+      }, 4000);
+    } else if (session?.status === "running") {
       pollRef.current = setInterval(async () => {
         const q = cityQuestions[session.current_question_idx];
-        const [stats, participants, violations] = await Promise.all([
+        const [stats, parts, viols] = await Promise.all([
           q && session.id ? getLiveQuestionStats(session.id, q.id) : Promise.resolve(null),
           getParticipantsInSession(city),
           session.id ? getViolationsForSession(session.id) : Promise.resolve([]),
         ]);
         if (stats) setLiveStats(stats);
-        setParticipants(participants);
-        setViolations(violations);
+        setParticipants(parts);
+        setViolations(viols);
       }, 3000);
     }
     return () => clearInterval(pollRef.current);
@@ -387,10 +392,21 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       )}
 
-      {/* Live ghost view — auto-shown when quiz is running */}
+      {/* Live ghost view — auto-shown when quiz is running, expandable to fullscreen */}
       {session?.status === "running" && !isPractice && (
-        <div style={{ ...C.card({ marginBottom: 20, padding: "16px 20px", borderColor: "rgba(232,55,107,.25)", background: "rgba(232,55,107,.04)" }) }}>
-          <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>🔴 Live — widok pytania (jak uczestnik)</p>
+        <div style={liveExpanded ? {
+          position: "fixed", inset: 0, zIndex: 999, background: "#070215",
+          overflow: "auto", padding: "20px",
+        } : {
+          ...C.card({ marginBottom: 20, padding: "16px 20px", borderColor: "rgba(232,55,107,.25)", background: "rgba(232,55,107,.04)" }),
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>🔴 Live — widok pytania (jak uczestnik)</p>
+            <button onClick={() => setLiveExpanded((v) => !v)}
+              style={{ ...C.btn("ghost", { fontSize: 12, padding: "5px 12px" }) }}>
+              {liveExpanded ? "✕ Zwiń" : "⤢ Pełny ekran"}
+            </button>
+          </div>
           <LiveTab city={city} autoStart />
         </div>
       )}

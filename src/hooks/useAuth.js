@@ -7,7 +7,7 @@ export default function useAuth() {
 
   useEffect(() => {
     if (DEMO) {
-      const u = JSON.parse(localStorage.getItem("fue_current_user") || "null");
+      const u = JSON.parse(localStorage.getItem("fue_admin") || "null");
       setUser(u);
       setLoading(false);
       return;

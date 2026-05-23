@@ -73,11 +73,11 @@ const UNIV_COLORS = {
 };
 
 const COORDINATORS_DATA = {
-  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",    phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#FFA653" },
-  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",       phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#FF6B6B" },
-  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",     phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#4ECDC4" },
-  Wrocław:  { name: "Hubert Gościmski", role: "Koordynator KG UEW",  email: "hubert.goscimski@samorzad.ue.wroc.pl",       phone: "+48 XXX XXX XXX", abbr: "UEW",  color: "#45B7D1" },
-  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",   phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FF6B9D" },
+  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",    phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#D41D1F" },
+  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",       phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#82179F" },
+  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",     phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#699BF2" },
+  Wrocław:  { name: "Hubert Gościmski", role: "Koordynator KG UEW",  email: "hubert.goscimski@samorzad.ue.wroc.pl",       phone: "+48 XXX XXX XXX", abbr: "UEW",  color: "#00A74D" },
+  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",   phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FFCC3C" },
 };
 
 const SCHEDULE = {

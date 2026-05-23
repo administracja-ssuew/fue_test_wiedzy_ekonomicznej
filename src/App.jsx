@@ -46,6 +46,7 @@ export default function App() {
   const MODULES        = useModules(); // dynamic from DB (or hardcoded fallback)
   const timerRef       = useRef(null);
   const pickTime       = useRef(null);
+  const pickedRef      = useRef(null);  // always-current picked value (avoids stale closure in timer)
   const screenRef      = useRef(screen); // always-current screen value (avoids stale closures)
   const qStartedAtRef  = useRef(null);   // authoritative question start time (derived from DB)
   const modTimePerQRef = useRef(60);     // always-current timePerQ for active module
@@ -56,6 +57,12 @@ export default function App() {
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
   useEffect(() => { qIdxRef.current = qIdx; }, [qIdx]);
+  useEffect(() => { pickedRef.current = picked; }, [picked]);
+
+  // Auto-restore admin session: redirect to panel when Supabase session is found on page load
+  useEffect(() => {
+    if (!loading && admin && screen === "welcome") setScreen("admin");
+  }, [loading, admin]);
 
   // Only DB questions — no hardcoded fallback
   const activeQuestions = cityQuestions;
@@ -204,8 +211,9 @@ export default function App() {
   const handleTimeout = () => {
     clearInterval(timerRef.current);
     if (answered) return;
-    const userPicked  = picked;               // may be null (no answer)
-    const timeWhenPicked = pickTime.current;  // timer value when they clicked
+    // Use ref to avoid stale closure: picked state may have changed since this handler was captured
+    const userPicked     = pickedRef.current;
+    const timeWhenPicked = pickTime.current;
 
     const correct = userPicked !== null && userPicked === currentQ?.ans;
     const pts     = userPicked !== null ? calcPts(timeWhenPicked, mod.timePerQ, correct) : 0;
@@ -215,7 +223,8 @@ export default function App() {
       ? [...prev, { qId: currentQ.id, module: currentMod, picked: userPicked, correct, pts }]
       : prev);
 
-    // Save missed answers to DB (picked answers saved immediately in handlePick)
+    // Only save to DB when user did NOT pick — handlePick already saved picked answers
+    // (avoid overwriting the correct DB row with null/0 due to stale closure)
     if (userPicked === null && currentQ && participant && quizSession) {
       saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: null, isCorrect: false, points: 0, responseTimeS: null });
     }
@@ -252,12 +261,20 @@ export default function App() {
         // Loser gets null and waits for Realtime event from the winner's DB write.
         const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
         if (startedAt) {
-          // This client won the optimistic lock — use the authoritative server timestamp.
           qStartedAtRef.current = startedAt;
         } else {
-          // Lost the race — clear local ref so the timer uses fallback countdown
-          // until the Realtime event arrives with the winner's q_started_at.
           qStartedAtRef.current = null;
+          // Safety-net: if Realtime hasn't corrected us in 1s, fetch directly from DB
+          const capturedIdx  = nextGlobalIdx;
+          const capturedCity = participant?.city;
+          setTimeout(async () => {
+            if (!qStartedAtRef.current && capturedCity) {
+              const s = await getSessionForCity(capturedCity);
+              if (s?.q_started_at && s.current_question_idx === capturedIdx) {
+                qStartedAtRef.current = s.q_started_at;
+              }
+            }
+          }, 1000);
         }
       } else if (DEMO && quizSession) {
         // DEMO mode: advanceSessionQuestion handles localStorage optimistic lock.
@@ -414,7 +431,16 @@ export default function App() {
         // For module 1, the admin wrote q_started_at via "Start quizu" — no race here.
         // For subsequent modules, previous question was globalIdx-1.
         const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx);
-        qStartedAtRef.current = startedAt || null; // null → wait for Realtime from winner
+        qStartedAtRef.current = startedAt || null;
+        if (!startedAt) {
+          const capturedCity = participant?.city;
+          setTimeout(async () => {
+            if (!qStartedAtRef.current && capturedCity) {
+              const s = await getSessionForCity(capturedCity);
+              if (s?.q_started_at && s.current_question_idx === globalIdx) qStartedAtRef.current = s.q_started_at;
+            }
+          }, 1000);
+        }
       } else {
         // No session (practice / demo fallback)
         qStartedAtRef.current = new Date().toISOString();

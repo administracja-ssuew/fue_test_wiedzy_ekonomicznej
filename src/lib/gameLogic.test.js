@@ -19,10 +19,13 @@ describe("calcPts", () => {
 });
 
 describe("cityInfo", () => {
-  it("returns correct city info for known city", () => {
-    expect(cityInfo("Kraków").icon).toBe("🏰");
+  it("returns correct abbr for known city", () => {
+    expect(cityInfo("Kraków").abbr).toBe("UEK");
   });
-  it("returns fallback for unknown city", () => {
+  it("returns correct color for known city", () => {
+    expect(cityInfo("Kraków").color).toBe("#FFA653");
+  });
+  it("returns fallback color for unknown city", () => {
     expect(cityInfo("Unknown").color).toBe("#888");
   });
 });

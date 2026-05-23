@@ -57,11 +57,11 @@ const ORGANIZERS = [
   {
     group: "Komisja Rewizyjna FUE",
     members: [
-      { name: "Emilia Ćwiklińska", role: "Uniwersytet Ekonomiczny we Wrocławiu",  photo: "/kr_wroc.png" },
+      { name: "Emilia Ćwiklińska", role: "Uniwersytet Ekonomiczny we Wrocławiu",  photo: "/kr_wro.png" },
       { name: "Antoni Świderski", role: "Szkoła Główna Handlowa w Warszawie", photo: "/kr_wwa.png" },
       { name: "Oliwia Chiwst", role: "Uniwersytet Ekonomiczny w Katowicach",   photo: "/kr_kat.png" },
-      { name: "Mateusz Wasylewicz", role: "Uniwersytet Ekonomiczny w Krakowie",   photo: "/kr_krakow.png" },
-      { name: "Tomasz Starzycki", role: "Uniwersytet Ekonomiczny w Poznaniu",   photo: "/kr_poznan.png" },
+      { name: "Mateusz Wasylewicz", role: "Uniwersytet Ekonomiczny w Krakowie",   photo: "/kr_krk.png" },
+      { name: "Tomasz Starzycki", role: "Uniwersytet Ekonomiczny w Poznaniu",   photo: "/kr_poz.png" },
     ],
   },
 ];

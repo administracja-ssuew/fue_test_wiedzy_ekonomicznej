@@ -41,7 +41,7 @@ export async function getCurrentAdmin() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return null;
   const { data: profile } = await supabase
-    .from("profiles").select("*").eq("id", session.user.id).single();
+    .from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   return profile ? { ...session.user, ...profile } : null;
 }
 
@@ -279,17 +279,11 @@ export async function getSessionResults(sessionId) {
     }
     return Object.values(grouped).sort((a, b) => b.points - a.points);
   }
-  const { data } = await supabase.from("answers")
-    .select("participant_code, participant_name, city, points")
-    .eq("session_id", sessionId);
+  // Use RPC to aggregate on DB side — avoids PostgREST 1000-row default limit
+  // which would truncate results for 500 participants × 32 questions = 16 000 rows
+  const { data } = await supabase.rpc("get_session_results", { p_session_id: sessionId });
   if (!data) return [];
-  const grouped = {};
-  for (const row of data) {
-    if (!grouped[row.participant_code])
-      grouped[row.participant_code] = { code: row.participant_code, name: row.participant_name, city: row.city, points: 0 };
-    grouped[row.participant_code].points += row.points;
-  }
-  return Object.values(grouped).sort((a, b) => b.points - a.points);
+  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, points: Number(r.total_points) }));
 }
 
 // Live stats for current question (admin panel)

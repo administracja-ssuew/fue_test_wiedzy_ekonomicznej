@@ -38,8 +38,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "profiles_own"       ON public.profiles FOR ALL USING (auth.uid() = id);
-CREATE POLICY "profiles_superadmin" ON public.profiles FOR ALL USING (get_my_role() = 'superadmin');
+DROP POLICY IF EXISTS "profiles_own"        ON public.profiles;
+DROP POLICY IF EXISTS "profiles_superadmin" ON public.profiles;
+CREATE POLICY "profiles_own" ON public.profiles FOR ALL USING (auth.uid() = id);
 
 -- ─── PARTICIPANT CODES ────────────────────────────────────────────
 -- Admin generates a code per participant (name + city).
@@ -59,6 +60,10 @@ CREATE TABLE IF NOT EXISTS public.participant_codes (
 
 ALTER TABLE public.participant_codes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "codes_public_read"  ON public.participant_codes;
+DROP POLICY IF EXISTS "codes_admin_insert" ON public.participant_codes;
+DROP POLICY IF EXISTS "codes_admin_update" ON public.participant_codes;
+DROP POLICY IF EXISTS "codes_admin_delete" ON public.participant_codes;
 CREATE POLICY "codes_public_read"   ON public.participant_codes FOR SELECT USING (true);
 CREATE POLICY "codes_admin_insert"  ON public.participant_codes FOR INSERT
   WITH CHECK (get_my_role() IN ('city_admin', 'superadmin'));
@@ -73,7 +78,7 @@ CREATE POLICY "codes_admin_delete"  ON public.participant_codes FOR DELETE
 CREATE TABLE IF NOT EXISTS public.questions (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   city        TEXT NOT NULL,
-  module      INT NOT NULL,
+  module      INT NOT NULL CHECK (module BETWEEN 1 AND 5),
   q           TEXT NOT NULL,
   opts        TEXT[] NOT NULL,
   ans         INT NOT NULL CHECK (ans BETWEEN 0 AND 3),
@@ -84,21 +89,25 @@ CREATE TABLE IF NOT EXISTS public.questions (
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 
--- Add is_practice to existing installations:
+-- Migrations for existing installations:
 ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS is_practice BOOLEAN NOT NULL DEFAULT false;
+-- Fix module constraint to allow module 5 (Aktualności gospodarcze):
+ALTER TABLE public.questions DROP CONSTRAINT IF EXISTS questions_module_check;
+ALTER TABLE public.questions ADD CONSTRAINT questions_module_check CHECK (module BETWEEN 1 AND 5);
 
 ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "questions_admin_select" ON public.questions FOR SELECT
+DROP POLICY IF EXISTS "questions_admin_select"      ON public.questions;
+DROP POLICY IF EXISTS "questions_city_admin_write"  ON public.questions;
+DROP POLICY IF EXISTS "questions_superadmin"        ON public.questions;
+DROP POLICY IF EXISTS "questions_anon_select"       ON public.questions;
+CREATE POLICY "questions_anon_select"       ON public.questions FOR SELECT USING (true);
+CREATE POLICY "questions_admin_select"      ON public.questions FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
-CREATE POLICY "questions_city_admin_write" ON public.questions FOR ALL
+CREATE POLICY "questions_city_admin_write"  ON public.questions FOR ALL
   USING (get_my_role() = 'city_admin' AND city = get_my_city());
-CREATE POLICY "questions_superadmin" ON public.questions FOR ALL
+CREATE POLICY "questions_superadmin"        ON public.questions FOR ALL
   USING (get_my_role() = 'superadmin');
-
--- ⚠️  APPLY IN SUPABASE SQL EDITOR if not already applied:
--- Allow anonymous participants to read questions (required for quiz to work)
-CREATE POLICY "questions_anon_select" ON public.questions FOR SELECT USING (true);
 GRANT SELECT ON public.questions TO anon;
 
 -- ─── QUIZ SESSIONS ────────────────────────────────────────────────
@@ -122,6 +131,8 @@ CREATE TABLE IF NOT EXISTS public.quiz_sessions (
 
 ALTER TABLE public.quiz_sessions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "sessions_select_all"  ON public.quiz_sessions;
+DROP POLICY IF EXISTS "sessions_admin_write" ON public.quiz_sessions;
 CREATE POLICY "sessions_select_all"   ON public.quiz_sessions FOR SELECT USING (true);
 CREATE POLICY "sessions_admin_write"  ON public.quiz_sessions FOR ALL
   USING (get_my_role() IN ('city_admin', 'superadmin'));
@@ -143,11 +154,15 @@ CREATE TABLE IF NOT EXISTS public.answers (
   UNIQUE (session_id, participant_code, question_id)
 );
 
--- ⚠️  APPLY IN SUPABASE SQL EDITOR if not already applied:
-ALTER TABLE public.answers ADD CONSTRAINT answers_points_range CHECK (points BETWEEN 0 AND 1000);
+DO $$ BEGIN
+  ALTER TABLE public.answers ADD CONSTRAINT answers_points_range CHECK (points BETWEEN 0 AND 1000);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 ALTER TABLE public.answers ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "answers_public_insert" ON public.answers;
+DROP POLICY IF EXISTS "answers_admin_select"  ON public.answers;
 CREATE POLICY "answers_public_insert" ON public.answers FOR INSERT WITH CHECK (true);
 CREATE POLICY "answers_admin_select"  ON public.answers FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
@@ -165,10 +180,11 @@ CREATE TABLE IF NOT EXISTS public.violations (
 
 ALTER TABLE public.violations ENABLE ROW LEVEL SECURITY;
 
--- ⚠️  APPLY IN SUPABASE SQL EDITOR if not already applied:
-CREATE POLICY "violations_anon_insert" ON public.violations FOR INSERT
+DROP POLICY IF EXISTS "violations_anon_insert"  ON public.violations;
+DROP POLICY IF EXISTS "violations_admin_select" ON public.violations;
+CREATE POLICY "violations_anon_insert"  ON public.violations FOR INSERT
   WITH CHECK (participant_code IN (SELECT code FROM public.participant_codes WHERE used = true));
-CREATE POLICY "violations_admin_select"  ON public.violations FOR SELECT
+CREATE POLICY "violations_admin_select" ON public.violations FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
 
 -- ─── MODULES (dynamic — overrides hardcoded fallback) ────────────
@@ -186,12 +202,24 @@ CREATE TABLE IF NOT EXISTS public.modules (
 
 ALTER TABLE public.modules ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "modules_admin_all" ON public.modules FOR ALL
+DROP POLICY IF EXISTS "modules_admin_all"   ON public.modules;
+DROP POLICY IF EXISTS "modules_anon_select" ON public.modules;
+CREATE POLICY "modules_anon_select" ON public.modules FOR SELECT USING (true);
+CREATE POLICY "modules_admin_all"   ON public.modules FOR ALL
   USING (get_my_role() IN ('city_admin', 'superadmin'));
-CREATE POLICY "modules_anon_select" ON public.modules FOR SELECT
-  USING (true);
 
 GRANT SELECT ON public.modules TO anon;
+
+-- ─── INDEXES (performance for 500 concurrent users) ──────────────
+
+CREATE INDEX IF NOT EXISTS idx_answers_session_question
+  ON public.answers(session_id, question_id);
+CREATE INDEX IF NOT EXISTS idx_answers_session_participant
+  ON public.answers(session_id, participant_code);
+CREATE INDEX IF NOT EXISTS idx_participant_codes_city_used
+  ON public.participant_codes(city, used);
+CREATE INDEX IF NOT EXISTS idx_quiz_sessions_city_status
+  ON public.quiz_sessions(city, status);
 
 -- ─── REALTIME ─────────────────────────────────────────────────────
 
@@ -203,6 +231,31 @@ DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.participant_codes;
   END IF;
 END $$;
+
+-- ─── RPC FUNCTIONS ───────────────────────────────────────────────
+
+-- Returns aggregated session results (one row per participant).
+-- Uses SECURITY DEFINER to bypass RLS row-count limits on answers table.
+CREATE OR REPLACE FUNCTION public.get_session_results(p_session_id UUID)
+RETURNS TABLE (
+  participant_code TEXT,
+  participant_name TEXT,
+  city             TEXT,
+  total_points     BIGINT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT participant_code, participant_name, city, SUM(points)::BIGINT AS total_points
+  FROM public.answers
+  WHERE session_id = p_session_id
+  GROUP BY participant_code, participant_name, city
+  ORDER BY total_points DESC;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated, anon;
 
 -- ─── GRANTS ───────────────────────────────────────────────────────
 

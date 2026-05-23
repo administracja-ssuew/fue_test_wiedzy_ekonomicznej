@@ -21,9 +21,33 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     return () => clearInterval(t);
   }, []);
 
-  // Poll session status every 3s (works in DEMO + production fallback)
+  // Fetch session once on mount (both DEMO and production)
   useEffect(() => {
     if (!city) return;
+    getSessionForCity(city).then((s) => {
+      if (!s) return;
+      setSession(s);
+      if (s.status === "running") onStartQuiz(s);
+    });
+  }, [city]);
+
+  // Production: Realtime only — no polling interval (saves 100 req/min per 100 users)
+  // DEMO: poll every 3s (no Realtime available)
+  useEffect(() => {
+    if (!city) return;
+    if (!DEMO && supabase) {
+      const channel = supabase.channel(`lobby-${city}`)
+        .on("postgres_changes", {
+          event: "UPDATE", schema: "public", table: "quiz_sessions",
+          filter: `city=eq.${city}`,
+        }, ({ new: s }) => {
+          setSession(s);
+          if (s.status === "running") onStartQuiz(s);
+        })
+        .subscribe();
+      return () => supabase.removeChannel(channel);
+    }
+    // DEMO fallback: polling
     const check = async () => {
       const s = await getSessionForCity(city);
       setSession(s);
@@ -32,27 +56,8 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
         onStartQuiz(s);
       }
     };
-    check();
     pollRef.current = setInterval(check, 3000);
     return () => clearInterval(pollRef.current);
-  }, [city]);
-
-  // Supabase Realtime subscription (instant, no polling delay)
-  useEffect(() => {
-    if (DEMO || !supabase || !city) return;
-    const channel = supabase.channel(`lobby-${city}`)
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "quiz_sessions",
-        filter: `city=eq.${city}`,
-      }, ({ new: s }) => {
-        setSession(s);
-        if (s.status === "running") {
-          clearInterval(pollRef.current);
-          onStartQuiz(s);
-        }
-      })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
   }, [city]);
 
   const statusMsg = !session

@@ -12,6 +12,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import {
+  loginAdmin, logoutAdmin,
   addQuestion, updateQuestion, deleteQuestion, getQuestions,
   generateParticipantCode, getParticipantCodes, deleteParticipantCode,
   getCityBg, setCityBg,
@@ -37,7 +38,8 @@ const BOT_ANSWER_DELAY_MS = parseInt(process.env.BOT_ANSWER_DELAY_MS || "200", 1
 const state = {
   adminId: null,
   testQuestionId: null,
-  botCodes: [],       // [{id, code, name}]
+  botCodes: [],           // [{id, code, name}]
+  botQuestionIds: [],     // ids of questions created by bot (cleaned up after)
   originalBg: null,
   originalModuleTimePerQ: null,
   sessionId: null,
@@ -90,6 +92,12 @@ async function cleanup() {
     try { await deleteQuestion(state.testQuestionId); } catch (_) {}
   }
 
+  // Delete bot quiz questions
+  for (const qId of state.botQuestionIds) {
+    try { await deleteQuestion(qId); } catch (_) {}
+  }
+  if (state.botQuestionIds.length) ok("deleteQuestion × pytań botów", `${state.botQuestionIds.length} usuniętych`);
+
   // Restore cityBg
   if (state.originalBg !== null) {
     try { await setCityBg(BOT_CITY, state.originalBg); } catch (_) {}
@@ -108,6 +116,9 @@ async function cleanup() {
     ok("endAndResetSession", "sesja w stanie waiting");
   }
 
+  // Logout
+  try { await logoutAdmin(); } catch (_) {}
+
   console.log("  done\n");
 }
 
@@ -115,6 +126,11 @@ async function cleanup() {
 
 async function phaseAdminOps(admin) {
   console.log("\n🔧 ADMIN OPERATIONS");
+
+  // Ensure a session exists for the city (needed for setCityBg which updates quiz_sessions)
+  const { data: earlySession, error: earlyErr } = await getOrCreateSession(BOT_CITY, admin.id);
+  if (earlyErr) { fail("getOrCreateSession (admin ops pre-req)", earlyErr); throw new Error(earlyErr); }
+  state.sessionId = earlySession.id;
 
   // A1: addQuestion
   const { data: addedQ, error: addErr } = await addQuestion({
@@ -162,7 +178,8 @@ async function phaseAdminOps(admin) {
   // A7: getCityBg / setCityBg
   state.originalBg = await getCityBg(BOT_CITY);
   const testBg = "linear-gradient(180deg,#ff0000 0%,#0000ff 100%)";
-  await setCityBg(BOT_CITY, testBg);
+  const { error: bgErr } = await setCityBg(BOT_CITY, testBg);
+  if (bgErr) { fail("setCityBg", bgErr); throw new Error(bgErr); }
   const bgAfter = await getCityBg(BOT_CITY);
   assert("getCityBg / setCityBg", bgAfter === testBg, "tło zaktualizowane");
   await setCityBg(BOT_CITY, state.originalBg || "");
@@ -176,7 +193,8 @@ async function phaseAdminOps(admin) {
   const firstMod = modules[0];
   state.testModuleId = firstMod.id;
   state.originalModuleTimePerQ = firstMod.timePerQ;
-  await updateModule(firstMod.id, { timePerQ: 999 });
+  const { error: modUpdErr } = await updateModule(firstMod.id, { timePerQ: 999 });
+  if (modUpdErr) { fail("updateModule", modUpdErr); throw new Error(modUpdErr); }
   const modsAfter = await getModules();
   assert("updateModule", modsAfter.find((m) => m.id === firstMod.id)?.timePerQ === 999, "timePerQ=999");
   await updateModule(firstMod.id, { timePerQ: state.originalModuleTimePerQ });
@@ -195,6 +213,18 @@ async function phaseSetup(admin) {
   state.sessionId = session.id;
   await updateSession(session.id, { status: "waiting", current_question_idx: 0, q_started_at: null });
   ok("getOrCreateSession", `id: ${session.id}`);
+
+  // Create test questions (2 per module = 10 total) — cleaned up in cleanup()
+  const TEST_QUESTIONS = [1, 2, 3, 4, 5].flatMap((modId) => [
+    { city: BOT_CITY, module: modId, q: `[BOT TEST M${modId}] Pytanie A`, opts: ["Odp 1", "Odp 2", "Odp 3", "Odp 4"], ans: 0, exp: "Testowe." },
+    { city: BOT_CITY, module: modId, q: `[BOT TEST M${modId}] Pytanie B`, opts: ["Odp 1", "Odp 2", "Odp 3", "Odp 4"], ans: 1, exp: "Testowe." },
+  ]);
+  for (const qDef of TEST_QUESTIONS) {
+    const { data: qData, error: qErr } = await addQuestion({ ...qDef, createdBy: admin.id });
+    if (qErr) throw new Error(`addQuestion (setup): ${qErr}`);
+    state.botQuestionIds.push(qData.id);
+  }
+  ok("addQuestion × pytań testowych", `${TEST_QUESTIONS.length} pytań (2 × 5 modułów)`);
 
   // Generate bot codes
   const bots = [];
@@ -370,6 +400,20 @@ async function main() {
   const admin = profiles[0];
   state.adminId = admin.id;
   console.log(`\n👤 Admin (service key): ${admin.full_name || admin.id} (${admin.role})`);
+
+  // Zaloguj się do klienta supabase.js (anon key) żeby RLS działało dla admina
+  const adminEmail = process.env.BOT_ADMIN_EMAIL;
+  const adminPassword = process.env.BOT_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPassword) {
+    console.error("❌ Brak BOT_ADMIN_EMAIL lub BOT_ADMIN_PASSWORD w .env");
+    process.exit(1);
+  }
+  const { error: loginErr } = await loginAdmin({ email: adminEmail, password: adminPassword });
+  if (loginErr) {
+    console.error(`❌ loginAdmin: ${loginErr}`);
+    process.exit(1);
+  }
+  console.log(`👤 Admin (auth session): zalogowany jako ${adminEmail}`);
 
   try {
     await phaseAdminOps(admin);

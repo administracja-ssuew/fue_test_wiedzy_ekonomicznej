@@ -19,7 +19,9 @@
       "Bash(git mv *)",
       "Bash(node_modules/.bin/vite build *)",
       "Bash(npm install *)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Skill(gsd:debug)",
+      "Bash(BOT_COUNT=200 BOT_ANSWER_DELAY_MS=100 npm run:*)"
     ]
   }
 }

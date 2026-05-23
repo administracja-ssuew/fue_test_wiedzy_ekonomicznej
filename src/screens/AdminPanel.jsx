@@ -259,15 +259,14 @@ function SesjaTab({ city, adminId, onPodium }) {
     if (session?.status === "running") {
       pollRef.current = setInterval(async () => {
         const q = cityQuestions[session.current_question_idx];
-        if (q && session.id) {
-          const stats = await getLiveQuestionStats(session.id, q.id);
-          setLiveStats(stats);
-        }
-        setParticipants(await getParticipantsInSession(city));
-        if (session.id) {
-          const v = await getViolationsForSession(session.id);
-          setViolations(v);
-        }
+        const [stats, participants, violations] = await Promise.all([
+          q && session.id ? getLiveQuestionStats(session.id, q.id) : Promise.resolve(null),
+          getParticipantsInSession(city),
+          session.id ? getViolationsForSession(session.id) : Promise.resolve([]),
+        ]);
+        if (stats) setLiveStats(stats);
+        setParticipants(participants);
+        setViolations(violations);
       }, 3000);
     }
     return () => clearInterval(pollRef.current);

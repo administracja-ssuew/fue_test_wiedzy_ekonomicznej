@@ -30,7 +30,6 @@ const IconGlobe = () => (
 );
 
 const SOCIAL_LINKS = [
-  { label: "TWE Facebook",  icon: IconFacebook,  href: "#TODO", color: "#1877F2" },
   { label: "FUE Instagram", icon: IconInstagram, href: "https://www.instagram.com/tylkofue/", color: "#E1306C" },
   { label: "FUE Facebook",  icon: IconFacebook,  href: "https://www.facebook.com/ForumUczelniEkonomicznych/", color: "#1877F2" },
   { label: "Strona FUE",    icon: IconGlobe,     href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
@@ -40,7 +39,7 @@ const UNIVERSITIES = [
   { abbr: "UEK",   city: "Kraków",    logo: "/uek.jpg",   color: "#FFA653" },
   { abbr: "SGH",   city: "Warszawa",  logo: "/sgh.png",   color: "#FF6B6B" },
   { abbr: "UEP",   city: "Poznań",    logo: "/uep.png",   color: "#4ECDC4" },
-  { abbr: "UEWr",  city: "Wrocław",   logo: "/uewr.png",  color: "#45B7D1" },
+  { abbr: "UEW",  city: "Wrocław",   logo: "/uewr.png",  color: "#45B7D1" },
   { abbr: "UEKat", city: "Katowice",  logo: "/uekat.png", color: "#FF6B9D" },
 ];
 
@@ -48,20 +47,21 @@ const ORGANIZERS = [
   {
     group: "Prezydium Forum Uczelni Ekonomicznych",
     members: [
-      { name: "Dawid Rutkowski",  role: "Przewodniczący FUE",                                        univ: "UEWr",  photo: null },
-      { name: "Helena Popek",     role: "Wiceprzewodnicząca, ds. Projektów",                          univ: "SGH",   photo: null },
+      { name: "Dawid Rutkowski",  role: "Przewodniczący FUE",                                        univ: "UEW",  photo: null },
+      { name: "Helena Popek",     role: "Wiceprzewodnicząca, Członkini Prezydium ds. Projektów",                          univ: "SGH",   photo: null },
       { name: "Jan Peciak",       role: "Członek Prezydium ds. Kontaktów Zewnętrznych",               univ: "UEKat", photo: null },
       { name: "Maciej Kuźmiński", role: "Członek Prezydium ds. Public Relations",                     univ: "UEK",   photo: null },
       { name: "Jakub Kliński",    role: "Członek Prezydium ds. Administracji",                        univ: "UEP",   photo: null },
     ],
   },
   {
-    group: "Komitet Organizacyjny TWE",
+    group: "Komisja Rewizyjna FUE",
     members: [
-      { name: "Imię Nazwisko", role: "Koordynator Główny TWE",       univ: "UEWr",  photo: null },
-      { name: "Imię Nazwisko", role: "Koordynator ds. Technologii",  univ: "UEKat", photo: null },
-      { name: "Imię Nazwisko", role: "Koordynator ds. Promocji",     univ: "UEK",   photo: null },
-      { name: "Imię Nazwisko", role: "Koordynator ds. Logistyki",    univ: "SGH",   photo: null },
+      { name: "Emilia Ćwiklińska", role: "Uniwersytet Ekonomiczny we Wrocławiu",  photo: "/kr_wroc.png" },
+      { name: "Antoni Świderski", role: "Szkoła Główna Handlowa w Warszawie", photo: "/kr_wwa.png" },
+      { name: "Oliwia Chiwst", role: "Uniwersytet Ekonomiczny w Katowicach",   photo: "/kr_kat.png" },
+      { name: "Mateusz Wasylewicz", role: "Uniwersytet Ekonomiczny w Krakowie",   photo: "/kr_krakow.png" },
+      { name: "Tomasz Starzycki", role: "Uniwersytet Ekonomiczny w Poznaniu",   photo: "/kr_poznan.png" },
     ],
   },
 ];
@@ -69,14 +69,14 @@ const ORGANIZERS = [
 // i wgraj plik do katalogu public/zdjecia/
 
 const UNIV_COLORS = {
-  UEK: "#FFA653", SGH: "#FF6B6B", UEP: "#4ECDC4", UEWr: "#45B7D1", UEKat: "#FF6B9D",
+  UEK: "#FFA653", SGH: "#FF6B6B", UEP: "#4ECDC4", UEW: "#45B7D1", UEKat: "#FF6B9D",
 };
 
 const COORDINATORS_DATA = {
   Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",    phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#FFA653" },
   Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",       phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#FF6B6B" },
   Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",     phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#4ECDC4" },
-  Wrocław:  { name: "Imię Nazwisko", role: "Koordynator KG UEWr",  email: "koordynator@ue.wroc.pl",       phone: "+48 XXX XXX XXX", abbr: "UEWr",  color: "#45B7D1" },
+  Wrocław:  { name: "Hubert Gościmski", role: "Koordynator KG UEW",  email: "hubert.goscimski@samorzad.ue.wroc.pl",       phone: "+48 XXX XXX XXX", abbr: "UEW",  color: "#45B7D1" },
   Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",   phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FF6B9D" },
 };
 

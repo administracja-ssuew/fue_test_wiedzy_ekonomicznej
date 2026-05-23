@@ -301,6 +301,28 @@ GRANT EXECUTE ON FUNCTION public.get_my_role() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_city() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT) TO anon, authenticated;
 
+-- Starts the quiz from 'waiting' state, sets q_started_at using the server clock.
+-- Using clock_timestamp() (not now()) ensures the timestamp reflects the actual
+-- moment of the call, not the transaction start.
+-- Called only by admin (authenticated); participants call advance_session_question.
+CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+BEGIN
+  UPDATE public.quiz_sessions
+  SET status = 'running', q_started_at = v_now, current_question_idx = 0
+  WHERE id = p_session_id AND status = 'waiting';
+  IF FOUND THEN RETURN v_now; ELSE RETURN NULL; END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
 -- ─── SEED: create admin accounts manually in Supabase Auth, then: ─
 -- INSERT INTO public.profiles(id, full_name, city, role)
 --   VALUES ('UUID_FROM_AUTH', 'Jan Kowalski', 'Kraków', 'city_admin');

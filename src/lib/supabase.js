@@ -260,6 +260,27 @@ export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx) {
   return { startedAt: data || null, error: null };
 }
 
+// Starts a waiting session using a server-side timestamp (avoids admin clock skew).
+// Returns { startedAt: string|null, error: string|null }.
+export async function startQuizSession(sessionId) {
+  if (DEMO) {
+    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
+    for (const city of cities) {
+      const key = `fue_session_${city}`;
+      const s = JSON.parse(localStorage.getItem(key) || "null");
+      if (s?.id === sessionId) {
+        const startedAt = new Date().toISOString();
+        localStorage.setItem(key, JSON.stringify({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
+        return { startedAt, error: null };
+      }
+    }
+    return { startedAt: null, error: "Sesja nie znaleziona." };
+  }
+  const { data, error } = await supabase.rpc("start_quiz_session", { p_session_id: sessionId });
+  if (error) return { startedAt: null, error: error.message };
+  return { startedAt: data || null, error: null };
+}
+
 export async function getSessionForCity(city) {
   if (DEMO) {
     const s = localStorage.getItem(`fue_session_${city}`);

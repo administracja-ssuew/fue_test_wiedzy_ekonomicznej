@@ -12,8 +12,13 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
   const [session, setSession]   = useState(null);
   const [dots, setDots]         = useState(".");
   const pollRef                 = useRef(null);
+  // Always-current callback — prevents stale closure bug when MODULES loads after
+  // the Realtime subscription is registered (App re-renders, Lobby effect does not).
+  const onStartQuizRef          = useRef(onStartQuiz);
   const city                    = participant?.city;
   const color                   = CITY_COLORS[city] || "#6B21E8";
+
+  useEffect(() => { onStartQuizRef.current = onStartQuiz; }, [onStartQuiz]);
 
   // Animate waiting dots
   useEffect(() => {
@@ -27,12 +32,11 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     getSessionForCity(city).then((s) => {
       if (!s) return;
       setSession(s);
-      if (s.status === "running") onStartQuiz(s);
+      if (s.status === "running") onStartQuizRef.current(s);
     });
   }, [city]);
 
-  // Production: Realtime only — no polling interval (saves 100 req/min per 100 users)
-  // DEMO: poll every 3s (no Realtime available)
+  // Realtime + safety-net polling in production; polling-only in DEMO.
   useEffect(() => {
     if (!city) return;
     if (!DEMO && supabase) {
@@ -42,28 +46,41 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           filter: `city=eq.${city}`,
         }, ({ new: s }) => {
           setSession(s);
-          if (s.status === "running") onStartQuiz(s);
+          if (s.status === "running") onStartQuizRef.current(s);
         })
         .subscribe(async (status) => {
-          // BUG 1 FIX: Realtime WebSocket handshake takes ~1-2s. If admin clicked Start
-          // during that cold-start window, the UPDATE event was missed. Re-check session
-          // state once the subscription is confirmed so no event can be lost.
+          // Re-check state once WebSocket is confirmed — catches events that fired
+          // during the 1-2s cold-start window before SUBSCRIBED.
           if (status === "SUBSCRIBED") {
             const s = await getSessionForCity(city);
             if (!s) return;
             setSession(s);
-            if (s.status === "running") onStartQuiz(s);
+            if (s.status === "running") onStartQuizRef.current(s);
           }
         });
-      return () => supabase.removeChannel(channel);
+
+      // Safety-net: poll every 5s in case a Realtime event is dropped (e.g. encoding
+      // issues with Polish city names in the filter, or brief network hiccup).
+      pollRef.current = setInterval(async () => {
+        const s = await getSessionForCity(city);
+        if (!s) return;
+        if (s.status === "running") {
+          clearInterval(pollRef.current);
+          onStartQuizRef.current(s);
+        } else {
+          setSession(s);
+        }
+      }, 5000);
+
+      return () => { supabase.removeChannel(channel); clearInterval(pollRef.current); };
     }
-    // DEMO fallback: polling
+    // DEMO fallback: polling only
     const check = async () => {
       const s = await getSessionForCity(city);
       setSession(s);
       if (s?.status === "running") {
         clearInterval(pollRef.current);
-        onStartQuiz(s);
+        onStartQuizRef.current(s);
       }
     };
     pollRef.current = setInterval(check, 3000);

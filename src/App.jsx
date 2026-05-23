@@ -156,16 +156,26 @@ export default function App() {
     return () => supabase.removeChannel(ch);
   }, [quizSession?.id, participant?.code, cityQuestions.length]);
 
-  // ── Admin pause — active from quiz start until session ends ─────────
+  // ── Session status sync — handles pause, force-end, and results reveal ──
   useEffect(() => {
     if (!quizSession?.id || !participant) return;
 
-    const handlePause = (status) => {
+    const QUIZ_SCREENS = ["quiz", "module_intro", "admin_pause", "break", "waiting_results"];
+
+    const handleSessionStatus = (status) => {
       const cur = screenRef.current;
       if (status === "paused" && ["quiz", "module_intro"].includes(cur)) {
         clearInterval(timerRef.current);
         setAnswered(true);
         setScreen("admin_pause");
+      } else if (status === "ended" && QUIZ_SCREENS.includes(cur)) {
+        // Admin force-ended the session — show participant their score immediately
+        clearInterval(timerRef.current);
+        setScreen("ended");
+      } else if (status === "results" && QUIZ_SCREENS.includes(cur)) {
+        // Admin announced results — participants move from waiting_results to ended
+        clearInterval(timerRef.current);
+        setScreen("ended");
       }
     };
 
@@ -173,17 +183,17 @@ export default function App() {
       // DEMO: poll every 2s (no Realtime)
       const poll = setInterval(async () => {
         const s = await getSessionForCity(participant.city);
-        handlePause(s?.status);
+        handleSessionStatus(s?.status);
       }, 2000);
       return () => clearInterval(poll);
     }
 
     // Production: instant via Supabase Realtime
-    const ch = supabase.channel(`admin-pause-${quizSession.id}`)
+    const ch = supabase.channel(`session-sync-${quizSession.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
         filter: `id=eq.${quizSession.id}`,
-      }, ({ new: s }) => handlePause(s.status))
+      }, ({ new: s }) => handleSessionStatus(s.status))
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, [quizSession?.id, participant?.code]); // stable deps — uses screenRef internally

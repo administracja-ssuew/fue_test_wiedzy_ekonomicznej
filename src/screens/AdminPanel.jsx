@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
-  getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
+  getOrCreateSession, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
   getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
@@ -311,7 +311,11 @@ function SesjaTab({ city, adminId, onPodium }) {
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {session?.status === "waiting" && (
-            <button style={C.btn("success", { flex: 1 })} onClick={() => upd({ status: "running", q_started_at: new Date().toISOString() })}>▶ Start quizu</button>
+            <button style={C.btn("success", { flex: 1 })} onClick={async () => {
+              const { startedAt, error } = await startQuizSession(session.id);
+              if (!startedAt) return alert(error || "Błąd startu — spróbuj ponownie.");
+              setSession((s) => ({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
+            }}>▶ Start quizu</button>
           )}
           {session?.status === "running" && <>
             <button style={C.btn("pause", { flex: 1 })} onClick={() => upd({ status: "paused" })}>⏸ Pauza</button>

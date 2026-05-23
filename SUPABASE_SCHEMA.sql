@@ -4,14 +4,24 @@
 -- ════════════════════════════════════════════════════════════════
 
 -- ─── HELPERS ─────────────────────────────────────────────────────
+-- IMPORTANT: SECURITY DEFINER is required on both functions.
+-- Without it, calling get_my_role() inside an RLS policy on "profiles"
+-- causes infinite recursion (Postgres evaluates ALL policies, not short-circuit).
+-- SET search_path = public prevents search_path injection with SECURITY DEFINER.
 
 CREATE OR REPLACE FUNCTION public.get_my_role()
-RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+RETURNS TEXT LANGUAGE sql STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid()
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_my_city()
-RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+RETURNS TEXT LANGUAGE sql STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT city FROM public.profiles WHERE id = auth.uid()
 $$;
 

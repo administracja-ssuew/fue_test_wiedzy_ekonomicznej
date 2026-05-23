@@ -383,6 +383,14 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       )}
 
+      {/* Live ghost view — auto-shown when quiz is running */}
+      {session?.status === "running" && !isPractice && (
+        <div style={{ ...C.card({ marginBottom: 20, padding: "16px 20px", borderColor: "rgba(232,55,107,.25)", background: "rgba(232,55,107,.04)" }) }}>
+          <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>🔴 Live — widok pytania (jak uczestnik)</p>
+          <LiveTab city={city} autoStart />
+        </div>
+      )}
+
       {participants.length > 0 && session?.status !== "ended" && (
         <div style={{ marginBottom: 24 }}>
           <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Uczestnicy w lobby ({participants.length})</p>
@@ -530,11 +538,11 @@ function UstawieniaTab({ city }) {
 const LIVE_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const LIVE_LABELS = ["A", "B", "C", "D"];
 
-function LiveTab({ city }) {
+function LiveTab({ city, autoStart = false }) {
   const MODULES = useModules();
   const [questions, setQuestions]   = useState([]);
   const [session, setSession]       = useState(null);
-  const [phase, setPhase]           = useState("idle");    // idle|quiz|reveal|done
+  const [phase, setPhase]           = useState("idle");    // idle|loading|quiz|reveal|done
   const [gIdx, setGIdx]             = useState(0);          // global question index
   const [timer, setTimer]           = useState(0);
   const [revealData, setRevealData] = useState([]);
@@ -544,6 +552,7 @@ function LiveTab({ city }) {
   const revealRef    = useRef(null);
   const liveRef      = useRef(null);
   const sessionRef   = useRef(null); // always-current session (avoids stale closure in timer)
+  const autoStarted  = useRef(false);
 
   useEffect(() => {
     Promise.all([
@@ -555,6 +564,15 @@ function LiveTab({ city }) {
       setQuestions(dbQs);
     });
   }, [city]);
+
+  // Auto-start live view when embedded in SesjaTab (autoStart prop) and data is ready
+  useEffect(() => {
+    if (!autoStart || autoStarted.current || phase !== "idle" || !questions.length || !session) return;
+    if (session.status === "running") {
+      autoStarted.current = true;
+      startLive();
+    }
+  }, [autoStart, phase, questions.length, session?.status]);
 
   const currentQ = questions[gIdx];
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
@@ -891,7 +909,6 @@ const TABS = [
   { id: "pytania",    label: "📝 Pytania"    },
   { id: "kody",       label: "🎟️ Kody"      },
   { id: "sesja",      label: "🎮 Sesja"     },
-  { id: "live",       label: "🔴 Live"      },
   { id: "moduly",     label: "🧩 Moduły"    },
   { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
@@ -937,7 +954,6 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
         {tab === "pytania"    && <PytaniaTab city={city} />}
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
         {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} onPodium={onPodium} />}
-        {tab === "live"       && <LiveTab    city={city} />}
         {tab === "moduly"     && <ModulyTab />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>

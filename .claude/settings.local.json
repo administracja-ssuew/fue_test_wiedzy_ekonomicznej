@@ -22,7 +22,8 @@
       "Bash(git config *)",
       "Skill(gsd:debug)",
       "Bash(BOT_COUNT=200 BOT_ANSWER_DELAY_MS=100 npm run:*)",
-      "Bash(ls .planning/debug/*.md)"
+      "Bash(ls .planning/debug/*.md)",
+      "Bash(node __TRACKED_VAR__/.claude/get-shit-done/bin/gsd-tools.cjs resolve-model gsd-debugger --raw)"
     ]
   }
 }

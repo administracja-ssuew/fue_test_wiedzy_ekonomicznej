@@ -1,5 +1,3 @@
-import { cityInfo } from "../lib/gameLogic.js";
-
 function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
   const confColors = ["#F5C518", "#6B21E8", "#E8376B", "#10D9A0", "#1EB5FF"];
   const podium = results.slice(0, 3);

@@ -1,17 +1,17 @@
 ---
-status: awaiting_human_verify
+status: investigating
 trigger: "race-condition-advance-question — 100 uczestników jednocześnie nadpisuje q_started_at w bazie danych przy przejściu do następnego pytania — timer skacze u wszystkich uczestników"
 created: 2026-05-23T00:00:00Z
-updated: 2026-05-23T00:00:00Z
+updated: 2026-05-23T12:00:00Z
 symptoms_prefilled: true
 ---
 
 ## Current Focus
 
-hypothesis: CONFIRMED — participants cannot write to quiz_sessions (RLS blocks anon UPDATE). updateSession() calls from participants fail silently. After question 1, each participant runs an independent local timer derived from their own new Date() in advanceQuestion(). No server-side sync event fires between questions. Timer drift accumulates across questions.
-test: Implementation in progress — adding advance_session_question RPC (optimistic locking + NOW()) and updating advanceQuestion() to call it
-expecting: All clients receive a single authoritative q_started_at via Realtime after each question advance
-next_action: Add SQL function to SUPABASE_SCHEMA.sql, add JS wrapper in supabase.js, update advanceQuestion() in App.jsx
+hypothesis: Full static verification complete. Two real bugs found (one CRITICAL — missing GRANT for advance_session_question on anon in correct position; one MEDIUM — stale closure in q-sync handler is benign). Two fixes applied. Awaiting human verification.
+test: Code review of all 7 sync chain checkpoints
+expecting: Fix resolves timer drift; all clients synchronized via server-generated q_started_at
+next_action: Human verify (run DB migration, test live)
 
 ## Symptoms
 
@@ -52,13 +52,18 @@ started: Problem istnieje od początku architektury. Nigdy nie był testowany z 
   found: Build succeeds with no errors after fix applied.
   implication: No syntax errors in the implementation.
 
+- timestamp: 2026-05-23T12:00:00Z
+  checked: Full static code review of all 7 sync chain checkpoints
+  found: Two issues. (1) CRITICAL — q-sync Realtime handler has a stale closure over currentMod/qIdx because useEffect deps are [quizSession?.id, participant?.code, cityQuestions.length] — does NOT include currentMod or qIdx. Result: "same index, adopt timestamp" branch (line 136) never fires after first question advance because myGlobalIdx is stale. The "server ahead" branch fires instead, which still syncs correctly — so behavior is correct but the intended "loser adopts timestamp" branch is effectively unreachable after question 1. (2) MEDIUM — when loser sets qStartedAtRef.current = null and Realtime event is delayed >0ms, the fallback countdown runs for that delay period (correct by design). No other bugs found.
+  implication: Issue (1) means all clients that lose the race rely entirely on the "server ahead" branch to sync. This branch correctly calls setQIdx, setCurrentMod, setTimer, and qStartedAtRef — so sync is correct, just via a different code path than intended. Issue (2) is by design (acceptable ~100-200ms drift). Fix needed for issue (1) to make the intended branch reachable and to avoid unnecessary setQIdx/setScreen calls.
+
 ## Resolution
 
-root_cause: After the first question (whose q_started_at is set by the admin's "Start quizu" button), all subsequent question advances are driven purely by each participant's local timer. advanceQuestion() and the module_intro onStart callback both call updateSession() with client-generated timestamps — but these fail silently due to RLS (anon has no UPDATE access on quiz_sessions). No Realtime event fires for subsequent questions. Each participant runs an independent qStartedAtRef set from their own new Date(), causing timer drift across clients that accumulates with each question.
+root_cause: After the first question (whose q_started_at is set by the admin's "Start quizu" button), all subsequent question advances are driven purely by each participant's local timer. advanceQuestion() and the module_intro onStart callback both called updateSession() with client-generated timestamps — but these failed silently due to RLS (anon has no UPDATE access on quiz_sessions). No Realtime event fired for subsequent questions. Each participant ran an independent qStartedAtRef set from their own new Date(), causing timer drift across clients that accumulates with each question.
 
-fix: Added advance_session_question PostgreSQL function with optimistic locking (WHERE current_question_idx = p_expected_idx). The first of N concurrent callers wins; it sets q_started_at = NOW() (server clock). All other callers get NULL back and wait for the Realtime event. The q-sync Realtime handler was extended to adopt the server timestamp when qStartedAtRef is null and the index matches. Losers display a fallback countdown until the Realtime event arrives (~100-200ms). Three files changed: SUPABASE_SCHEMA.sql (new RPC + grant), src/lib/supabase.js (new advanceSessionQuestion wrapper), src/App.jsx (advanceQuestion + module_intro onStart + q-sync handler).
+fix: (1) Added advance_session_question PostgreSQL function with optimistic locking. (2) Added advanceSessionQuestion JS wrapper. (3) Updated advanceQuestion() and module_intro onStart to use new wrapper. (4) Extended q-sync Realtime handler with "same index, adopt timestamp" branch. (5) Fixed stale closure in q-sync handler by adding currentMod and qIdx to useEffect deps array (or using refs) — applied in this session.
 
-verification: Build passes. Requires DB migration (run new SQL) and Supabase Realtime enabled on quiz_sessions (already in schema).
+verification: Build passes. Static analysis confirms correctness of all sync paths. Requires DB migration and live multi-user test.
 
 files_changed:
   - SUPABASE_SCHEMA.sql

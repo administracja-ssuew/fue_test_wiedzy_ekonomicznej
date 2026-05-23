@@ -49,9 +49,13 @@ export default function App() {
   const screenRef      = useRef(screen); // always-current screen value (avoids stale closures)
   const qStartedAtRef  = useRef(null);   // authoritative question start time (derived from DB)
   const modTimePerQRef = useRef(60);     // always-current timePerQ for active module
+  const currentModRef  = useRef(currentMod); // always-current module (avoids stale closures in Realtime)
+  const qIdxRef        = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
   const isDesktop = useWindowWidth() >= 900;
 
   useEffect(() => { screenRef.current = screen; }, [screen]);
+  useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
+  useEffect(() => { qIdxRef.current = qIdx; }, [qIdx]);
 
   // Only DB questions — no hardcoded fallback
   const activeQuestions = cityQuestions;
@@ -118,8 +122,9 @@ export default function App() {
         filter: `id=eq.${quizSession.id}`,
       }, ({ new: s }) => {
         if (s.status !== "running" || s.current_question_idx === undefined) return;
-        // Oblicz aktualny globalny indeks pytania u tego uczestnika
-        const myGlobalIdx = cityQuestions.filter((q) => q.module < currentMod).length + qIdx;
+        // Use refs for currentMod and qIdx to avoid stale closure values
+        // (this callback is registered once and must always read the latest state).
+        const myGlobalIdx = cityQuestions.filter((q) => q.module < currentModRef.current).length + qIdxRef.current;
         if (s.current_question_idx > myGlobalIdx) {
           // Serwer jest do przodu — pełna synchronizacja (slow client / reconnect)
           const state = getQuestionState(s.current_question_idx, cityQuestions);

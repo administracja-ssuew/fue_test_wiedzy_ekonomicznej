@@ -257,6 +257,40 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated, anon;
 
+-- Advances quiz to the next question using a server-generated timestamp.
+-- Optimistic locking: only updates if current_question_idx matches expected_idx,
+-- so exactly one client wins the race and all others are no-ops.
+-- SECURITY DEFINER bypasses the sessions_admin_write RLS policy so anon participants
+-- can call this; the function itself enforces business logic instead.
+CREATE OR REPLACE FUNCTION public.advance_session_question(
+  p_session_id    UUID,
+  p_expected_idx  INT,   -- current index the caller thinks is active (optimistic lock)
+  p_next_idx      INT    -- index to advance to
+)
+RETURNS TIMESTAMPTZ      -- returns the server-side q_started_at, or NULL if no-op
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_now TIMESTAMPTZ := now();
+BEGIN
+  UPDATE public.quiz_sessions
+  SET
+    current_question_idx = p_next_idx,
+    q_started_at         = v_now,
+    status               = 'running'
+  WHERE id                   = p_session_id
+    AND current_question_idx = p_expected_idx   -- optimistic lock: only wins once
+    AND status               = 'running';       -- only advance while quiz is active
+  IF FOUND THEN
+    RETURN v_now;
+  ELSE
+    RETURN NULL;  -- another client already advanced, caller should sync via Realtime
+  END IF;
+END;
+$$;
+
 -- ─── GRANTS ───────────────────────────────────────────────────────
 
 GRANT USAGE ON SCHEMA public TO authenticated, anon;
@@ -265,6 +299,7 @@ GRANT SELECT ON public.quiz_sessions, public.participant_codes TO anon;
 GRANT INSERT ON public.answers TO anon;
 GRANT EXECUTE ON FUNCTION public.get_my_role() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_city() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT) TO anon, authenticated;
 
 -- ─── SEED: create admin accounts manually in Supabase Auth, then: ─
 -- INSERT INTO public.profiles(id, full_name, city, role)

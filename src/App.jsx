@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession } from "./lib/supabase.js";
+import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
@@ -121,7 +121,7 @@ export default function App() {
         // Oblicz aktualny globalny indeks pytania u tego uczestnika
         const myGlobalIdx = cityQuestions.filter((q) => q.module < currentMod).length + qIdx;
         if (s.current_question_idx > myGlobalIdx) {
-          // Serwer jest do przodu — synchronizuj
+          // Serwer jest do przodu — pełna synchronizacja (slow client / reconnect)
           const state = getQuestionState(s.current_question_idx, cityQuestions);
           if (state) {
             const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
@@ -132,6 +132,17 @@ export default function App() {
             setCurrentMod(state.modId); setQIdx(state.qIdx);
             setTimer(remaining); setAnswered(false); setPicked(null);
             setScreen("quiz");
+          }
+        } else if (s.current_question_idx === myGlobalIdx && !qStartedAtRef.current && s.q_started_at) {
+          // Same question index but we lost the optimistic-lock race and have no local
+          // q_started_at yet — adopt the winner's server-generated timestamp.
+          const state = getQuestionState(myGlobalIdx, cityQuestions);
+          if (state) {
+            const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+            const remaining = Math.max(1, state.mod.timePerQ - elapsed);
+            qStartedAtRef.current  = s.q_started_at;
+            modTimePerQRef.current = state.mod.timePerQ;
+            setTimer(remaining);
           }
         }
       })
@@ -213,16 +224,34 @@ export default function App() {
     // Timer keeps running — handleTimeout will reveal the answer
   };
 
-  const advanceQuestion = () => {
+  const advanceQuestion = async () => {
     const nextIdx = qIdx + 1;
     if (nextIdx < qs.length) {
-      const startedAt = new Date().toISOString();
-      qStartedAtRef.current  = startedAt;
+      const nextGlobalIdx = activeQuestions.filter((q) => q.module < currentMod).length + nextIdx;
+      const curGlobalIdx  = nextGlobalIdx - 1;
       modTimePerQRef.current = mod.timePerQ;
-      if (quizSession) {
-        const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + nextIdx;
-        updateSession(quizSession.id, { q_started_at: startedAt, current_question_idx: globalIdx });
+
+      if (quizSession && !DEMO) {
+        // Race-safe: only one client wins; winner gets server-generated timestamp back.
+        // Loser gets null and waits for Realtime event from the winner's DB write.
+        const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
+        if (startedAt) {
+          // This client won the optimistic lock — use the authoritative server timestamp.
+          qStartedAtRef.current = startedAt;
+        } else {
+          // Lost the race — clear local ref so the timer uses fallback countdown
+          // until the Realtime event arrives with the winner's q_started_at.
+          qStartedAtRef.current = null;
+        }
+      } else if (DEMO && quizSession) {
+        // DEMO mode: advanceSessionQuestion handles localStorage optimistic lock.
+        const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
+        qStartedAtRef.current = startedAt || new Date().toISOString();
+      } else {
+        // No session (solo practice without session) — local timestamp is fine.
+        qStartedAtRef.current = new Date().toISOString();
       }
+
       setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
     } else {
       const nextMod = currentMod + 1;
@@ -355,16 +384,23 @@ export default function App() {
     return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
 
   if (screen === "module_intro")
-    return <ModuleIntro currentMod={currentMod} onStart={() => {
-      const startedAt = new Date().toISOString();
+    return <ModuleIntro currentMod={currentMod} onStart={async () => {
       const timePerQ  = mod?.timePerQ || 60;
-      qStartedAtRef.current  = startedAt;
       modTimePerQRef.current = timePerQ;
       setTimer(timePerQ);
       setScreen("quiz");
       if (quizSession) {
         const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
-        updateSession(quizSession.id, { q_started_at: startedAt, current_question_idx: globalIdx });
+        // prevGlobalIdx is the last question of the previous module (or -1 for module 1 start).
+        // We use globalIdx as both expected and next so the optimistic lock key is globalIdx itself;
+        // we pass globalIdx - 1 as expected so any client at idx-1 can advance to globalIdx.
+        // For module 1, the admin wrote q_started_at via "Start quizu" — no race here.
+        // For subsequent modules, previous question was globalIdx-1.
+        const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx);
+        qStartedAtRef.current = startedAt || null; // null → wait for Realtime from winner
+      } else {
+        // No session (practice / demo fallback)
+        qStartedAtRef.current = new Date().toISOString();
       }
     }} />;
 

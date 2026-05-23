@@ -261,20 +261,21 @@ export default function App() {
     } else {
       const nextMod = currentMod + 1;
       if (BREAK_AFTER.includes(currentMod)) {
-        // Automatyczna przerwa po module 2 lub 4
+        // Automatyczna przerwa po module 2
         const afterBreakModule = nextMod <= MODULES.length ? nextMod : null;
         setNextModule(afterBreakModule);
         setPicked(null); setAnswered(false);
         setScreen("break");
-        // Poinformuj sesję o pauzie (admin widzi stan)
-        if (quizSession) updateSession(quizSession.id, { status: "paused" });
+        // BUG 3 FIX: NIE zapisuj status:"paused" do bazy — to robiło by każdy uczestnik
+        // osobno, triggerując admin-pause Realtime subscription u innych uczestników.
+        // Status sesji kontroluje wyłącznie admin (przycisk Pauza w AdminPanel).
       } else if (nextMod <= MODULES.length) {
         setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
         setTimer(getModule(nextMod, MODULES).timePerQ); setScreen("module_intro");
       } else {
         // Wszystkie moduły skończone → czekaj na ogłoszenie wyników przez admina
         setScreen("waiting_results");
-        if (quizSession) updateSession(quizSession.id, { status: "paused" });
+        // BUG 3 FIX: NIE zapisuj status:"paused" do bazy — patrz komentarz wyżej.
       }
     }
   };

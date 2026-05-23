@@ -44,7 +44,17 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           setSession(s);
           if (s.status === "running") onStartQuiz(s);
         })
-        .subscribe();
+        .subscribe(async (status) => {
+          // BUG 1 FIX: Realtime WebSocket handshake takes ~1-2s. If admin clicked Start
+          // during that cold-start window, the UPDATE event was missed. Re-check session
+          // state once the subscription is confirmed so no event can be lost.
+          if (status === "SUBSCRIBED") {
+            const s = await getSessionForCity(city);
+            if (!s) return;
+            setSession(s);
+            if (s.status === "running") onStartQuiz(s);
+          }
+        });
       return () => supabase.removeChannel(channel);
     }
     // DEMO fallback: polling

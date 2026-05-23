@@ -953,7 +953,14 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
       <div style={{ flex: 1, overflow: "auto", padding: isDesktop ? "28px 40px" : "20px 16px", maxWidth: 900, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
         {tab === "pytania"    && <PytaniaTab city={city} />}
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
-        {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} onPodium={onPodium} />}
+        {/* BUG 3 FIX: SesjaTab pozostaje zamontowany przez cały czas pobytu na AdminPanel
+            (używamy display:none zamiast conditional render). Dzięki temu:
+            - getOrCreateSession nie jest wywoływane na nowo przy każdym powrocie do zakładki
+            - pollRef i kanały Realtime nie są resetowane
+            - stan sesji (session, liveStats) nie gubi się przy przełączeniu zakładki */}
+        <div style={{ display: tab === "sesja" ? "block" : "none" }}>
+          <SesjaTab city={city} adminId={admin?.id} onPodium={onPodium} />
+        </div>
         {tab === "moduly"     && <ModulyTab />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>

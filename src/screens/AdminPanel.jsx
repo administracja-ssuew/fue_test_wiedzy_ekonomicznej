@@ -235,6 +235,7 @@ function SesjaTab({ city, adminId }) {
   const [violations, setViolations]     = useState([]);
   const [loading, setLoading]           = useState(true);
   const [isPractice, setIsPractice]     = useState(false);
+  const [cityQuestions, setCityQuestions] = useState([]);
   const pollRef = useRef(null);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
@@ -247,6 +248,8 @@ function SesjaTab({ city, adminId }) {
       setParticipants(await getParticipantsInSession(city));
       if (data.status === "ended") setResults(await getSessionResults(data.id));
     }
+    const qs = await getQuestions(city);
+    setCityQuestions(qs);
     setLoading(false);
   };
 
@@ -255,9 +258,7 @@ function SesjaTab({ city, adminId }) {
     clearInterval(pollRef.current);
     if (session?.status === "running") {
       pollRef.current = setInterval(async () => {
-        const qs = await import("../data/questions.js");
-        const questions = qs.QUESTIONS;
-        const q = questions[session.current_question_idx];
+        const q = cityQuestions[session.current_question_idx];
         if (q && session.id) {
           const stats = await getLiveQuestionStats(session.id, q.id);
           setLiveStats(stats);
@@ -270,7 +271,7 @@ function SesjaTab({ city, adminId }) {
       }, 3000);
     }
     return () => clearInterval(pollRef.current);
-  }, [session?.status, session?.current_question_idx]);
+  }, [session?.status, session?.current_question_idx, cityQuestions]);
 
   const upd = async (updates) => {
     if (!session) return;

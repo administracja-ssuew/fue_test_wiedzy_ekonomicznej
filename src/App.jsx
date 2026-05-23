@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { MODULES } from "./data/questions.js";
 import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
+import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
 
@@ -42,6 +42,7 @@ export default function App() {
   // After module 5 → waiting_results (admin reveals ranking manually)
   const BREAK_AFTER = [2];
 
+  const MODULES   = useModules(); // dynamic from DB (or hardcoded fallback)
   const timerRef  = useRef(null);
   const pickTime  = useRef(null);
   const screenRef = useRef(screen); // always-current screen value (avoids stale closures)
@@ -53,13 +54,13 @@ export default function App() {
   const activeQuestions = cityQuestions;
   const qs       = activeQuestions.filter((q) => q.module === currentMod);
   const currentQ = qs[qIdx];
-  const mod      = getModule(currentMod);
+  const mod      = getModule(currentMod, MODULES);
 
   // ── Helpers — synchronizacja z globalnym indeksem pytania ────────
   const getQuestionState = (globalIdx, questions) => {
     const q = questions[globalIdx];
     if (!q) return null;
-    const m = getModule(q.module);
+    const m = getModule(q.module, MODULES);
     if (!m) return null;
     const modQs = questions.filter((q2) => q2.module === q.module);
     const qIdxInMod = modQs.findIndex((q2) => q2.id === q.id);
@@ -216,7 +217,7 @@ export default function App() {
         if (quizSession) updateSession(quizSession.id, { status: "paused" });
       } else if (nextMod <= MODULES.length) {
         setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
-        setTimer(getModule(nextMod).timePerQ); setScreen("module_intro");
+        setTimer(getModule(nextMod, MODULES).timePerQ); setScreen("module_intro");
       } else {
         // Wszystkie moduły skończone → czekaj na ogłoszenie wyników przez admina
         setScreen("waiting_results");
@@ -229,7 +230,7 @@ export default function App() {
   const handleResumeFromBreak = () => {
     if (nextModule && nextModule <= MODULES.length) {
       setCurrentMod(nextModule); setQIdx(0); setPicked(null); setAnswered(false);
-      setTimer(getModule(nextModule).timePerQ); setScreen("module_intro");
+      setTimer(getModule(nextModule, MODULES).timePerQ); setScreen("module_intro");
     } else {
       setScreen("ended"); // moduł 5 = ogłoszenie wyników
     }
@@ -273,7 +274,7 @@ export default function App() {
 
     // Pierwsza sesja — zacznij od początku (module_intro)
     setCurrentMod(1); setQIdx(0);
-    setPicked(null); setAnswered(false); setTimer(MODULES[0].timePerQ);
+    setPicked(null); setAnswered(false); setTimer(MODULES[0]?.timePerQ ?? 60);
     setScreen("module_intro");
   };
 

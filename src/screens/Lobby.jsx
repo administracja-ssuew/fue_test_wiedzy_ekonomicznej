@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { MODULES } from "../data/questions.js";
+
 import { moduleQuestions } from "../lib/gameLogic.js";
 import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
+import { useModules } from "../context/ModulesContext.jsx";
 
 const CITY_ICONS = { Kraków: "🏰", Warszawa: "🏛️", Poznań: "🐐", Wrocław: "🦌", Katowice: "⚙️" };
 const CITY_COLORS = { Kraków: "#FFA653", Warszawa: "#FF6B6B", Poznań: "#4ECDC4", Wrocław: "#45B7D1", Katowice: "#FF6B9D" };
 
 export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz, onPractice }) {
+  const MODULES = useModules();
   const [session, setSession]   = useState(null);
   const [dots, setDots]         = useState(".");
   const pollRef                 = useRef(null);

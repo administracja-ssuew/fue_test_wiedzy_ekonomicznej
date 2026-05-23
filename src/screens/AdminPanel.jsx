@@ -5,8 +5,10 @@ import {
   getOrCreateSession, updateSession, getParticipantsInSession, getSessionResults,
   getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
+  getModules, addModule, updateModule, deleteModule,
 } from "../lib/supabase.js";
-import { CITIES, MODULES } from "../data/questions.js";
+import { CITIES } from "../data/questions.js";
+import { useModules } from "../context/ModulesContext.jsx";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -37,7 +39,7 @@ function CityPicker({ city, setCity }) {
       {CITIES.map((c) => (
         <button key={c.name} onClick={() => setCity(c.name)}
           style={{ ...C.btn("ghost"), background: city === c.name ? `${CITY_COLORS[c.name]}25` : undefined, borderColor: city === c.name ? `${CITY_COLORS[c.name]}55` : undefined, color: city === c.name ? "#EDE9FE" : "#9B89CC" }}>
-          {c.icon} {c.name}
+          {c.name}
         </button>
       ))}
     </div>
@@ -49,6 +51,7 @@ function CityPicker({ city, setCity }) {
 const EMPTY = { module: 1, q: "", opts: ["", "", "", ""], ans: 0, exp: "" };
 
 function PytaniaTab({ city }) {
+  const MODULES = useModules();
   const [questions, setQuestions] = useState([]);
   const [mod, setMod] = useState(1);
   const [form, setForm] = useState(null);
@@ -515,6 +518,7 @@ const LIVE_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const LIVE_LABELS = ["A", "B", "C", "D"];
 
 function LiveTab({ city }) {
+  const MODULES = useModules();
   const [questions, setQuestions]   = useState([]);
   const [session, setSession]       = useState(null);
   const [phase, setPhase]           = useState("idle");    // idle|quiz|reveal|done
@@ -741,6 +745,123 @@ function LiveTab({ city }) {
   );
 }
 
+// ─── Tab: Moduły ─────────────────────────────────────────────────────────────
+
+const EMPTY_MOD = { id: "", name: "", icon: "📚", color: "#6B21E8", timePerQ: 60, desc: "" };
+
+function ModulyTab() {
+  const ctxModules = useModules();
+  const [list, setList]       = useState(ctxModules);
+  const [form, setForm]       = useState(null);
+  const [editId, setEditId]   = useState(null);
+  const [saving, setSaving]   = useState(false);
+
+  useEffect(() => { getModules().then((m) => setList(m)); }, []);
+
+  const reload = () => getModules().then((m) => setList(m));
+
+  const openAdd  = () => { setForm({ ...EMPTY_MOD }); setEditId(null); };
+  const openEdit = (m) => { setForm({ id: m.id, name: m.name, icon: m.icon, color: m.color, timePerQ: m.timePerQ, desc: m.desc || "" }); setEditId(m.id); };
+
+  const save = async () => {
+    if (!form.name.trim() || !form.id) return alert("Podaj ID (liczbę) i nazwę modułu.");
+    setSaving(true);
+    if (editId) {
+      await updateModule(editId, { name: form.name, icon: form.icon, color: form.color, time_per_q: form.timePerQ, description: form.desc });
+    } else {
+      await addModule(form);
+    }
+    setSaving(false); setForm(null); setEditId(null); reload();
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Usunąć moduł? Pytania powiązane z tym ID modułu stracą przypisanie.")) return;
+    await deleteModule(id); reload();
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 16 }}>
+        <div>
+          <p style={{ fontWeight: 700, fontSize: 15 }}>Moduły quizu</p>
+          <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 3, lineHeight: 1.5 }}>
+            Zdefiniuj moduły tematyczne — każdy ma własny czas na pytanie i motyw kolorystyczny.
+          </p>
+        </div>
+        <button onClick={openAdd} style={{ ...C.btn("primary"), whiteSpace: "nowrap", flexShrink: 0 }}>+ Nowy moduł</button>
+      </div>
+
+      {form && (
+        <div style={{ ...C.card({ padding: "20px", marginBottom: 20, borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.06)" }) }}>
+          <p style={{ fontWeight: 700, color: "#C4B5FD", marginBottom: 14 }}>{editId ? "Edytuj moduł" : "Nowy moduł"}</p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <span style={C.lbl}>ID (liczba)</span>
+              <input type="number" value={form.id} onChange={(e) => setForm((p) => ({ ...p, id: +e.target.value }))}
+                style={C.input()} placeholder="5" disabled={!!editId} min="1" />
+            </div>
+            <div>
+              <span style={C.lbl}>Ikona (emoji)</span>
+              <input value={form.icon} onChange={(e) => setForm((p) => ({ ...p, icon: e.target.value }))}
+                style={C.input()} placeholder="📚" />
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <span style={C.lbl}>Nazwa modułu</span>
+              <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                style={C.input()} placeholder="np. Aktualności gospodarcze" />
+            </div>
+            <div>
+              <span style={C.lbl}>Kolor</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="color" value={form.color} onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
+                  style={{ width: 42, height: 38, borderRadius: 8, border: "1px solid rgba(255,255,255,.1)", background: "none", cursor: "pointer", padding: 2 }} />
+                <input value={form.color} onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
+                  style={C.input({ flex: 1 })} placeholder="#6B21E8" />
+              </div>
+            </div>
+            <div>
+              <span style={C.lbl}>Czas na pytanie (s)</span>
+              <input type="number" value={form.timePerQ} onChange={(e) => setForm((p) => ({ ...p, timePerQ: +e.target.value }))}
+                style={C.input()} placeholder="60" min="5" max="300" />
+            </div>
+            <div style={{ gridColumn: "1/-1" }}>
+              <span style={C.lbl}>Opis (opcjonalny)</span>
+              <input value={form.desc} onChange={(e) => setForm((p) => ({ ...p, desc: e.target.value }))}
+                style={C.input()} placeholder="Krótki opis modułu widoczny przed startem" />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+            <button onClick={() => setForm(null)} style={C.btn("ghost")}>Anuluj</button>
+            <button onClick={save} style={C.btn("primary")} disabled={saving}>{saving ? "Zapisuję…" : "Zapisz"}</button>
+          </div>
+        </div>
+      )}
+
+      {list.length === 0
+        ? <p style={{ color: "#9B89CC", textAlign: "center", padding: "32px 0" }}>Brak zdefiniowanych modułów.</p>
+        : list.map((m) => (
+          <div key={m.id} style={{ ...C.card({ padding: "14px 18px", marginBottom: 10, borderColor: `${m.color}28`, background: `${m.color}08` }), display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 12, background: `${m.color}20`, border: `1px solid ${m.color}40`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+              {m.icon}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <p style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</p>
+                <span style={{ background: `${m.color}20`, border: `1px solid ${m.color}35`, borderRadius: 20, padding: "1px 8px", fontSize: 10, fontWeight: 700, color: m.color }}>ID {m.id}</span>
+              </div>
+              <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 3 }}>{m.timePerQ}s / pytanie{m.desc ? ` · ${m.desc}` : ""}</p>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => openEdit(m)} style={C.btn("ghost", { padding: "5px 10px" })}>✏️</button>
+              <button onClick={() => remove(m.id)} style={C.btn("danger", { padding: "5px 10px" })}>🗑️</button>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -748,6 +869,7 @@ const TABS = [
   { id: "kody",       label: "🎟️ Kody"      },
   { id: "sesja",      label: "🎮 Sesja"     },
   { id: "live",       label: "🔴 Live"      },
+  { id: "moduly",     label: "🧩 Moduły"    },
   { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
 
@@ -793,6 +915,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
         {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} />}
         {tab === "live"       && <LiveTab    city={city} />}
+        {tab === "moduly"     && <ModulyTab />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>
     </div>

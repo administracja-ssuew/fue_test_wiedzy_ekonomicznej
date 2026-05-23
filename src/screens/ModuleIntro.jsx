@@ -1,5 +1,6 @@
-import { MODULES } from "../data/questions.js";
+
 import { getModule, moduleQuestions } from "../lib/gameLogic.js";
+import { useModules } from "../context/ModulesContext.jsx";
 
 const W = {
   wrap: {
@@ -34,7 +35,8 @@ const W = {
 };
 
 export default function ModuleIntro({ currentMod, onStart }) {
-  const mod = getModule(currentMod);
+  const MODULES = useModules();
+  const mod = getModule(currentMod, MODULES);
   return (
     <div style={W.wrap}>
       <div className="fue-page" style={{ justifyContent: "center", alignItems: "center", padding: "40px 28px", textAlign: "center" }}>

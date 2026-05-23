@@ -1,9 +1,9 @@
 export const CITIES = [
-  { name: "Katowice", icon: "⚙️", color: "#FF6B9D" },
-  { name: "Kraków",   icon: "🏰", color: "#FFA653" },
-  { name: "Poznań",   icon: "🐐", color: "#4ECDC4" },
-  { name: "Warszawa", icon: "🏛️", color: "#FF6B6B" },
-  { name: "Wrocław",  icon: "🦌", color: "#45B7D1" },
+  { name: "Katowice", abbr: "UEKat", logo: "/uekat.png", color: "#FF6B9D" },
+  { name: "Kraków",   abbr: "UEK",   logo: "/uek.jpg",   color: "#FFA653" },
+  { name: "Poznań",   abbr: "UEP",   logo: "/uep.png",   color: "#4ECDC4" },
+  { name: "Warszawa", abbr: "SGH",   logo: "/sgh.png",   color: "#FF6B6B" },
+  { name: "Wrocław",  abbr: "UEWr",  logo: "/uewr.png",  color: "#45B7D1" },
 ];
 
 export const MODULES = [

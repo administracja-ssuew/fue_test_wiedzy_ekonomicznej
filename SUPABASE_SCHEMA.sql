@@ -147,6 +147,28 @@ CREATE POLICY "violations_anon_insert"   ON public.violations FOR INSERT WITH CH
 CREATE POLICY "violations_admin_select"  ON public.violations FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
 
+-- ─── MODULES (dynamic — overrides hardcoded fallback) ────────────
+
+CREATE TABLE IF NOT EXISTS public.modules (
+  id          INT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  icon        TEXT NOT NULL DEFAULT '📚',
+  color       TEXT NOT NULL DEFAULT '#6B21E8',
+  time_per_q  INT  NOT NULL DEFAULT 60,
+  description TEXT,
+  sort_order  INT  NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.modules ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "modules_admin_all" ON public.modules FOR ALL
+  USING (get_my_role() IN ('city_admin', 'superadmin'));
+CREATE POLICY "modules_anon_select" ON public.modules FOR SELECT
+  USING (true);
+
+GRANT SELECT ON public.modules TO anon;
+
 -- ─── REALTIME ─────────────────────────────────────────────────────
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_sessions;

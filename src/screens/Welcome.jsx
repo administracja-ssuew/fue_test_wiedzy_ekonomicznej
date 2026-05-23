@@ -31,8 +31,8 @@ const IconGlobe = () => (
 
 const SOCIAL_LINKS = [
   { label: "TWE Facebook",  icon: IconFacebook,  href: "#TODO", color: "#1877F2" },
-  { label: "FUE Instagram", icon: IconInstagram, href: "#TODO", color: "#E1306C" },
-  { label: "FUE Facebook",  icon: IconFacebook,  href: "#TODO", color: "#1877F2" },
+  { label: "FUE Instagram", icon: IconInstagram, href: "https://www.instagram.com/tylkofue/", color: "#E1306C" },
+  { label: "FUE Facebook",  icon: IconFacebook,  href: "https://www.facebook.com/ForumUczelniEkonomicznych/", color: "#1877F2" },
   { label: "Strona FUE",    icon: IconGlobe,     href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
 ];
 
@@ -73,30 +73,38 @@ const UNIV_COLORS = {
 };
 
 const COORDINATORS_DATA = {
-  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",    phone: "+48 XXX XXX XXX", emoji: "🏰", color: "#FFA653" },
-  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",       phone: "+48 XXX XXX XXX", emoji: "🏛️", color: "#FF6B6B" },
-  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",     phone: "+48 XXX XXX XXX", emoji: "🐐", color: "#4ECDC4" },
-  Wrocław:  { name: "Imię Nazwisko", role: "Koordynator KG UEWr",  email: "koordynator@ue.wroc.pl",       phone: "+48 XXX XXX XXX", emoji: "🦌", color: "#45B7D1" },
-  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",   phone: "+48 XXX XXX XXX", emoji: "⚙️", color: "#FF6B9D" },
+  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",    phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#FFA653" },
+  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",       phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#FF6B6B" },
+  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",     phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#4ECDC4" },
+  Wrocław:  { name: "Imię Nazwisko", role: "Koordynator KG UEWr",  email: "koordynator@ue.wroc.pl",       phone: "+48 XXX XXX XXX", abbr: "UEWr",  color: "#45B7D1" },
+  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",   phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FF6B9D" },
 };
 
-const SCHEDULE = [
-  { time: "09:30", label: "Rejestracja uczestników",               icon: "📋" },
-  { time: "10:00", label: "Powitanie i omówienie zasad",            icon: "🎤" },
-  { time: "10:15", label: "Start Etapu Regionalnego",               icon: "🏁" },
-  { time: "11:30", label: "Zakończenie testu · przerwa",            icon: "⏸️" },
-  { time: "12:00", label: "Ogłoszenie wyników i wręczenie nagród",  icon: "🏆" },
-];
+const SCHEDULE = {
+  default: [
+    { time: "09:30", label: "Rejestracja uczestników",               icon: "📋" },
+    { time: "10:00", label: "Powitanie i omówienie zasad",            icon: "🎤" },
+    { time: "10:15", label: "Start Etapu Regionalnego",               icon: "🏁" },
+    { time: "11:30", label: "Zakończenie testu · przerwa",            icon: "⏸️" },
+    { time: "12:00", label: "Ogłoszenie wyników i wręczenie nagród",  icon: "🏆" },
+  ],
+  // Per-city overrides — fill in before the event:
+  // Kraków: [ ... ],
+};
 
-const RULES = [
-  "Udział w teście jest dobrowolny i bezpłatny.",
-  "Podczas testu obowiązuje zakaz używania telefonów i notatek.",
-  "Test składa się z 4 modułów tematycznych i 32 pytań zamkniętych (A/B/C/D).",
-  "Punktacja: 500 pkt za poprawną odpowiedź + bonus za szybkość do 500 pkt.",
-  "Raz zatwierdzonej odpowiedzi nie można zmienić — odpowiadaj uważnie.",
-  "Top 5 uczestników z każdego miasta awansuje do Etapu Ogólnopolskiego.",
-  "Organizatorzy zastrzegają sobie prawo do dyskwalifikacji uczestnika.",
-];
+const RULES = {
+  default: [
+    "Udział w teście jest dobrowolny i bezpłatny.",
+    "Podczas testu obowiązuje zakaz używania telefonów i notatek.",
+    "Test składa się z 4 modułów tematycznych i 32 pytań zamkniętych (A/B/C/D).",
+    "Punktacja: 500 pkt za poprawną odpowiedź + bonus za szybkość do 500 pkt.",
+    "Raz zatwierdzonej odpowiedzi nie można zmienić — odpowiadaj uważnie.",
+    "Top 5 uczestników z każdego miasta awansuje do Etapu Ogólnopolskiego.",
+    "Organizatorzy zastrzegają sobie prawo do dyskwalifikacji uczestnika.",
+  ],
+  // Per-city overrides:
+  // Kraków: [ ... ],
+};
 
 const CITY_ADDRESSES = {
   Kraków:   "ul. Rakowicka 27, 31-510 Kraków — TODO: sala",
@@ -202,7 +210,7 @@ function CitySelector({ city, setCity }) {
             fontSize: 13, fontWeight: 600, color: city === c.name ? "#EDE9FE" : "#9B89CC",
             transition: "all .15s", fontFamily: '"Space Grotesk",sans-serif',
           }}>
-          <span>{c.icon}</span>{c.name}
+          <span style={{ fontFamily: '"Bebas Neue"', fontSize: 10, letterSpacing: .5, background: c.color + "22", padding: "1px 6px", borderRadius: 4, color: c.color }}>{c.abbr}</span>{c.name}
         </button>
       ))}
     </div>
@@ -308,6 +316,10 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
 
       {/* Background gradient overlay */}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(107,33,232,.06) 0%, transparent 50%, rgba(245,197,24,.04) 100%)", pointerEvents: "none" }} />
+
+      {/* FUE logo watermark */}
+      <img src="/fue.png" alt="" aria-hidden="true"
+        style={{ position: "absolute", width: "min(520px, 75%)", opacity: .055, pointerEvents: "none", userSelect: "none", zIndex: 0 }} />
 
       {/* Animated elegant shapes */}
       <Shape gradient="rgba(107,33,232,.14)" delay={0}   style={{ width: 580, height: 120, top: "12%",  left: "-8%",  anim: 1, dur: 10 }} />
@@ -465,10 +477,11 @@ function KoordynatorzyTab({ city, setCity }) {
               background: `linear-gradient(135deg,${coord.color}30,${coord.color}15)`,
               border: `2px solid ${coord.color}45`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 32, flexShrink: 0,
+              flexShrink: 0,
               boxShadow: `0 8px 24px ${coord.color}25`,
+              fontFamily: '"Bebas Neue"', fontSize: 18, letterSpacing: 1, color: coord.color,
             }}>
-              {coord.emoji}
+              {coord.abbr}
             </div>
             <div>
               <p style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}>{coord.name}</p>
@@ -529,11 +542,11 @@ function InformatorTab({ city, setCity }) {
               <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>📍 Miejsce</p>
               <p style={{ fontSize: 14, fontWeight: 600 }}>{address}</p>
             </div>
-            {SCHEDULE.map((s, i) => (
+            {(SCHEDULE[city] || SCHEDULE.default).map((s, i) => (
               <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start", paddingBottom: 20, animation: "cardIn .4s ease both", animationDelay: `${i * .07}s` }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 20 }}>
                   <div style={{ width: 10, height: 10, borderRadius: "50%", background: i === 2 ? "#6B21E8" : "#4F46E5", border: "2px solid rgba(107,33,232,.4)", marginTop: 5, ...(i === 2 ? { boxShadow: "0 0 8px rgba(107,33,232,.6)" } : {}) }} />
-                  {i < SCHEDULE.length - 1 && <div style={{ width: 2, flex: 1, background: "rgba(107,33,232,.2)", marginTop: 4, minHeight: 24 }} />}
+                  {i < (SCHEDULE[city] || SCHEDULE.default).length - 1 && <div style={{ width: 2, flex: 1, background: "rgba(107,33,232,.2)", marginTop: 4, minHeight: 24 }} />}
                 </div>
                 <div>
                   <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 22, color: "#F5C518", letterSpacing: 1.5, lineHeight: 1 }}>{s.time}</p>
@@ -546,7 +559,7 @@ function InformatorTab({ city, setCity }) {
 
         {section === "zasady" && (
           <div key="zasady" style={{ display: "flex", flexDirection: "column", gap: 10, animation: "blurIn .35s ease both" }}>
-            {RULES.map((r, i) => (
+            {(RULES[city] || RULES.default).map((r, i) => (
               <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", ...W.card({ padding: "14px 16px" }), animation: "cardIn .4s ease both", animationDelay: `${i * .05}s`,
                 transition: "border-color .2s" }}
                 onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(107,33,232,.35)")}
@@ -562,8 +575,8 @@ function InformatorTab({ city, setCity }) {
           <div key="kontakt" style={{ animation: "blurIn .35s ease both" }}>
             <div style={{ ...W.card({ padding: "28px", borderColor: `${coord.color}35` }), background: `linear-gradient(135deg, ${coord.color}10, ${coord.color}05)` }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: `${coord.color}22`, border: `2px solid ${coord.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, boxShadow: `0 6px 20px ${coord.color}25` }}>
-                  {coord.emoji}
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: `${coord.color}22`, border: `2px solid ${coord.color}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 6px 20px ${coord.color}25`, fontFamily: '"Bebas Neue"', fontSize: 16, letterSpacing: 1, color: coord.color }}>
+                  {coord.abbr}
                 </div>
                 <div>
                   <p style={{ fontWeight: 700, fontSize: 16 }}>{coord.name}</p>

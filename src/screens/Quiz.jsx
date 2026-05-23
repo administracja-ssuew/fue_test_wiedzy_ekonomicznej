@@ -1,6 +1,7 @@
-import { MODULES } from "../data/questions.js";
+
 import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
 import useAntiCheat from "../hooks/useAntiCheat.js";
+import { useModules } from "../context/ModulesContext.jsx";
 
 const W = {
   wrap: {
@@ -35,6 +36,7 @@ const W = {
 };
 
 export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
+  const MODULES = useModules();
   if (!currentQ || !mod) return null;
 
   const { violations, showWarning, lastType, dismiss } = useAntiCheat({

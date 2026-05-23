@@ -357,6 +357,61 @@ export async function uploadCityBg(city, file) {
 
 export { DEFAULT_BG };
 
+// ─── MODULES (dynamic from DB) ────────────────────────────────────────────────
+
+import { MODULES as FALLBACK_MODULES } from "../data/questions.js";
+
+export async function getModules() {
+  if (DEMO) {
+    const cached = localStorage.getItem("fue_modules");
+    return cached ? JSON.parse(cached) : FALLBACK_MODULES;
+  }
+  const { data } = await supabase.from("modules").select("*").order("sort_order");
+  if (!data || !data.length) return FALLBACK_MODULES;
+  return data.map((m) => ({ id: m.id, name: m.name, icon: m.icon, color: m.color, timePerQ: m.time_per_q, desc: m.description || "" }));
+}
+
+export async function addModule({ id, name, icon, color, timePerQ, desc }) {
+  const rec = { id, name, icon, color, time_per_q: timePerQ, description: desc, sort_order: id };
+  if (DEMO) {
+    const mods = JSON.parse(localStorage.getItem("fue_modules") || JSON.stringify(FALLBACK_MODULES));
+    if (mods.find((m) => m.id === id)) return { error: "Moduł o tym ID już istnieje." };
+    mods.push({ id, name, icon, color, timePerQ, desc });
+    mods.sort((a, b) => a.id - b.id);
+    localStorage.setItem("fue_modules", JSON.stringify(mods));
+    return { error: null };
+  }
+  const { error } = await supabase.from("modules").insert(rec);
+  return { error: error?.message || null };
+}
+
+export async function updateModule(id, updates) {
+  const dbUpdates = {};
+  if (updates.name       !== undefined) dbUpdates.name        = updates.name;
+  if (updates.icon       !== undefined) dbUpdates.icon        = updates.icon;
+  if (updates.color      !== undefined) dbUpdates.color       = updates.color;
+  if (updates.timePerQ   !== undefined) dbUpdates.time_per_q  = updates.timePerQ;
+  if (updates.desc       !== undefined) dbUpdates.description = updates.desc;
+  if (DEMO) {
+    const mods = JSON.parse(localStorage.getItem("fue_modules") || JSON.stringify(FALLBACK_MODULES));
+    const idx = mods.findIndex((m) => m.id === id);
+    if (idx >= 0) { mods[idx] = { ...mods[idx], ...updates }; localStorage.setItem("fue_modules", JSON.stringify(mods)); }
+    return { error: null };
+  }
+  const { error } = await supabase.from("modules").update(dbUpdates).eq("id", id);
+  return { error: error?.message || null };
+}
+
+export async function deleteModule(id) {
+  if (DEMO) {
+    const mods = JSON.parse(localStorage.getItem("fue_modules") || JSON.stringify(FALLBACK_MODULES));
+    localStorage.setItem("fue_modules", JSON.stringify(mods.filter((m) => m.id !== id)));
+    return { error: null };
+  }
+  const { error } = await supabase.from("modules").delete().eq("id", id);
+  return { error: error?.message || null };
+}
+
 // ─── ANTI-CHEAT VIOLATIONS ────────────────────────────────────────────────────
 
 export async function recordViolation({ participantCode, sessionId, type, count }) {

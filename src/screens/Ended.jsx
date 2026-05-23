@@ -1,4 +1,5 @@
-import { MODULES } from "../data/questions.js";
+
+import { useModules } from "../context/ModulesContext.jsx";
 
 const W = {
   wrap: {
@@ -33,6 +34,7 @@ const W = {
 };
 
 export default function Ended({ participant, myPts, allAnswers, isPractice, onGoHome }) {
+  const MODULES = useModules();
   return (
     <div style={W.wrap}>
       <div className="fue-page" style={{ justifyContent: "center", alignItems: "center", padding: "36px 28px", textAlign: "center" }}>

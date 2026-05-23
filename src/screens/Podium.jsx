@@ -1,12 +1,8 @@
 import { cityInfo } from "../lib/gameLogic.js";
 
-function PodiumScreen({ onBack, podStep, setPodStep }) {
+function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
   const confColors = ["#F5C518", "#6B21E8", "#E8376B", "#10D9A0", "#1EB5FF"];
-  const fakePodium = [
-    { name: "A. Kowalski", city: "Kraków", score: 7840 },
-    { name: "M. Nowak", city: "Warszawa", score: 7120 },
-    { name: "K. Wiśniewska", city: "Wrocław", score: 6890 },
-  ];
+  const podium = results.slice(0, 3);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
@@ -24,11 +20,12 @@ function PodiumScreen({ onBack, podStep, setPodStep }) {
 
         <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 10, padding: "10px 0" }}>
           {[2, 0, 1].map((rank) => {
-            const p = fakePodium[rank];
+            const p = podium[rank];
             const heights = [170, 100, 130];
             const colors = ["linear-gradient(180deg,#F5C518,#B8940A)", "linear-gradient(180deg,#A0622A,#6B3A12)", "linear-gradient(180deg,#A0A0A0,#6A6A6A)"];
             const glows = ["rgba(245,197,24,.5)", "rgba(205,127,50,.35)", "rgba(192,192,192,.3)"];
             const visible = podStep >= (rank === 0 ? 3 : rank === 1 ? 1 : 2);
+            if (!p) return <div key={rank} style={{ flex: 1, height: heights[rank] }} />;
             return (
               <div key={rank} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", opacity: visible ? 1 : 0, transition: "opacity .5s" }}>
                 {visible && (
@@ -38,8 +35,8 @@ function PodiumScreen({ onBack, podStep, setPodStep }) {
                       {p.name.charAt(0)}
                     </div>
                     <p style={{ fontSize: rank === 0 ? 12 : 11, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#EDE9FE" }}>{p.name.split(" ")[0]}</p>
-                    <p style={{ fontSize: 10, color: "#9B89CC" }}>{cityInfo(p.city).icon} {p.city}</p>
-                    <p style={{ fontSize: rank === 0 ? 14 : 12, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#9B89CC", marginTop: 2 }}>{p.score} pkt</p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city}</p>
+                    <p style={{ fontSize: rank === 0 ? 14 : 12, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#9B89CC", marginTop: 2 }}>{p.points} pkt</p>
                   </div>
                 )}
                 <div style={{ width: "100%", height: heights[rank], background: colors[rank], borderRadius: "10px 10px 0 0", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 ${rank === 0 ? 40 : 20}px ${glows[rank]}` }}>

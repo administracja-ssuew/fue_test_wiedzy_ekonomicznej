@@ -37,6 +37,7 @@ export default function App() {
   const [allAnswers, setAllAnswers]     = useState([]);
   const [nextModule, setNextModule]     = useState(null); // module to start after break
   const [podStep, setPodStep]           = useState(0);
+  const [podiumResults, setPodiumResults] = useState([]);
 
   // Auto-break only after module 2 (between mod 2 and 3)
   // After module 5 → waiting_results (admin reveals ranking manually)
@@ -374,10 +375,10 @@ export default function App() {
     return <Ended participant={participant} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onGoHome={resetApp} />;
 
   if (screen === "admin")
-    return <AdminPanel admin={admin} isDesktop={isDesktop} onLogout={handleAdminLogout} />;
+    return <AdminPanel admin={admin} isDesktop={isDesktop} onLogout={handleAdminLogout} onPodium={(results) => { setPodiumResults(results); setPodStep(0); setScreen("podium"); }} />;
 
   if (screen === "podium")
-    return <Podium onBack={() => setScreen("admin")} podStep={podStep} setPodStep={setPodStep} />;
+    return <Podium onBack={() => setScreen("admin")} podStep={podStep} setPodStep={setPodStep} results={podiumResults} />;
 
   return null;
 }

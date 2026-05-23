@@ -227,7 +227,7 @@ function KodyTab({ city, adminId }) {
 
 // ─── Tab: Sesja ───────────────────────────────────────────────────────────────
 
-function SesjaTab({ city, adminId }) {
+function SesjaTab({ city, adminId, onPodium }) {
   const [session, setSession]           = useState(null);
   const [participants, setParticipants] = useState([]);
   const [results, setResults]           = useState([]);
@@ -406,6 +406,11 @@ function SesjaTab({ city, adminId }) {
       {session?.status === "ended" && results.length > 0 && (
         <div>
           <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Wyniki końcowe</p>
+          {onPodium && (
+            <button style={{ ...C.btn("gold", { width: "100%", marginBottom: 16 }) }} onClick={() => onPodium(results)}>
+              🏆 Pokaż podium ceremonię
+            </button>
+          )}
           {results.map((r, i) => (
             <div key={r.code} style={{ ...C.card({ padding: "12px 16px", marginBottom: 8 }), display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center" }}>{i + 1}</span>
@@ -892,7 +897,7 @@ const TABS = [
   { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
 
-export default function AdminPanel({ admin, isDesktop, onLogout }) {
+export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
   const isSuperadmin = admin?.role === "superadmin";
   const [city, setCity]  = useState(admin?.city || "Kraków");
   const [tab, setTab]    = useState("sesja");
@@ -932,7 +937,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout }) {
       <div style={{ flex: 1, overflow: "auto", padding: isDesktop ? "28px 40px" : "20px 16px", maxWidth: 900, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
         {tab === "pytania"    && <PytaniaTab city={city} />}
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
-        {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} />}
+        {tab === "sesja"      && <SesjaTab   city={city} adminId={admin?.id} onPodium={onPodium} />}
         {tab === "live"       && <LiveTab    city={city} />}
         {tab === "moduly"     && <ModulyTab />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}

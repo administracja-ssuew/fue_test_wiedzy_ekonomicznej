@@ -272,20 +272,20 @@ export async function getSessionResults(sessionId) {
       .filter((a) => a.sessionId === sessionId);
     const grouped = {};
     for (const a of answers) {
-      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: `${a.participantName}`, points: 0, answers: 0 };
+      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: a.participantName, city: a.city || "", points: 0, answers: 0 };
       grouped[a.participantCode].points += a.points;
       grouped[a.participantCode].answers += 1;
     }
     return Object.values(grouped).sort((a, b) => b.points - a.points);
   }
   const { data } = await supabase.from("answers")
-    .select("participant_code, participant_name, points")
+    .select("participant_code, participant_name, city, points")
     .eq("session_id", sessionId);
   if (!data) return [];
   const grouped = {};
   for (const row of data) {
     if (!grouped[row.participant_code])
-      grouped[row.participant_code] = { code: row.participant_code, name: row.participant_name, points: 0 };
+      grouped[row.participant_code] = { code: row.participant_code, name: row.participant_name, city: row.city, points: 0 };
     grouped[row.participant_code].points += row.points;
   }
   return Object.values(grouped).sort((a, b) => b.points - a.points);

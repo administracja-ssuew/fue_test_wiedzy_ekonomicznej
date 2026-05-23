@@ -122,48 +122,14 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
     </div>
   );
 
-  const Sidebar = () => (
-    <div className="fue-quiz-sidebar" style={{ background: "rgba(0,0,0,.2)" }}>
-      <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600, marginBottom: 16 }}>Twoje wyniki</p>
-      {MODULES.map((m) => {
-        const mAnswers = allAnswers.filter((a) => a.module === m.id);
-        const mPts = mAnswers.reduce((s, a) => s + a.pts, 0);
-        const done = currentMod > m.id;
-        const active = currentMod === m.id;
-        return (
-          <div key={m.id} style={{ ...W.card({ padding: "12px 14px", marginBottom: 8, borderColor: active ? `${m.color}55` : "rgba(255,255,255,.06)", background: active ? `${m.color}10` : "rgba(255,255,255,.02)" }) }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 18 }}>{m.icon}</span>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: 12, fontWeight: 700 }}>{m.name}</p>
-                <p style={{ fontSize: 10, color: "#9B89CC" }}>{m.timePerQ}s/pyt.</p>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                {done ? <p style={{ fontFamily: '"Bebas Neue"', fontSize: 18, color: "#F5C518" }}>{mPts} pkt</p>
-                  : active ? <p style={{ fontSize: 10, color: m.color, fontWeight: 700, animation: "pulse 1.5s infinite" }}>W toku</p>
-                  : <p style={{ fontSize: 10, color: "#9B89CC" }}>Oczekuje</p>}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-      <div style={{ ...W.card({ padding: "14px", marginTop: 8, textAlign: "center", borderColor: "rgba(245,197,24,.25)" }), background: "rgba(245,197,24,.06)" }}>
-        <p style={{ fontSize: 11, color: "#9B89CC" }}>Łącznie</p>
-        <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#F5C518", lineHeight: 1 }}>{myPts}</p>
-        <p style={{ fontSize: 10, color: "#9B89CC" }}>punktów</p>
-      </div>
-    </div>
-  );
-
   const warningMsg = lastType === "screenshot_attempt"
     ? "Wykryto próbę wykonania zrzutu ekranu."
     : "Wykryto przełączenie zakładki / opuszczenie okna testu.";
 
   return (
     <div style={W.wrap}>
-      <div className="fue-quiz-layout" style={{ width: "100%", maxWidth: isDesktop ? 1240 : 460 }}>
+      <div className="fue-quiz-layout" style={{ width: "100%" }}>
         <QuizContent />
-        <Sidebar />
       </div>
 
       {/* Anti-cheat warning overlay */}

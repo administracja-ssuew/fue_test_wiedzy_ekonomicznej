@@ -42,10 +42,12 @@ export default function App() {
   // After module 5 → waiting_results (admin reveals ranking manually)
   const BREAK_AFTER = [2];
 
-  const MODULES   = useModules(); // dynamic from DB (or hardcoded fallback)
-  const timerRef  = useRef(null);
-  const pickTime  = useRef(null);
-  const screenRef = useRef(screen); // always-current screen value (avoids stale closures)
+  const MODULES        = useModules(); // dynamic from DB (or hardcoded fallback)
+  const timerRef       = useRef(null);
+  const pickTime       = useRef(null);
+  const screenRef      = useRef(screen); // always-current screen value (avoids stale closures)
+  const qStartedAtRef  = useRef(null);   // authoritative question start time (derived from DB)
+  const modTimePerQRef = useRef(60);     // always-current timePerQ for active module
   const isDesktop = useWindowWidth() >= 900;
 
   useEffect(() => { screenRef.current = screen; }, [screen]);
@@ -74,22 +76,33 @@ export default function App() {
     if (!state) return false;
     const elapsed    = Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000);
     const remaining  = Math.max(1, state.mod.timePerQ - elapsed);
+    qStartedAtRef.current  = session.q_started_at;
+    modTimePerQRef.current = state.mod.timePerQ;
     clearInterval(timerRef.current);
     setCurrentMod(state.modId); setQIdx(state.qIdx);
     setTimer(remaining); setAnswered(false); setPicked(null);
     return true;
   };
 
-  // ── Timer ────────────────────────────────────────────────────────
+  // ── Timer — derived from q_started_at so all clients stay in sync ──
   useEffect(() => {
     if (screen !== "quiz") { clearInterval(timerRef.current); return; }
     if (!mod) return;
     clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
-      setTimer((t) => {
-        if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0; }
-        return t - 1;
-      });
+      const startedAt = qStartedAtRef.current;
+      if (!startedAt) {
+        // Fallback countdown (practice mode / no session)
+        setTimer((t) => {
+          if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0; }
+          return t - 1;
+        });
+        return;
+      }
+      const elapsed    = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+      const remaining  = Math.max(0, modTimePerQRef.current - elapsed);
+      setTimer(remaining);
+      if (remaining <= 0) { clearInterval(timerRef.current); handleTimeout(); }
     }, 1000);
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
@@ -112,6 +125,8 @@ export default function App() {
           if (state) {
             const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
             const remaining = Math.max(1, state.mod.timePerQ - elapsed);
+            qStartedAtRef.current  = s.q_started_at;
+            modTimePerQRef.current = state.mod.timePerQ;
             clearInterval(timerRef.current);
             setCurrentMod(state.modId); setQIdx(state.qIdx);
             setTimer(remaining); setAnswered(false); setPicked(null);
@@ -199,10 +214,12 @@ export default function App() {
   const advanceQuestion = () => {
     const nextIdx = qIdx + 1;
     if (nextIdx < qs.length) {
-      // Save q_started_at BEFORE setScreen so Live View reads accurate time
+      const startedAt = new Date().toISOString();
+      qStartedAtRef.current  = startedAt;
+      modTimePerQRef.current = mod.timePerQ;
       if (quizSession) {
         const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + nextIdx;
-        updateSession(quizSession.id, { q_started_at: new Date().toISOString(), current_question_idx: globalIdx });
+        updateSession(quizSession.id, { q_started_at: startedAt, current_question_idx: globalIdx });
       }
       setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
     } else {
@@ -338,13 +355,15 @@ export default function App() {
 
   if (screen === "module_intro")
     return <ModuleIntro currentMod={currentMod} onStart={() => {
-      const timePerQ = mod?.timePerQ || 60;
+      const startedAt = new Date().toISOString();
+      const timePerQ  = mod?.timePerQ || 60;
+      qStartedAtRef.current  = startedAt;
+      modTimePerQRef.current = timePerQ;
       setTimer(timePerQ);
       setScreen("quiz");
-      // Save exact timer start moment so Live View can sync accurately
       if (quizSession) {
         const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
-        updateSession(quizSession.id, { q_started_at: new Date().toISOString(), current_question_idx: globalIdx });
+        updateSession(quizSession.id, { q_started_at: startedAt, current_question_idx: globalIdx });
       }
     }} />;
 

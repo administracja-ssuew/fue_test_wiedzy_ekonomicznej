@@ -527,9 +527,10 @@ function LiveTab({ city }) {
   const [revealData, setRevealData] = useState([]);
   const [autoSec, setAutoSec]       = useState(8);
   const [liveCount, setLiveCount]   = useState(0);
-  const timerRef  = useRef(null);
-  const revealRef = useRef(null);
-  const liveRef   = useRef(null);
+  const timerRef     = useRef(null);
+  const revealRef    = useRef(null);
+  const liveRef      = useRef(null);
+  const sessionRef   = useRef(null); // always-current session (avoids stale closure in timer)
 
   useEffect(() => {
     Promise.all([
@@ -537,7 +538,7 @@ function LiveTab({ city }) {
       import("../lib/supabase.js").then(({ getQuestions: gq }) => gq(city)),
     ]).then(([{ data: sess }, dbQs]) => {
       setSession(sess);
-      // Only DB questions — no hardcoded fallback
+      sessionRef.current = sess;
       setQuestions(dbQs);
     });
   }, [city]);
@@ -556,6 +557,7 @@ function LiveTab({ city }) {
     ]);
 
     setSession(freshSession);
+    sessionRef.current = freshSession;
     if (freshQs.length > 0) setQuestions(freshQs);
 
     const qs = freshQs.length > 0 ? freshQs : questions;
@@ -576,15 +578,25 @@ function LiveTab({ city }) {
     setPhase("quiz");
   };
 
-  // Timer effect — starts from whatever `timer` was set to by startLive / skipReveal
+  // Timer effect — derived from q_started_at so it stays in sync with participants
   useEffect(() => {
     if (phase !== "quiz" || !mod || !currentQ) return;
     clearInterval(timerRef.current);
+    const modTimePerQ = mod.timePerQ; // capture from render (fresh per gIdx change)
     timerRef.current = setInterval(() => {
-      setTimer((t) => {
-        if (t <= 1) { clearInterval(timerRef.current); doReveal(); return 0; }
-        return t - 1;
-      });
+      const sess = sessionRef.current;
+      if (!sess?.q_started_at) {
+        // Fallback countdown if no q_started_at yet
+        setTimer((t) => {
+          if (t <= 1) { clearInterval(timerRef.current); doReveal(); return 0; }
+          return t - 1;
+        });
+        return;
+      }
+      const elapsed   = Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000);
+      const remaining = Math.max(0, modTimePerQ - elapsed);
+      setTimer(remaining);
+      if (remaining <= 0) { clearInterval(timerRef.current); doReveal(); }
     }, 1000);
     // Poll live answers count
     liveRef.current = setInterval(async () => {
@@ -609,22 +621,20 @@ function LiveTab({ city }) {
       setAutoSec(cd);
       if (cd <= 0) {
         clearInterval(revealRef.current);
-        if (gIdx + 1 < questions.length) {
-          const nextQ = questions[gIdx + 1];
-          const nextMod = MODULES.find((m) => m.id === nextQ?.module);
-          setTimer(nextMod?.timePerQ || 60);
-          setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0);
-        } else setPhase("done");
+        skipReveal();
       }
     }, 1000);
   };
 
-  const skipReveal = () => {
+  const skipReveal = async () => {
     clearInterval(revealRef.current);
     if (gIdx + 1 < questions.length) {
-      const nextQ = questions[gIdx + 1];
+      // Fetch fresh session so q_started_at reflects participant's advance
+      const { data: freshSession } = await getOrCreateSession(city, null, false);
+      if (freshSession) { setSession(freshSession); sessionRef.current = freshSession; }
+      const nextQ   = questions[gIdx + 1];
       const nextMod = MODULES.find((m) => m.id === nextQ?.module);
-      setTimer(nextMod?.timePerQ || 60);
+      setTimer(nextMod?.timePerQ || 60); // initial display; interval will re-sync from q_started_at
       setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0);
     } else setPhase("done");
   };

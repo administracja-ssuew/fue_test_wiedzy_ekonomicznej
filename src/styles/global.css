@@ -64,8 +64,8 @@ button { cursor: pointer; }
   .fue-welcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; min-height: 100vh; }
   .fue-lobby-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; padding-top: 32px; }
   .fue-modules-grid { grid-template-columns: repeat(4,1fr) !important; }
-  .fue-quiz-layout { flex-direction: row; max-width: 1280px; margin: 0 auto; width: 100%; }
-  .fue-quiz-main { flex: 0 0 62%; border-right: 1px solid rgba(255,255,255,.07); }
-  .fue-quiz-sidebar { display: flex; flex-direction: column; flex: 0 0 38%; padding: 24px 20px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; }
+  .fue-quiz-layout { flex-direction: column; max-width: 820px; margin: 0 auto; width: 100%; }
+  .fue-quiz-main { flex: 1; }
+  .fue-quiz-sidebar { display: none; }
   .fue-page-wide { padding: 0 40px; }
 }

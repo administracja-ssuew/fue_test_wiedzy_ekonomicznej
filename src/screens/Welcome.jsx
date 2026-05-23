@@ -155,11 +155,6 @@ function SocialBar() {
     <div style={{ background: "rgba(0,0,0,.5)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
 
-        {/* Logo FUE — białe tło bo PNG ma białe tło */}
-        <div style={{ background: "#ffffff", borderRadius: 8, padding: "3px 9px", display: "flex", alignItems: "center", boxShadow: "0 1px 10px rgba(0,0,0,.25)" }}>
-          <img src="/fue.png" alt="FUE" style={{ height: 28, width: "auto", display: "block" }} />
-        </div>
-
         {/* Event link — animowany */}
         <a href={EVENT_LINK} target="_blank" rel="noreferrer"
           style={{

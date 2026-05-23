@@ -86,6 +86,11 @@ CREATE POLICY "questions_city_admin_write" ON public.questions FOR ALL
 CREATE POLICY "questions_superadmin" ON public.questions FOR ALL
   USING (get_my_role() = 'superadmin');
 
+-- ⚠️  APPLY IN SUPABASE SQL EDITOR if not already applied:
+-- Allow anonymous participants to read questions (required for quiz to work)
+CREATE POLICY "questions_anon_select" ON public.questions FOR SELECT USING (true);
+GRANT SELECT ON public.questions TO anon;
+
 -- ─── QUIZ SESSIONS ────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.quiz_sessions (
@@ -128,6 +133,9 @@ CREATE TABLE IF NOT EXISTS public.answers (
   UNIQUE (session_id, participant_code, question_id)
 );
 
+-- ⚠️  APPLY IN SUPABASE SQL EDITOR if not already applied:
+ALTER TABLE public.answers ADD CONSTRAINT answers_points_range CHECK (points BETWEEN 0 AND 1000);
+
 ALTER TABLE public.answers ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "answers_public_insert" ON public.answers FOR INSERT WITH CHECK (true);
@@ -147,7 +155,9 @@ CREATE TABLE IF NOT EXISTS public.violations (
 
 ALTER TABLE public.violations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "violations_anon_insert"   ON public.violations FOR INSERT WITH CHECK (true);
+-- ⚠️  APPLY IN SUPABASE SQL EDITOR if not already applied:
+CREATE POLICY "violations_anon_insert" ON public.violations FOR INSERT
+  WITH CHECK (participant_code IN (SELECT code FROM public.participant_codes WHERE used = true));
 CREATE POLICY "violations_admin_select"  ON public.violations FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
 

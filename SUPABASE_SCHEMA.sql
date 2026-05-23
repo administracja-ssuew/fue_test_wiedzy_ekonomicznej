@@ -261,7 +261,7 @@ AS $$
   FROM public.answers
   WHERE session_id = p_session_id
   GROUP BY participant_code, participant_name, city
-  ORDER BY total_points DESC;
+  ORDER BY total_points DESC, avg_response_time_s ASC NULLS LAST;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated, anon;

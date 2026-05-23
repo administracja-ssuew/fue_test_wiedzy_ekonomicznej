@@ -5,7 +5,11 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const DEMO = !SUPABASE_URL || !SUPABASE_KEY;
 export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: false }, // never cache login in localStorage — always start fresh
+  auth: {
+    storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+    persistSession: true,   // session survives page refresh; clears when tab/browser is closed
+    autoRefreshToken: true,
+  },
 });
 
 const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
@@ -219,10 +223,12 @@ export async function endAndResetSession(city, adminId, isPractice = false) {
 export async function updateSession(sessionId, updates) {
   if (DEMO) {
     const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
-    for (const city of cities) {
-      const key = `fue_session_${city}`;
-      const s = JSON.parse(localStorage.getItem(key) || "null");
-      if (s?.id === sessionId) { localStorage.setItem(key, JSON.stringify({ ...s, ...updates })); break; }
+    outer: for (const city of cities) {
+      for (const suffix of ["", "_practice"]) {
+        const key = `fue_session_${city}${suffix}`;
+        const s = JSON.parse(localStorage.getItem(key) || "null");
+        if (s?.id === sessionId) { localStorage.setItem(key, JSON.stringify({ ...s, ...updates })); break outer; }
+      }
     }
     return { error: null };
   }
@@ -239,15 +245,17 @@ export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx) {
     // In demo mode simulate the RPC: only advance if current index still matches
     const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
     for (const city of cities) {
-      const key = `fue_session_${city}`;
-      const s = JSON.parse(localStorage.getItem(key) || "null");
-      if (s?.id === sessionId) {
-        if (s.current_question_idx !== expectedIdx || s.status !== "running") {
-          return { startedAt: null, error: null }; // lost the race
+      for (const suffix of ["", "_practice"]) {
+        const key = `fue_session_${city}${suffix}`;
+        const s = JSON.parse(localStorage.getItem(key) || "null");
+        if (s?.id === sessionId) {
+          if (s.current_question_idx !== expectedIdx || s.status !== "running") {
+            return { startedAt: null, error: null }; // lost the race
+          }
+          const startedAt = new Date().toISOString();
+          localStorage.setItem(key, JSON.stringify({ ...s, current_question_idx: nextIdx, q_started_at: startedAt }));
+          return { startedAt, error: null };
         }
-        const startedAt = new Date().toISOString();
-        localStorage.setItem(key, JSON.stringify({ ...s, current_question_idx: nextIdx, q_started_at: startedAt }));
-        return { startedAt, error: null };
       }
     }
     return { startedAt: null, error: null };
@@ -268,12 +276,14 @@ export async function startQuizSession(sessionId) {
   if (DEMO) {
     const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
     for (const city of cities) {
-      const key = `fue_session_${city}`;
-      const s = JSON.parse(localStorage.getItem(key) || "null");
-      if (s?.id === sessionId) {
-        const startedAt = new Date().toISOString();
-        localStorage.setItem(key, JSON.stringify({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
-        return { startedAt, error: null };
+      for (const suffix of ["", "_practice"]) {
+        const key = `fue_session_${city}${suffix}`;
+        const s = JSON.parse(localStorage.getItem(key) || "null");
+        if (s?.id === sessionId) {
+          const startedAt = new Date().toISOString();
+          localStorage.setItem(key, JSON.stringify({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
+          return { startedAt, error: null };
+        }
       }
     }
     return { startedAt: null, error: "Sesja nie znaleziona." };
@@ -296,14 +306,12 @@ export async function getSessionForCity(city) {
   return data?.[0] || null;
 }
 
-export async function getParticipantsInSession(city, sessionId = null) {
+export async function getParticipantsInSession(city) {
   if (DEMO) {
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
-    return codes.filter((c) => c.city === city && c.used && (!sessionId || c.session_id === sessionId));
+    return codes.filter((c) => c.city === city && c.used);
   }
-  let q = supabase.from("participant_codes").select("*").eq("city", city).eq("used", true);
-  if (sessionId) q = q.eq("session_id", sessionId);
-  const { data } = await q;
+  const { data } = await supabase.from("participant_codes").select("*").eq("city", city).eq("used", true);
   return data || [];
 }
 

@@ -236,6 +236,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [loading, setLoading]           = useState(true);
   const [isPractice, setIsPractice]     = useState(false);
   const [cityQuestions, setCityQuestions] = useState([]);
+  const [showAdminStats, setShowAdminStats] = useState(false);
   const pollRef = useRef(null);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
@@ -246,7 +247,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     const { data } = await getOrCreateSession(city, adminId, practice);
     setSession(data);
     if (data) {
-      setParticipants(await getParticipantsInSession(city, data.id));
+      setParticipants(await getParticipantsInSession(city));
       if (data.status === "ended") setResults(await getSessionResults(data.id));
     }
     const qs = await getQuestions(city);
@@ -269,7 +270,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         const q = cityQuestions[session.current_question_idx];
         const [stats, participants, violations] = await Promise.all([
           q && session.id ? getLiveQuestionStats(session.id, q.id) : Promise.resolve(null),
-          getParticipantsInSession(city, session?.id),
+          getParticipantsInSession(city),
           session.id ? getViolationsForSession(session.id) : Promise.resolve([]),
         ]);
         if (stats) setLiveStats(stats);
@@ -342,30 +343,32 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       </div>
 
-      {/* Live stats — admin-private, NOT for projector (correctness hidden from projector via LiveTab below) */}
+      {/* Stats toggle — shown only during quiz, hidden by default */}
       {session?.status === "running" && liveStats && (
-        <div style={{ ...C.card({ padding: "16px 20px", marginBottom: 20, borderColor: "rgba(16,217,160,.25)", background: "rgba(16,217,160,.06)" }) }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>📊 Postęp odpowiedzi — bieżące pytanie</p>
-            <span style={{ fontSize: 10, color: "#F5C518", background: "rgba(245,197,24,.1)", border: "1px solid rgba(245,197,24,.25)", borderRadius: 20, padding: "2px 8px", fontWeight: 600 }}>🔒 Tylko admin</span>
-          </div>
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <div style={{ textAlign: "center" }}>
-              <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{liveStats.total}</p>
-              <p style={{ fontSize: 11, color: "#9B89CC" }}>Odpowiedziało</p>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ height: 10, background: "rgba(255,255,255,.1)", borderRadius: 5, overflow: "hidden" }}>
-                <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
+        <div style={{ marginBottom: showAdminStats ? 0 : 20 }}>
+          <button onClick={() => setShowAdminStats((v) => !v)}
+            style={{ ...C.btn("ghost", { width: "100%", fontSize: 12, padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }) }}>
+            <span>📊 Postęp odpowiedzi — bieżące pytanie <span style={{ color: "#F5C518", fontSize: 10 }}>🔒 Tylko admin</span></span>
+            <span style={{ color: "#9B89CC", fontSize: 14 }}>{showAdminStats ? "▲" : "▼"}</span>
+          </button>
+          {showAdminStats && (
+            <div style={{ ...C.card({ padding: "16px 20px", marginTop: 4, marginBottom: 20, borderColor: "rgba(16,217,160,.25)", background: "rgba(16,217,160,.06)" }) }}>
+              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{liveStats.total}</p>
+                  <p style={{ fontSize: 11, color: "#9B89CC" }}>Odpowiedziało</p>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ height: 10, background: "rgba(255,255,255,.1)", borderRadius: 5, overflow: "hidden" }}>
+                    <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
+                  </div>
+                  <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 5 }}>
+                    {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych · {liveStats.correct} dobrze · {liveStats.total - liveStats.correct} źle
+                  </p>
+                </div>
               </div>
-              <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 5 }}>
-                {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych · {liveStats.correct} dobrze · {liveStats.total - liveStats.correct} źle
-              </p>
             </div>
-          </div>
-          <p style={{ fontSize: 10, color: "rgba(155,137,204,.5)", marginTop: 10 }}>
-            Szczegóły kto odpowiedział poprawnie są widoczne w widoku Live poniżej — dopiero po upływie czasu.
-          </p>
+          )}
         </div>
       )}
 
@@ -413,7 +416,8 @@ function SesjaTab({ city, adminId, onPodium }) {
 
       {session?.status === "ended" && results.length > 0 && (
         <div>
-          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Wyniki końcowe</p>
+          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Wyniki końcowe</p>
+          <p style={{ fontSize: 11, color: "rgba(155,137,204,.6)", marginBottom: 12 }}>Przy równej liczbie punktów decyduje krótszy średni czas odpowiedzi.</p>
           {onPodium && (
             <button style={{ ...C.btn("gold", { width: "100%", marginBottom: 16 }) }} onClick={() => onPodium(results)}>
               🏆 Pokaż podium ceremonię
@@ -423,10 +427,12 @@ function SesjaTab({ city, adminId, onPodium }) {
             <div key={r.code} style={{ ...C.card({ padding: "12px 16px", marginBottom: 8 }), display: "flex", alignItems: "center", gap: 12 }}>
               <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center" }}>{i + 1}</span>
               <p style={{ flex: 1, fontWeight: 600 }}>{r.name}</p>
-              {r.avgResponseTime != null && (
-                <p style={{ fontSize: 11, color: "#9B89CC", marginRight: 4 }}>⏱ {r.avgResponseTime}s</p>
-              )}
-              <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#F5C518" }}>{r.points} pkt</p>
+              <div style={{ textAlign: "right", marginRight: 8 }}>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#F5C518" }}>{r.points} pkt</p>
+                <p style={{ fontSize: 10, color: r.avgResponseTime != null ? "#9B89CC" : "rgba(155,137,204,.3)" }}>
+                  ⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}
+                </p>
+              </div>
             </div>
           ))}
         </div>

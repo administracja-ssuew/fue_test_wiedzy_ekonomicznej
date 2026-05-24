@@ -505,6 +505,6 @@ export async function getViolationsForSession(sessionId) {
       .filter((v) => v.sessionId === sessionId);
   }
   const { data } = await supabase.from("violations")
-    .select("*").eq("session_id", sessionId).order("at", { ascending: false });
+    .select("*").eq("session_id", sessionId).order("created_at", { ascending: false });
   return data || [];
 }

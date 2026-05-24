@@ -348,8 +348,8 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       </div>
 
-      {/* Stats toggle — shown only during quiz, hidden by default */}
-      {session?.status === "running" && liveStats && (
+      {/* Stats toggle — shown whenever quiz is running, hidden by default */}
+      {session?.status === "running" && (
         <div style={{ marginBottom: showAdminStats ? 0 : 20 }}>
           <button onClick={() => setShowAdminStats((v) => !v)}
             style={{ ...C.btn("ghost", { width: "100%", fontSize: 12, padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }) }}>
@@ -358,20 +358,24 @@ function SesjaTab({ city, adminId, onPodium }) {
           </button>
           {showAdminStats && (
             <div style={{ ...C.card({ padding: "16px 20px", marginTop: 4, marginBottom: 20, borderColor: "rgba(16,217,160,.25)", background: "rgba(16,217,160,.06)" }) }}>
-              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                <div style={{ textAlign: "center" }}>
-                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{liveStats.total}</p>
-                  <p style={{ fontSize: 11, color: "#9B89CC" }}>Odpowiedziało</p>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ height: 10, background: "rgba(255,255,255,.1)", borderRadius: 5, overflow: "hidden" }}>
-                    <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
+              {liveStats ? (
+                <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{liveStats.total}</p>
+                    <p style={{ fontSize: 11, color: "#9B89CC" }}>Odpowiedziało</p>
                   </div>
-                  <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 5 }}>
-                    {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych · {liveStats.correct} dobrze · {liveStats.total - liveStats.correct} źle
-                  </p>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ height: 10, background: "rgba(255,255,255,.1)", borderRadius: 5, overflow: "hidden" }}>
+                      <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
+                    </div>
+                    <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 5 }}>
+                      {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych · {liveStats.correct} dobrze · {liveStats.total - liveStats.correct} źle
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p style={{ color: "#9B89CC", fontSize: 13, textAlign: "center" }}>Ładowanie statystyk…</p>
+              )}
             </div>
           )}
         </div>

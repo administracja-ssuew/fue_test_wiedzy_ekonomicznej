@@ -580,6 +580,8 @@ function LiveTab({ city, autoStart = false }) {
   const revealRef    = useRef(null);
   const liveRef      = useRef(null);
   const sessionRef   = useRef(null); // always-current session (avoids stale closure in timer)
+  const gIdxRef      = useRef(0);    // always-current gIdx (avoids stale closure in intervals)
+  const questionsRef = useRef([]);   // always-current questions array
   const autoStarted  = useRef(false);
 
   useEffect(() => {
@@ -590,8 +592,13 @@ function LiveTab({ city, autoStart = false }) {
       setSession(sess);
       sessionRef.current = sess;
       setQuestions(dbQs);
+      questionsRef.current = dbQs;
     });
   }, [city]);
+
+  // Keep refs in sync so closures inside intervals always see current values
+  useEffect(() => { gIdxRef.current = gIdx; }, [gIdx]);
+  useEffect(() => { questionsRef.current = questions; }, [questions]);
 
   // Auto-start live view when embedded in SesjaTab (autoStart prop) and data is ready
   useEffect(() => {
@@ -657,10 +664,11 @@ function LiveTab({ city, autoStart = false }) {
       setTimer(remaining);
       if (remaining <= 0) { clearInterval(timerRef.current); doReveal(); }
     }, 1000);
-    // Poll live answers count
+    // Poll live answers count — use refs to avoid stale closure
     liveRef.current = setInterval(async () => {
-      if (session && currentQ) {
-        const stats = await getLiveQuestionStats(session.id, currentQ.id);
+      const q = questionsRef.current[gIdxRef.current];
+      if (sessionRef.current?.id && q?.id) {
+        const stats = await getLiveQuestionStats(sessionRef.current.id, q.id);
         setLiveCount(stats.total);
       }
     }, 2000);
@@ -668,12 +676,17 @@ function LiveTab({ city, autoStart = false }) {
   }, [gIdx, phase]);
 
   const doReveal = async () => {
-    setPhase("reveal"); setAutoSec(2); clearInterval(liveRef.current);
-    if (session && currentQ) {
-      const stats = await getLiveQuestionStats(session.id, currentQ.id);
-      setRevealData(stats.answers || []);
-    }
-    let cd = 2;
+    setPhase("reveal"); setAutoSec(8); clearInterval(liveRef.current);
+    // Capture current index now; delay fetch 2s so participants finish submitting to DB
+    const capturedGIdx = gIdxRef.current;
+    setTimeout(async () => {
+      const q = questionsRef.current[capturedGIdx];
+      if (sessionRef.current?.id && q?.id) {
+        const stats = await getLiveQuestionStats(sessionRef.current.id, q.id);
+        setRevealData(stats.answers || []);
+      }
+    }, 2000);
+    let cd = 8;
     clearInterval(revealRef.current);
     revealRef.current = setInterval(() => {
       cd--;
@@ -687,22 +700,30 @@ function LiveTab({ city, autoStart = false }) {
 
   const skipReveal = async () => {
     clearInterval(revealRef.current);
-    if (gIdx + 1 < questions.length) {
-      // Fetch fresh session so q_started_at reflects participant's advance
-      const { data: freshSession } = await getOrCreateSession(city, null, false);
-      if (freshSession) { setSession(freshSession); sessionRef.current = freshSession; }
-      const nextQ   = questions[gIdx + 1];
-      const nextMod = MODULES.find((m) => m.id === nextQ?.module);
-      const timePerQ = nextMod?.timePerQ || 60;
-      // Derive initial timer from q_started_at so admin display matches participants immediately
-      let initialTimer = timePerQ;
-      if (freshSession?.q_started_at) {
-        const elapsed = Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000);
-        initialTimer = Math.max(1, timePerQ - elapsed);
+    const currentGIdx = gIdxRef.current;
+    const qs = questionsRef.current;
+    if (currentGIdx + 1 >= qs.length) { setPhase("done"); return; }
+    // Poll DB until participants actually advance current_question_idx.
+    // Without polling we'd fetch q_started_at from the old question (≥60s elapsed)
+    // which makes initialTimer = max(1, 60-62) = 1 → immediate doReveal → cascade.
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const { data: s } = await getOrCreateSession(city, null, false);
+      if (!s || s.status !== "running") { setPhase("done"); return; }
+      if (s.current_question_idx > currentGIdx) {
+        setSession(s); sessionRef.current = s;
+        const nextQ   = qs[s.current_question_idx];
+        if (!nextQ) { setPhase("done"); return; }
+        const nextMod = MODULES.find((m) => m.id === nextQ.module);
+        const timePerQ = nextMod?.timePerQ || 60;
+        const elapsed  = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+        setTimer(Math.max(0, timePerQ - elapsed));
+        setGIdx(s.current_question_idx);
+        setPhase("quiz"); setRevealData([]); setLiveCount(0);
+        return;
       }
-      setTimer(initialTimer);
-      setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0);
-    } else setPhase("done");
+    }
+    setPhase("done");
   };
 
   const correct   = revealData.filter((a) => a.isCorrect);

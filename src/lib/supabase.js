@@ -288,15 +288,37 @@ export async function startQuizSession(sessionId) {
 
 export async function getSessionForCity(city) {
   if (DEMO) {
-    const s = localStorage.getItem(`fue_session_${city}`);
-    if (!s) return null;
-    return JSON.parse(s);
+    const real = JSON.parse(localStorage.getItem(`fue_session_${city}`) || "null");
+    const prac = JSON.parse(localStorage.getItem(`fue_session_${city}_practice`) || "null");
+    const active = [real, prac]
+      .filter((s) => s && s.status !== "ended")
+      .sort((a, b) => ({ running: 0, paused: 1, waiting: 2 }[a.status] ?? 3) - ({ running: 0, paused: 1, waiting: 2 }[b.status] ?? 3));
+    return active[0] || null;
   }
-  // Participants always join the real (non-practice) session
+  // Smart priority: running session first, then paused, then most recent waiting.
+  // No is_practice filter — admin decides which session is active.
   const { data } = await supabase.from("quiz_sessions")
-    .select("*").eq("city", city).eq("is_practice", false).neq("status", "ended")
-    .order("created_at", { ascending: false }).limit(1);
-  return data?.[0] || null;
+    .select("*").eq("city", city).neq("status", "ended")
+    .order("created_at", { ascending: false });
+  if (!data || !data.length) return null;
+  return data.find((s) => s.status === "running")
+      || data.find((s) => s.status === "paused")
+      || data[0];
+}
+
+export async function getSessionById(sessionId) {
+  if (DEMO) {
+    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
+    for (const city of cities) {
+      for (const suffix of ["", "_practice"]) {
+        const s = JSON.parse(localStorage.getItem(`fue_session_${city}${suffix}`) || "null");
+        if (s?.id === sessionId) return s;
+      }
+    }
+    return null;
+  }
+  const { data } = await supabase.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
+  return data || null;
 }
 
 export async function getParticipantsInSession(city) {

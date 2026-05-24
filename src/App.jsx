@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion } from "./lib/supabase.js";
+import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
@@ -182,33 +182,44 @@ export default function App() {
 
     const QUIZ_SCREENS = ["quiz", "module_intro", "admin_pause", "break", "waiting_results"];
 
+    const isPracticeSession = !!quizSession?.is_practice;
+
     const handleSessionStatus = (status) => {
       const cur = screenRef.current;
       if (status === "paused" && ["quiz", "module_intro"].includes(cur)) {
         clearInterval(timerRef.current);
         setAnswered(true);
         setScreen("admin_pause");
+      } else if (status === "running" && cur === "admin_pause") {
+        // Admin resumed — go back to quiz
+        setPicked(null); setAnswered(false);
+        setScreen("quiz");
       } else if (status === "ended" && QUIZ_SCREENS.includes(cur)) {
-        // Admin force-ended the session — show participant their score immediately
         clearInterval(timerRef.current);
-        setScreen("ended");
+        if (isPracticeSession) {
+          // Practice ended — return to lobby to wait for real quiz
+          setQuizSession(null);
+          setCityQuestions([]);
+          setScreen("lobby");
+        } else {
+          setScreen("ended");
+        }
       } else if (status === "results" && QUIZ_SCREENS.includes(cur)) {
-        // Admin announced results — participants move from waiting_results to ended
         clearInterval(timerRef.current);
         setScreen("ended");
       }
     };
 
     if (DEMO) {
-      // DEMO: poll every 2s (no Realtime)
+      // DEMO: poll every 2s using session ID directly — avoids fetching wrong session
       const poll = setInterval(async () => {
-        const s = await getSessionForCity(participant.city);
-        handleSessionStatus(s?.status);
+        const s = await getSessionById(quizSession.id);
+        if (s) handleSessionStatus(s.status);
       }, 2000);
       return () => clearInterval(poll);
     }
 
-    // Production: Realtime + 6s polling fallback (Realtime can drop events on unstable connections)
+    // Production: Realtime + 6s poll fallback using session ID — always the right session
     const ch = supabase.channel(`session-sync-${quizSession.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
@@ -216,7 +227,7 @@ export default function App() {
       }, ({ new: s }) => handleSessionStatus(s.status))
       .subscribe();
     const poll = setInterval(async () => {
-      const s = await getSessionForCity(participant.city);
+      const s = await getSessionById(quizSession.id);
       if (s) handleSessionStatus(s.status);
     }, 6000);
     return () => { supabase.removeChannel(ch); clearInterval(poll); };

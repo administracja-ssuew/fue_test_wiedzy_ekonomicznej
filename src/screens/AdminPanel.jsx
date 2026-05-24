@@ -395,8 +395,10 @@ function SesjaTab({ city, adminId, onPodium }) {
       {/* Live ghost view — auto-shown when quiz is running, expandable to fullscreen */}
       {session?.status === "running" && !isPractice && (
         <div style={liveExpanded ? {
-          position: "fixed", inset: 0, zIndex: 999, background: "#070215",
-          overflow: "auto", padding: "20px",
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          width: "100%", height: "100%",
+          zIndex: 2000, background: "#070215", overflow: "auto", padding: "20px",
+          fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE",
         } : {
           ...C.card({ marginBottom: 20, padding: "16px 20px", borderColor: "rgba(232,55,107,.25)", background: "rgba(232,55,107,.04)" }),
         }}>
@@ -691,7 +693,14 @@ function LiveTab({ city, autoStart = false }) {
       if (freshSession) { setSession(freshSession); sessionRef.current = freshSession; }
       const nextQ   = questions[gIdx + 1];
       const nextMod = MODULES.find((m) => m.id === nextQ?.module);
-      setTimer(nextMod?.timePerQ || 60); // initial display; interval will re-sync from q_started_at
+      const timePerQ = nextMod?.timePerQ || 60;
+      // Derive initial timer from q_started_at so admin display matches participants immediately
+      let initialTimer = timePerQ;
+      if (freshSession?.q_started_at) {
+        const elapsed = Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000);
+        initialTimer = Math.max(1, timePerQ - elapsed);
+      }
+      setTimer(initialTimer);
       setGIdx((i) => i + 1); setPhase("quiz"); setRevealData([]); setLiveCount(0);
     } else setPhase("done");
   };

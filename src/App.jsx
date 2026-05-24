@@ -64,6 +64,19 @@ export default function App() {
     if (!loading && admin && screen === "welcome") setScreen("admin");
   }, [loading, admin]);
 
+  // Restore participant from sessionStorage after page refresh (runs once, after auth resolves)
+  useEffect(() => {
+    if (loading || admin) return; // admin takes priority; wait for auth
+    const saved = sessionStorage.getItem("fue_participant");
+    if (!saved) return;
+    try {
+      const p = JSON.parse(saved);
+      handleCodeSuccess(p);
+    } catch (_) {
+      sessionStorage.removeItem("fue_participant");
+    }
+  }, [loading]); // eslint-disable-line
+
   // Only DB questions — no hardcoded fallback
   const activeQuestions = cityQuestions;
   const qs       = activeQuestions.filter((q) => q.module === currentMod);
@@ -320,6 +333,7 @@ export default function App() {
 
   // Participant validates code → enters lobby
   const handleCodeSuccess = async (participantData) => {
+    sessionStorage.setItem("fue_participant", JSON.stringify(participantData));
     setParticipant(participantData);
     const session = await getSessionForCity(participantData.city);
     if (session) {
@@ -361,6 +375,7 @@ export default function App() {
 
   const handleAdminLogout = async () => { await logoutAdmin(); setScreen("welcome"); };
   const resetApp = () => {
+    sessionStorage.removeItem("fue_participant");
     setScreen("welcome"); setParticipant(null); setMyPts(0);
     setAllAnswers([]); setQuizSession(null); setCityQuestions([]); setNextModule(null);
   };

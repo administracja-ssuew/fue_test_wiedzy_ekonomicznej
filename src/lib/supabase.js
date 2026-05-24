@@ -4,13 +4,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const DEMO = !SUPABASE_URL || !SUPABASE_KEY;
-export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
-    persistSession: true,   // session survives page refresh; clears when tab/browser is closed
-    autoRefreshToken: true,
-  },
-});
+export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
 

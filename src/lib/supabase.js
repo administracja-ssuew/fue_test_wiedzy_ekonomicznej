@@ -70,8 +70,7 @@ export async function markCodeUsed(code, sessionId) {
     localStorage.setItem("fue_codes", JSON.stringify(codes));
     return { error: null };
   }
-  const { error } = await supabase.from("participant_codes")
-    .update({ used: true, session_id: sessionId }).eq("code", code);
+  const { error } = await supabase.rpc("mark_code_used", { p_code: code, p_session_id: sessionId });
   return { error: error?.message || null };
 }
 
@@ -293,9 +292,9 @@ export async function getSessionForCity(city) {
     if (!s) return null;
     return JSON.parse(s);
   }
-  // Return the most recent non-ended session (practice or regular — admin controls which is active)
+  // Participants always join the real (non-practice) session
   const { data } = await supabase.from("quiz_sessions")
-    .select("*").eq("city", city).neq("status", "ended")
+    .select("*").eq("city", city).eq("is_practice", false).neq("status", "ended")
     .order("created_at", { ascending: false }).limit(1);
   return data?.[0] || null;
 }

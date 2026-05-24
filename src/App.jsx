@@ -208,14 +208,18 @@ export default function App() {
       return () => clearInterval(poll);
     }
 
-    // Production: instant via Supabase Realtime
+    // Production: Realtime + 6s polling fallback (Realtime can drop events on unstable connections)
     const ch = supabase.channel(`session-sync-${quizSession.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
         filter: `id=eq.${quizSession.id}`,
       }, ({ new: s }) => handleSessionStatus(s.status))
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    const poll = setInterval(async () => {
+      const s = await getSessionForCity(participant.city);
+      if (s) handleSessionStatus(s.status);
+    }, 6000);
+    return () => { supabase.removeChannel(ch); clearInterval(poll); };
   }, [quizSession?.id, participant?.code]); // stable deps — uses screenRef internally
 
   // ── Quiz logic ───────────────────────────────────────────────────

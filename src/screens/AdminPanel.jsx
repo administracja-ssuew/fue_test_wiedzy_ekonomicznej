@@ -348,6 +348,11 @@ function SesjaTab({ city, adminId, onPodium }) {
             <button style={C.btn("gold", { flex: 1 })} onClick={() => { if (confirm("Ogłosić wyniki teraz? Uczestnicy zobaczą ranking.")) upd({ status: "results" }); }}>
               🏆 Ogłoś wyniki
             </button>
+            <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
+          </>}
+          {session?.status === "results" && <>
+            <button style={C.btn("ghost", { flex: 1 })} onClick={load}>🔄 Odśwież wyniki</button>
+            <button style={C.btn("primary", { flex: 1 })} onClick={newQuiz}>➕ Nowy quiz</button>
           </>}
           {session?.status === "ended" && <>
             <button style={C.btn("ghost", { flex: 1 })} onClick={load}>🔄 Odśwież wyniki</button>

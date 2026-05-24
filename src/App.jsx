@@ -242,8 +242,8 @@ export default function App() {
       saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: null, isCorrect: false, points: 0, responseTimeS: null });
     }
 
-    setAnswered(true); // NOW reveal correct/wrong colors — 2s result screen then advance
-    setTimeout(advanceQuestion, 2000);
+    setAnswered(true); // reveal correct/wrong colors — wait before advancing
+    setTimeout(advanceQuestion, 5000);
   };
 
   // User clicks an answer — lock in choice but DON'T reveal yet (timer still runs)

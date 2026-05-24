@@ -238,7 +238,8 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [cityQuestions, setCityQuestions] = useState([]);
   const [showAdminStats, setShowAdminStats] = useState(false);
   const [liveExpanded, setLiveExpanded] = useState(false);
-  const pollRef = useRef(null);
+  const pollRef    = useRef(null);
+  const sessionRef = useRef(null); // always-current session for poll closures
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
@@ -247,6 +248,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     setResults([]); setLiveStats(null);
     const { data } = await getOrCreateSession(city, adminId, practice);
     setSession(data);
+    sessionRef.current = data;
     if (data) {
       setParticipants(await getParticipantsInSession(city));
       if (data.status === "ended") setResults(await getSessionResults(data.id));
@@ -263,7 +265,9 @@ function SesjaTab({ city, adminId, onPodium }) {
     await load(isPractice);
   };
 
-  // Poll participants every 4s during waiting; live stats + participants every 3s during running
+  // Poll participants every 4s during waiting; live stats + participants every 3s during running.
+  // During running: also refresh session from DB so current_question_idx stays current
+  // (participants advance the question index; admin panel doesn't have Realtime subscription).
   useEffect(() => {
     clearInterval(pollRef.current);
     if (session?.status === "waiting") {
@@ -272,11 +276,15 @@ function SesjaTab({ city, adminId, onPodium }) {
       }, 4000);
     } else if (session?.status === "running") {
       pollRef.current = setInterval(async () => {
-        const q = cityQuestions[session.current_question_idx];
+        // Always fetch fresh session — participants may have advanced the question index
+        const { data: fresh } = await getOrCreateSession(city, adminId, isPractice);
+        if (fresh) { setSession(fresh); sessionRef.current = fresh; }
+        const s = sessionRef.current;
+        const q = cityQuestions[s?.current_question_idx ?? 0];
         const [stats, parts, viols] = await Promise.all([
-          q && session.id ? getLiveQuestionStats(session.id, q.id) : Promise.resolve(null),
+          q && s?.id ? getLiveQuestionStats(s.id, q.id) : Promise.resolve(null),
           getParticipantsInSession(city),
-          session.id ? getViolationsForSession(session.id) : Promise.resolve([]),
+          s?.id ? getViolationsForSession(s.id) : Promise.resolve([]),
         ]);
         if (stats) setLiveStats(stats);
         setParticipants(parts);
@@ -284,12 +292,12 @@ function SesjaTab({ city, adminId, onPodium }) {
       }, 3000);
     }
     return () => clearInterval(pollRef.current);
-  }, [session?.status, session?.current_question_idx, cityQuestions]);
+  }, [session?.status, cityQuestions]);
 
   const upd = async (updates) => {
     if (!session) return;
     await updateSession(session.id, updates);
-    setSession((s) => ({ ...s, ...updates }));
+    setSession((s) => { const next = { ...s, ...updates }; sessionRef.current = next; return next; });
     if (updates.status === "ended") {
       clearInterval(pollRef.current);
       setResults(await getSessionResults(session.id));
@@ -556,9 +564,9 @@ function UstawieniaTab({ city }) {
         </div>
       )}
 
-      <div style={{ ...C.card({ padding: "12px 16px", borderColor: "rgba(245,197,24,.2)", background: "rgba(245,197,24,.04)", marginTop: 16 }) }}>
+      <div style={{ ...C.card({ padding: "12px 16px", borderColor: "rgba(107,33,232,.2)", background: "rgba(107,33,232,.04)", marginTop: 16 }) }}>
         <p style={{ fontSize: 12, color: "#9B89CC" }}>
-          ℹ️ Na obraz nakładamy ciemny overlay — tekst quizu pozostaje czytelny. Wymagane: bucket <strong style={{ color: "#EDE9FE" }}>backgrounds</strong> w Supabase Storage (publiczny).
+          📐 Zalecana rozdzielczość: <strong style={{ color: "#EDE9FE" }}>1920 × 1080 px</strong> (format 16:9). Obraz zostanie przyciemniony — tekst quizu pozostaje czytelny.
         </p>
       </div>
     </div>

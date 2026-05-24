@@ -414,7 +414,9 @@ export async function uploadCityBg(city, file) {
     });
   }
   const ext = file.name.split(".").pop().toLowerCase();
-  const path = `${city}/bg.${ext}`;
+  // Supabase Storage keys must be ASCII — strip Polish diacritics from city name
+  const safeCity = city.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const path = `${safeCity}/bg.${ext}`;
   const { error: uploadError } = await supabase.storage
     .from("backgrounds")
     .upload(path, file, { upsert: true, contentType: file.type });

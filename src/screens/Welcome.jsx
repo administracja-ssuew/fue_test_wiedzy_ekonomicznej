@@ -72,12 +72,14 @@ const UNIV_COLORS = {
   UEK: "#D41D1F", SGH: "#82179F", UEP: "#699BF2", UEW: "#00A74D", UEKat: "#FFCC3C",
 };
 
+// Zdjęcia: wrzuć pliki JPG/PNG do folderu /public/photos/ i podaj ścieżkę w polu photo.
+// Np. photo: "/photos/krakow.jpg" — lub zostaw null żeby wyświetlać skrót uczelni.
 const COORDINATORS_DATA = {
-  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",    phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#D41D1F" },
-  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",       phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#82179F" },
-  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",     phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#699BF2" },
-  Wrocław:  { name: "Hubert Gościmski", role: "Koordynator KG UEW",  email: "hubert.goscimski@samorzad.ue.wroc.pl",       phone: "+48 XXX XXX XXX", abbr: "UEW",  color: "#00A74D" },
-  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",   phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FFCC3C" },
+  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",                  phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#D41D1F", photo: null },
+  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",                     phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#82179F", photo: null },
+  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",                   phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#699BF2", photo: null },
+  Wrocław:  { name: "Hubert Gościmski", role: "Koordynator KG UEW", email: "hubert.goscimski@samorzad.ue.wroc.pl",      phone: "+48 XXX XXX XXX", abbr: "UEW",   color: "#00A74D", photo: null },
+  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",                 phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FFCC3C", photo: null },
 };
 
 const SCHEDULE = {
@@ -479,11 +481,13 @@ function KoordynatorzyTab({ city, setCity }) {
               background: `linear-gradient(135deg,${coord.color}30,${coord.color}15)`,
               border: `2px solid ${coord.color}45`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
+              flexShrink: 0, overflow: "hidden",
               boxShadow: `0 8px 24px ${coord.color}25`,
               fontFamily: '"Bebas Neue"', fontSize: 18, letterSpacing: 1, color: coord.color,
             }}>
-              {coord.abbr}
+              {coord.photo
+                ? <img src={coord.photo} alt={coord.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : coord.abbr}
             </div>
             <div>
               <p style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.2 }}>{coord.name}</p>

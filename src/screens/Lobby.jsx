@@ -164,10 +164,6 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           </div>
         </div>
 
-        <button onClick={onPractice} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: "12px", fontSize: 13, color: "#C4B5FD", cursor: "pointer", width: "100%", fontFamily: '"Space Grotesk",sans-serif', fontWeight: 600 }}>
-          📖 Przejrzyj przykładowe pytania
-        </button>
-
         <p style={{ color: "rgba(155,137,204,.3)", fontSize: 11, textAlign: "center", marginTop: 20 }}>
           🐐 Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
         </p>

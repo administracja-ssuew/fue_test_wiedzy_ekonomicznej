@@ -688,7 +688,7 @@ function LiveTab({ city, autoStart = false }) {
   }, [gIdx, phase]);
 
   const doReveal = async () => {
-    setPhase("reveal"); setAutoSec(8); clearInterval(liveRef.current);
+    setPhase("reveal"); setAutoSec(5); clearInterval(liveRef.current);
     // Capture current index now; delay fetch 2s so participants finish submitting to DB
     const capturedGIdx = gIdxRef.current;
     setTimeout(async () => {
@@ -698,7 +698,7 @@ function LiveTab({ city, autoStart = false }) {
         setRevealData(stats.answers || []);
       }
     }, 2000);
-    let cd = 8;
+    let cd = 5;
     clearInterval(revealRef.current);
     revealRef.current = setInterval(() => {
       cd--;

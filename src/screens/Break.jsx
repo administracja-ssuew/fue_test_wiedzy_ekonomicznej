@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
+import { supabase, DEMO, getSessionForCity, getSessionById } from "../lib/supabase.js";
 
-export default function Break({ participant, nextModule, isAdminPause, onResume }) {
+// sessionId: when provided (admin_pause), poll that specific session.
+// Without it (regular break), poll any running session for the city.
+export default function Break({ participant, nextModule, isAdminPause, sessionId, onResume }) {
   const [dots, setDots] = useState(".");
   const pollRef = useRef(null);
   const city = participant?.city;
@@ -11,27 +13,29 @@ export default function Break({ participant, nextModule, isAdminPause, onResume 
     return () => clearInterval(t);
   }, []);
 
-  // Poll co 3s
+  // Poll co 3s — specific session when sessionId known, city-wide otherwise
   useEffect(() => {
     if (!city) return;
     const check = async () => {
-      const s = await getSessionForCity(city);
+      const s = sessionId ? await getSessionById(sessionId) : await getSessionForCity(city);
       if (s?.status === "running") { clearInterval(pollRef.current); onResume(); }
     };
     check();
     pollRef.current = setInterval(check, 3000);
     return () => clearInterval(pollRef.current);
-  }, [city]);
+  }, [city, sessionId]);
 
-  // Realtime
+  // Realtime — specific session or city-wide
   useEffect(() => {
     if (DEMO || !supabase || !city) return;
-    const ch = supabase.channel(`break-${city}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "quiz_sessions", filter: `city=eq.${city}` },
+    const filterStr = sessionId ? `id=eq.${sessionId}` : `city=eq.${city}`;
+    const channelKey = sessionId || city;
+    const ch = supabase.channel(`break-${channelKey}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "quiz_sessions", filter: filterStr },
         ({ new: s }) => { if (s.status === "running") { clearInterval(pollRef.current); onResume(); } })
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [city]);
+  }, [city, sessionId]);
 
   const isResults     = !nextModule && !isAdminPause;
   const isAdminPauseMode = isAdminPause;

@@ -70,8 +70,14 @@ export async function markCodeUsed(code, sessionId) {
     localStorage.setItem("fue_codes", JSON.stringify(codes));
     return { error: null };
   }
-  const { error } = await supabase.rpc("mark_code_used", { p_code: code, p_session_id: sessionId });
-  return { error: error?.message || null };
+  // Try SECURITY DEFINER RPC first (bypasses RLS for anon users).
+  // If RPC doesn't exist yet, fall back to direct UPDATE.
+  const { error: rpcErr } = await supabase.rpc("mark_code_used", { p_code: code, p_session_id: sessionId });
+  if (!rpcErr) return { error: null };
+  // Fallback: direct UPDATE (works if anon UPDATE policy exists or RLS is relaxed)
+  const { error: updErr } = await supabase.from("participant_codes")
+    .update({ used: true, session_id: sessionId }).eq("code", code).eq("used", false);
+  return { error: updErr?.message || null };
 }
 
 export async function generateParticipantCode({ name, surname, city, createdBy }) {

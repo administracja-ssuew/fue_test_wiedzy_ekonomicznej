@@ -69,11 +69,15 @@ export default function App() {
     if (loading || admin) return; // admin takes priority; wait for auth
     const saved = sessionStorage.getItem("fue_participant");
     if (!saved) return;
+    // Restore bg immediately — before the async handleCodeSuccess fetch — to avoid flash of default bg
+    const savedBg = sessionStorage.getItem("fue_bg");
+    if (savedBg) document.documentElement.style.setProperty("--fue-bg", savedBg);
     try {
       const p = JSON.parse(saved);
       handleCodeSuccess(p);
     } catch (_) {
       sessionStorage.removeItem("fue_participant");
+      sessionStorage.removeItem("fue_bg");
     }
   }, [loading]); // eslint-disable-line
 
@@ -191,8 +195,10 @@ export default function App() {
         setAnswered(true);
         setScreen("admin_pause");
       } else if (status === "running" && cur === "admin_pause") {
-        // Admin resumed — go back to quiz
+        // Admin resumed — clear stale q_started_at so timer doesn't immediately expire
+        qStartedAtRef.current = null;
         setPicked(null); setAnswered(false);
+        setTimer(modTimePerQRef.current || 60);
         setScreen("quiz");
       } else if (status === "ended" && QUIZ_SCREENS.includes(cur)) {
         clearInterval(timerRef.current);
@@ -219,7 +225,7 @@ export default function App() {
       return () => clearInterval(poll);
     }
 
-    // Production: Realtime + 6s poll fallback using session ID — always the right session
+    // Production: Realtime + 3s poll fallback using session ID — always the right session
     const ch = supabase.channel(`session-sync-${quizSession.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
@@ -229,7 +235,7 @@ export default function App() {
     const poll = setInterval(async () => {
       const s = await getSessionById(quizSession.id);
       if (s) handleSessionStatus(s.status);
-    }, 6000);
+    }, 3000);
     return () => { supabase.removeChannel(ch); clearInterval(poll); };
   }, [quizSession?.id, participant?.code]); // stable deps — uses screenRef internally
 
@@ -353,17 +359,27 @@ export default function App() {
     const session = await getSessionForCity(participantData.city);
     if (session) {
       setQuizSession(session);
-      markCodeUsed(participantData.code, session.id);
+      await markCodeUsed(participantData.code, session.id);
     }
-    // Apply city-specific background
+    // Apply city-specific background and cache it for refresh
     const bg = session?.bg || await getCityBg(participantData.city);
-    if (bg) document.documentElement.style.setProperty("--fue-bg", bg);
+    if (bg) {
+      document.documentElement.style.setProperty("--fue-bg", bg);
+      sessionStorage.setItem("fue_bg", bg);
+    }
     setScreen("lobby");
   };
 
   // Called by Lobby when session goes "running" (first join or reconnect)
   const startQuiz = async (session) => {
     setQuizSession(session);
+
+    // Apply bg when quiz starts (catches case where session had no bg when lobby was entered)
+    const bg = session?.bg || await getCityBg(session?.city);
+    if (bg) {
+      document.documentElement.style.setProperty("--fue-bg", bg);
+      sessionStorage.setItem("fue_bg", bg);
+    }
 
     const dbQs = session?.city ? await getQuestions(session.city) : [];
 
@@ -391,6 +407,8 @@ export default function App() {
   const handleAdminLogout = async () => { await logoutAdmin(); setScreen("welcome"); };
   const resetApp = () => {
     sessionStorage.removeItem("fue_participant");
+    sessionStorage.removeItem("fue_bg");
+    document.documentElement.style.removeProperty("--fue-bg");
     setScreen("welcome"); setParticipant(null); setMyPts(0);
     setAllAnswers([]); setQuizSession(null); setCityQuestions([]); setNextModule(null);
   };
@@ -418,8 +436,10 @@ export default function App() {
 
   // Admin manually paused mid-quiz — participant waits
   if (screen === "admin_pause")
-    return <Break participant={participant} nextModule={currentMod} isAdminPause onResume={() => {
-      setPicked(null); setAnswered(false); setTimer(mod?.timePerQ || 60); setScreen("quiz");
+    return <Break participant={participant} nextModule={currentMod} isAdminPause sessionId={quizSession?.id} onResume={() => {
+      // Clear stale q_started_at so the timer restarts from full duration instead of immediately expiring
+      qStartedAtRef.current = null;
+      setPicked(null); setAnswered(false); setTimer(modTimePerQRef.current || 60); setScreen("quiz");
     }} />;
 
   if (screen === "waiting_results")

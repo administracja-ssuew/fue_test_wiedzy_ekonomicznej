@@ -18,8 +18,9 @@ const C = {
       : v === "success" ? { background: "linear-gradient(135deg,#0B9E6B,#08815A)", color: "#fff" }
       : v === "danger"  ? { background: "linear-gradient(135deg,#E8376B,#B01A4E)", color: "#fff" }
       : v === "pause"   ? { background: "linear-gradient(135deg,#E65100,#BF360C)", color: "#fff" }
+      : v === "gold"    ? { background: "linear-gradient(135deg,#B8860B,#F5C518)", color: "#070215" }
       : { background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: "#C4B5FD" }),
-    border: ["primary","success","danger","pause"].includes(v) ? "none" : undefined,
+    border: ["primary","success","danger","pause","gold"].includes(v) ? "none" : undefined,
     borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700,
     cursor: "pointer", fontFamily: '"Space Grotesk",sans-serif', ...x,
   }),
@@ -251,8 +252,9 @@ function SesjaTab({ city, adminId, onPodium }) {
     sessionRef.current = data;
     if (data) {
       setParticipants(await getParticipantsInSession(city));
-      if (data.status === "ended") setResults(await getSessionResults(data.id));
+      if (data.status === "ended" || data.status === "results") setResults(await getSessionResults(data.id));
     }
+    // Always load real questions — practice sessions also use real question IDs for answers
     const qs = await getQuestions(city);
     setCityQuestions(qs);
     setLoading(false);
@@ -265,16 +267,15 @@ function SesjaTab({ city, adminId, onPodium }) {
     await load(isPractice);
   };
 
-  // Poll participants every 4s during waiting; live stats + participants every 3s during running.
-  // During running: also refresh session from DB so current_question_idx stays current
-  // (participants advance the question index; admin panel doesn't have Realtime subscription).
+  // Poll participants every 4s during waiting; live stats + participants every 3s during running/paused.
+  // During running: also refresh session from DB so current_question_idx stays current.
   useEffect(() => {
     clearInterval(pollRef.current);
     if (session?.status === "waiting") {
       pollRef.current = setInterval(async () => {
         setParticipants(await getParticipantsInSession(city));
       }, 4000);
-    } else if (session?.status === "running") {
+    } else if (session?.status === "running" || session?.status === "paused") {
       pollRef.current = setInterval(async () => {
         // Always fetch fresh session — participants may have advanced the question index
         const { data: fresh } = await getOrCreateSession(city, adminId, isPractice);
@@ -282,7 +283,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         const s = sessionRef.current;
         const q = cityQuestions[s?.current_question_idx ?? 0];
         const [stats, parts, viols] = await Promise.all([
-          q && s?.id ? getLiveQuestionStats(s.id, q.id) : Promise.resolve(null),
+          q && s?.id && s.status === "running" ? getLiveQuestionStats(s.id, q.id) : Promise.resolve(null),
           getParticipantsInSession(city),
           s?.id ? getViolationsForSession(s.id) : Promise.resolve([]),
         ]);
@@ -296,9 +297,10 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   const upd = async (updates) => {
     if (!session) return;
-    await updateSession(session.id, updates);
+    const { error } = await updateSession(session.id, updates);
+    if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
     setSession((s) => { const next = { ...s, ...updates }; sessionRef.current = next; return next; });
-    if (updates.status === "ended") {
+    if (updates.status === "ended" || updates.status === "results") {
       clearInterval(pollRef.current);
       setResults(await getSessionResults(session.id));
       setLiveStats(null);

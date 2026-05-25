@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
@@ -17,6 +17,7 @@ import Quiz        from "./screens/Quiz.jsx";
 import Ended       from "./screens/Ended.jsx";
 import AdminPanel  from "./screens/AdminPanel.jsx";
 import Podium      from "./screens/Podium.jsx";
+import LiveView    from "./screens/LiveView.jsx";
 
 export default function App() {
   const [screen, setScreen] = useState("welcome");
@@ -54,6 +55,12 @@ export default function App() {
   const qIdxRef            = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
   const cityQuestionsRef   = useRef([]);          // always-current questions for session event handler
   const isDesktop = useWindowWidth() >= 900;
+
+  // Standalone live view — opened via ?live=1&city=X
+  const liveParams = useMemo(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get("live") === "1" ? { city: p.get("city") || "" } : null;
+  }, []);
 
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
@@ -203,7 +210,11 @@ export default function App() {
       return () => clearInterval(poll);
     }
 
-    const ch = supabase.channel(`ses-sync-${quizSession.id}`)
+    const ch = supabase.channel(`quiz-${quizSession.id}`)
+      .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
+        // Admin broadcast: status changed — immediately fetch fresh session
+        if (payload?.status) getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
+      })
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
         filter: `id=eq.${quizSession.id}`,
@@ -212,7 +223,7 @@ export default function App() {
     const poll = setInterval(async () => {
       const s = await getSessionById(quizSession.id);
       if (s) handleUpdate(s);
-    }, 3000);
+    }, 5000); // longer poll — broadcast is the fast path
     return () => { supabase.removeChannel(ch); clearInterval(poll); };
   }, [quizSession?.id, participant?.code]);
 
@@ -394,6 +405,9 @@ export default function App() {
     setScreen("welcome"); setParticipant(null); setMyPts(0);
     setAllAnswers([]); setQuizSession(null); setCityQuestions([]); setNextModule(null);
   };
+
+  // ── Standalone live view ─────────────────────────────────────────
+  if (liveParams) return <LiveView city={liveParams.city} />;
 
   // ── Loading ──────────────────────────────────────────────────────
   if (loading) return (

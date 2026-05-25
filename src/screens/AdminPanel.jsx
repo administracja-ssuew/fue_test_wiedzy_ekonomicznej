@@ -165,6 +165,11 @@ function KodyTab({ city, adminId }) {
   const [form, setForm] = useState({ name: "", surname: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [csvPreview, setCsvPreview] = useState(null); // [{name, surname}] or null
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvProgress, setCsvProgress] = useState(0);
+  const [csvErr, setCsvErr] = useState("");
+  const csvFileRef = useRef(null);
 
   useEffect(() => { getParticipantCodes(city).then(setCodes); }, [city]);
   const reload = () => getParticipantCodes(city).then(setCodes);
@@ -176,13 +181,47 @@ function KodyTab({ city, adminId }) {
     setBusy(false); setForm({ name: "", surname: "" }); reload();
   };
 
+  const handleCsvFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const parsed = [];
+      for (const row of rows) {
+        // Support comma and semicolon separators; skip header-like rows
+        const parts = row.split(/[,;]/).map((p) => p.trim().replace(/^["']|["']$/g, ""));
+        if (parts.length < 2) continue;
+        const [name, surname] = parts;
+        if (!name || !surname || name.toLowerCase() === "imię" || name.toLowerCase() === "imie") continue;
+        parsed.push({ name, surname });
+      }
+      setCsvPreview(parsed.length ? parsed : null);
+      setCsvErr(parsed.length ? "" : "Nie znaleziono wierszy w formacie Imię,Nazwisko.");
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  };
+
+  const importCsv = async () => {
+    if (!csvPreview?.length) return;
+    setCsvImporting(true); setCsvProgress(0);
+    for (let i = 0; i < csvPreview.length; i++) {
+      const { name, surname } = csvPreview[i];
+      await generateParticipantCode({ name, surname, city, createdBy: adminId });
+      setCsvProgress(i + 1);
+    }
+    setCsvImporting(false); setCsvPreview(null); reload();
+  };
+
   const remove = async (id) => { if (!confirm("Usunąć kod?")) return; await deleteParticipantCode(id); reload(); };
   const unused = codes.filter((c) => !c.used);
   const used   = codes.filter((c) =>  c.used);
 
   return (
     <div>
-      <div style={{ ...C.card({ padding: "18px", marginBottom: 20, borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.06)" }) }}>
+      <div style={{ ...C.card({ padding: "18px", marginBottom: 16, borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.06)" }) }}>
         <p style={{ fontWeight: 700, color: "#C4B5FD", marginBottom: 12 }}>Generuj kod dla uczestnika</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ flex: 1, minWidth: 130 }}>
@@ -198,6 +237,49 @@ function KodyTab({ city, adminId }) {
           </button>
         </div>
         {err && <p style={{ color: "#E8376B", fontSize: 13, marginTop: 8 }}>{err}</p>}
+      </div>
+
+      {/* CSV import */}
+      <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 20, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <p style={{ fontWeight: 700, color: "#10D9A0", fontSize: 13 }}>📥 Import z CSV / Excel</p>
+          <button onClick={() => csvFileRef.current?.click()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
+            Wybierz plik CSV
+          </button>
+          <input ref={csvFileRef} type="file" accept=".csv,.txt" onChange={handleCsvFile} style={{ display: "none" }} />
+        </div>
+        <p style={{ fontSize: 11, color: "rgba(155,137,204,.7)" }}>
+          Format pliku: każdy wiersz = <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>Imię,Nazwisko</span> (separator: przecinek lub średnik). Zapisz Excel jako CSV (UTF-8).
+        </p>
+        {csvErr && <p style={{ color: "#E8376B", fontSize: 12, marginTop: 6 }}>{csvErr}</p>}
+
+        {csvPreview && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 8 }}>
+              Znaleziono <strong style={{ color: "#10D9A0" }}>{csvPreview.length}</strong> uczestników — podgląd (max 5):
+            </p>
+            {csvPreview.slice(0, 5).map((p, i) => (
+              <div key={i} style={{ fontSize: 12, padding: "3px 8px", background: "rgba(16,217,160,.08)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 6, marginBottom: 4, color: "#EDE9FE" }}>
+                {p.name} {p.surname}
+              </div>
+            ))}
+            {csvPreview.length > 5 && <p style={{ fontSize: 11, color: "#9B89CC" }}>… i {csvPreview.length - 5} więcej</p>}
+            <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+              {csvImporting ? (
+                <p style={{ fontSize: 13, color: "#10D9A0" }}>Importuję {csvProgress}/{csvPreview.length}…</p>
+              ) : (
+                <>
+                  <button onClick={importCsv} style={{ ...C.btn("success", { fontSize: 12, padding: "8px 18px" }) }}>
+                    ✅ Importuj wszystkich
+                  </button>
+                  <button onClick={() => setCsvPreview(null)} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>
+                    Anuluj
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
@@ -244,7 +326,10 @@ function SesjaTab({ city, adminId, onPodium }) {
   const sessionRef     = useRef(null); // always-current session for poll closures
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
   const presenceChRef  = useRef(null);
-  const [lobbyCount, setLobbyCount] = useState(0);
+  const quizBcChRef    = useRef(null); // broadcast channel for instant status push to participants
+  const [lobbyCount, setLobbyCount]         = useState(0);
+  const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
+  const [violAlert, setViolAlert]           = useState(null);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
@@ -308,13 +393,43 @@ function SesjaTab({ city, adminId, onPodium }) {
   useEffect(() => {
     if (DEMO || !supabase) return;
     if (presenceChRef.current) { supabase.removeChannel(presenceChRef.current); presenceChRef.current = null; }
-    if (session?.status !== "waiting") { setLobbyCount(0); return; }
+    if (session?.status !== "waiting") { setLobbyCount(0); setLobbyPresenceList([]); return; }
     const ch = supabase.channel(`presence-lobby-${city}`);
-    ch.on("presence", { event: "sync" }, () => setLobbyCount(Object.keys(ch.presenceState()).length))
-      .subscribe();
+    ch.on("presence", { event: "sync" }, () => {
+      const state = ch.presenceState();
+      const list = Object.values(state).flat();
+      setLobbyCount(list.length);
+      setLobbyPresenceList(list);
+    }).subscribe();
     presenceChRef.current = ch;
     return () => { if (presenceChRef.current) { supabase.removeChannel(presenceChRef.current); presenceChRef.current = null; } };
   }, [city, session?.status]);
+
+  // Broadcast channel (admin → participants) + violations real-time INSERT
+  useEffect(() => {
+    if (DEMO || !supabase || !session?.id) return;
+    // Broadcast channel — admin sends status updates to participants instantly
+    const bcCh = supabase.channel(`quiz-${session.id}`)
+      .subscribe();
+    quizBcChRef.current = bcCh;
+    // Violations real-time
+    const violCh = supabase.channel(`viol-rt-${session.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "violations",
+        filter: `session_id=eq.${session.id}`,
+      }, ({ new: v }) => {
+        setViolations((prev) => {
+          const exists = prev.some((p) => p.id === v.id);
+          return exists ? prev : [v, ...prev];
+        });
+        setViolAlert(v);
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(bcCh); quizBcChRef.current = null;
+      supabase.removeChannel(violCh);
+    };
+  }, [session?.id]); // eslint-disable-line
 
   const upd = async (updates) => {
     if (!session) return;
@@ -324,6 +439,10 @@ function SesjaTab({ city, adminId, onPodium }) {
     const { error } = await updateSession(session.id, updates);
     if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
     setSession((s) => { const next = { ...s, ...updates }; sessionRef.current = next; return next; });
+    // Broadcast status change instantly to all participants on the same session channel
+    if (!DEMO && supabase && quizBcChRef.current && updates.status) {
+      quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: { status: updates.status } });
+    }
     if (updates.status === "ended" || updates.status === "results") {
       setResults(await getSessionResults(session.id));
       setLiveStats(null);
@@ -334,6 +453,20 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   return (
     <div>
+      {/* Violation alert toast */}
+      {violAlert && (
+        <div style={{ ...C.card({ padding: "12px 16px", marginBottom: 12, borderColor: "rgba(232,55,107,.5)", background: "rgba(232,55,107,.1)" }), display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 700, fontSize: 13, color: "#E8376B" }}>Naruszenie regulaminu!</p>
+            <p style={{ fontSize: 12, color: "#9B89CC" }}>
+              {violAlert.participant_code || violAlert.participantCode} · {violAlert.type === "tab_switch" ? "Zmiana zakładki" : "Próba zrzutu ekranu"} (×{violAlert.count})
+            </p>
+          </div>
+          <button onClick={() => setViolAlert(null)} style={{ background: "none", border: "none", color: "#9B89CC", cursor: "pointer", fontSize: 16, padding: 4 }}>✕</button>
+        </div>
+      )}
+
       {/* Mode switcher */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button onClick={() => setIsPractice(false)} style={{ ...C.btn(isPractice ? "ghost" : "primary", { fontSize: 12, padding: "8px 16px" }) }}>🏆 Właściwy quiz</button>
@@ -366,12 +499,35 @@ function SesjaTab({ city, adminId, onPodium }) {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {/* Lobby presence list — names in waiting room */}
+        {lobbyPresenceList.length > 0 && session?.status === "waiting" && (
+          <div style={{ marginTop: 12, maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+            {lobbyPresenceList.map((p, idx) => (
+              <div key={p.code || idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: "rgba(16,217,160,.06)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10D9A0", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
+                <span style={{ fontFamily: '"Bebas Neue"', fontSize: 12, letterSpacing: 1, color: "#C4B5FD", minWidth: 72 }}>{p.code}</span>
+                <span style={{ fontSize: 12, color: "#EDE9FE", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name} {p.surname}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Live in new tab button — always visible when session exists */}
+          {session && (
+            <button style={{ ...C.btn("ghost", { fontSize: 11, padding: "6px 12px" }) }}
+              onClick={() => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank")}>
+              🖥️ Live
+            </button>
+          )}
           {session?.status === "waiting" && (
             <button style={C.btn("success", { flex: 1 })} onClick={async () => {
               const { startedAt, error } = await startQuizSession(session.id);
               if (!startedAt) return alert(error || "Błąd startu — spróbuj ponownie.");
               setSession((s) => ({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
+              if (!DEMO && supabase && quizBcChRef.current) {
+                quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: { status: "running" } });
+              }
             }}>▶ Start quizu</button>
           )}
           {session?.status === "running" && <>

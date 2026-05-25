@@ -26,7 +26,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     if (DEMO || !supabase || !city || !participant?.code) return;
     const ch = supabase.channel(`presence-lobby-${city}`);
     ch.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") await ch.track({ code: participant.code, name: participant?.name });
+      if (status === "SUBSCRIBED") await ch.track({ code: participant.code, name: participant?.name, surname: participant?.surname });
     });
     return () => supabase.removeChannel(ch);
   }, [city, participant?.code]);

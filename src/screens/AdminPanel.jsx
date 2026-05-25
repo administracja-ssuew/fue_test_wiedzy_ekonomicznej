@@ -451,44 +451,74 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
 
+  const st     = session?.status || "waiting";
+  const stCol  = STATUS_COLOR[st];
+  const totalQ = cityQuestions.length;
+  const curQ   = (session?.current_question_idx ?? 0) + 1;
+  const openLive = () => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank");
+
   return (
     <div>
-      {/* Violation alert toast */}
+      {/* ── Violation toast ─────────────────────────────────────────── */}
       {violAlert && (
-        <div style={{ ...C.card({ padding: "12px 16px", marginBottom: 12, borderColor: "rgba(232,55,107,.5)", background: "rgba(232,55,107,.1)" }), display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 18 }}>⚠️</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", marginBottom: 14,
+          background: "rgba(232,55,107,.12)", border: "1px solid rgba(232,55,107,.45)", borderRadius: 12 }}>
+          <span style={{ fontSize: 20 }}>⚠️</span>
           <div style={{ flex: 1 }}>
             <p style={{ fontWeight: 700, fontSize: 13, color: "#E8376B" }}>Naruszenie regulaminu!</p>
-            <p style={{ fontSize: 12, color: "#9B89CC" }}>
-              {violAlert.participant_code || violAlert.participantCode} · {violAlert.type === "tab_switch" ? "Zmiana zakładki" : "Próba zrzutu ekranu"} (×{violAlert.count})
+            <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>
+              <strong style={{ color: "#C4B5FD" }}>{violAlert.participant_code || violAlert.participantCode}</strong>
+              {" · "}{violAlert.type === "tab_switch" ? "Zmiana zakładki" : "Próba zrzutu ekranu"} (×{violAlert.count})
             </p>
           </div>
-          <button onClick={() => setViolAlert(null)} style={{ background: "none", border: "none", color: "#9B89CC", cursor: "pointer", fontSize: 16, padding: 4 }}>✕</button>
+          <button onClick={() => setViolAlert(null)} style={{ background: "none", border: "none", color: "#9B89CC", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
         </div>
       )}
 
-      {/* Mode switcher */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button onClick={() => setIsPractice(false)} style={{ ...C.btn(isPractice ? "ghost" : "primary", { fontSize: 12, padding: "8px 16px" }) }}>🏆 Właściwy quiz</button>
-        <button onClick={() => setIsPractice(true)}  style={{ ...C.btn(isPractice ? "success" : "ghost", { fontSize: 12, padding: "8px 16px" }) }}>🔬 Próbny test</button>
+      {/* ── Top bar: mode + quick actions ───────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <button onClick={() => setIsPractice(false)} style={{ ...C.btn(!isPractice ? "primary" : "ghost", { fontSize: 12, padding: "7px 14px" }) }}>🏆 Właściwy</button>
+        <button onClick={() => setIsPractice(true)}  style={{ ...C.btn(isPractice  ? "success" : "ghost", { fontSize: 12, padding: "7px 14px" }) }}>🔬 Próbny</button>
+        <div style={{ flex: 1 }} />
+        <button onClick={openLive} style={{ ...C.btn("ghost", { fontSize: 12, padding: "7px 14px", display: "flex", alignItems: "center", gap: 6 }) }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#E8376B", animation: "pulse 1s infinite", display: "inline-block" }} />
+          Otwórz Live
+        </button>
+        {(st === "ended" || st === "results") && (
+          <button onClick={newQuiz} style={C.btn("primary", { fontSize: 12, padding: "7px 14px" })}>➕ Nowy quiz</button>
+        )}
       </div>
 
-      <div style={{ ...C.card({ padding: "20px", marginBottom: 20, borderColor: isPractice ? "rgba(16,217,160,.3)" : `${STATUS_COLOR[session?.status || "waiting"]}30`, background: isPractice ? "rgba(16,217,160,.06)" : `${STATUS_COLOR[session?.status || "waiting"]}08` }) }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div>
-            <p style={{ fontSize: 11, color: isPractice ? "#10D9A0" : "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
-              {isPractice ? "🔬 PRÓBNY TEST" : "Sesja"} — {city}
+      {/* ── Status banner ───────────────────────────────────────────── */}
+      <div style={{ borderRadius: 18, marginBottom: 14, overflow: "hidden",
+        border: `1px solid ${stCol}35`, background: `${stCol}0A` }}>
+
+        {/* Header row */}
+        <div style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${stCol}20`,
+            border: `1.5px solid ${stCol}50`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+            {st === "waiting" ? "⏳" : st === "running" ? "▶" : st === "paused" ? "⏸" : "🏁"}
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 10, color: "rgba(155,137,204,.7)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
+              {isPractice ? "🔬 Próbny test" : "Sesja"} · {city}
             </p>
-            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: STATUS_COLOR[session?.status || "waiting"], letterSpacing: 1, marginTop: 2 }}>
-              {STATUS_LABEL[session?.status || "waiting"]}
+            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: stCol, letterSpacing: 1, lineHeight: 1.1, marginTop: 2 }}>
+              {STATUS_LABEL[st]}
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            {session?.status === "waiting" ? (
+            {st === "waiting" ? (
               <>
-                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#10D9A0", lineHeight: 1 }}>{lobbyCount}</p>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 40, color: "#10D9A0", lineHeight: 1 }}>{lobbyCount}</p>
                 <p style={{ fontSize: 11, color: "#9B89CC" }}>w poczekalni</p>
-                <p style={{ fontSize: 10, color: "rgba(155,137,204,.5)", marginTop: 2 }}>{participants.length} aktywowanych</p>
+                <p style={{ fontSize: 10, color: "rgba(155,137,204,.4)", marginTop: 1 }}>{participants.length} aktywowanych</p>
+              </>
+            ) : st === "running" ? (
+              <>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: "#EDE9FE", lineHeight: 1 }}>{curQ}<span style={{ fontSize: 16, color: "#9B89CC" }}>/{totalQ}</span></p>
+                <p style={{ fontSize: 11, color: "#9B89CC" }}>pytanie</p>
+                <p style={{ fontSize: 10, color: "#10D9A0", marginTop: 1 }}>{participants.length} uczestników</p>
               </>
             ) : (
               <>
@@ -499,29 +529,17 @@ function SesjaTab({ city, adminId, onPodium }) {
           </div>
         </div>
 
-        {/* Lobby presence list — names in waiting room */}
-        {lobbyPresenceList.length > 0 && session?.status === "waiting" && (
-          <div style={{ marginTop: 12, maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-            {lobbyPresenceList.map((p, idx) => (
-              <div key={p.code || idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", background: "rgba(16,217,160,.06)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 8 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10D9A0", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
-                <span style={{ fontFamily: '"Bebas Neue"', fontSize: 12, letterSpacing: 1, color: "#C4B5FD", minWidth: 72 }}>{p.code}</span>
-                <span style={{ fontSize: 12, color: "#EDE9FE", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name} {p.surname}</span>
-              </div>
-            ))}
+        {/* Progress bar when running */}
+        {st === "running" && totalQ > 0 && (
+          <div style={{ height: 3, background: "rgba(255,255,255,.08)" }}>
+            <div style={{ height: "100%", background: `linear-gradient(90deg,${stCol},#6B21E8)`, width: `${(curQ / totalQ) * 100}%`, transition: "width .6s ease" }} />
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          {/* Live in new tab button — always visible when session exists */}
-          {session && (
-            <button style={{ ...C.btn("ghost", { fontSize: 11, padding: "6px 12px" }) }}
-              onClick={() => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank")}>
-              🖥️ Live
-            </button>
-          )}
-          {session?.status === "waiting" && (
-            <button style={C.btn("success", { flex: 1 })} onClick={async () => {
+        {/* Action buttons */}
+        <div style={{ padding: "14px 20px", borderTop: `1px solid ${stCol}20`, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {st === "waiting" && (
+            <button style={{ ...C.btn("success", { flex: 1, fontSize: 14, padding: "12px 20px" }) }} onClick={async () => {
               const { startedAt, error } = await startQuizSession(session.id);
               if (!startedAt) return alert(error || "Błąd startu — spróbuj ponownie.");
               setSession((s) => ({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
@@ -530,108 +548,127 @@ function SesjaTab({ city, adminId, onPodium }) {
               }
             }}>▶ Start quizu</button>
           )}
-          {session?.status === "running" && <>
-            <button style={C.btn("pause", { flex: 1 })} onClick={() => upd({ status: "paused" })}>⏸ Pauza</button>
+          {st === "running" && <>
+            <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => upd({ status: "paused" })}>⏸ Pauza</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
-          {session?.status === "paused" && <>
-            <button style={C.btn("success", { flex: 1 })} onClick={() => upd({ status: "running" })}>▶ Wznów quiz</button>
-            <button style={C.btn("gold", { flex: 1 })} onClick={() => { if (confirm("Ogłosić wyniki teraz? Uczestnicy zobaczą ranking.")) upd({ status: "results" }); }}>
-              🏆 Ogłoś wyniki
-            </button>
+          {st === "paused" && <>
+            <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={() => upd({ status: "running", q_started_at: new Date().toISOString() })}>▶ Wznów quiz</button>
+            <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
-          {session?.status === "results" && <>
-            <button style={C.btn("ghost", { flex: 1 })} onClick={load}>🔄 Odśwież wyniki</button>
-            <button style={C.btn("primary", { flex: 1 })} onClick={newQuiz}>➕ Nowy quiz</button>
-          </>}
-          {session?.status === "ended" && <>
-            <button style={C.btn("ghost", { flex: 1 })} onClick={load}>🔄 Odśwież wyniki</button>
-            <button style={C.btn("primary", { flex: 1 })} onClick={newQuiz}>➕ Nowy quiz</button>
-          </>}
+          {(st === "ended" || st === "results") && (
+            <button onClick={load} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
+          )}
         </div>
       </div>
 
-      {/* Stats toggle — shown whenever quiz is running, hidden by default */}
-      {session?.status === "running" && (
-        <div style={{ marginBottom: showAdminStats ? 0 : 20 }}>
-          <button onClick={() => setShowAdminStats((v) => !v)}
-            style={{ ...C.btn("ghost", { width: "100%", fontSize: 12, padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }) }}>
-            <span>📊 Postęp odpowiedzi — bieżące pytanie <span style={{ color: "#F5C518", fontSize: 10 }}>🔒 Tylko admin</span></span>
-            <span style={{ color: "#9B89CC", fontSize: 14 }}>{showAdminStats ? "▲" : "▼"}</span>
-          </button>
-          {showAdminStats && (
-            <div style={{ ...C.card({ padding: "16px 20px", marginTop: 4, marginBottom: 20, borderColor: "rgba(16,217,160,.25)", background: "rgba(16,217,160,.06)" }) }}>
-              {liveStats ? (
-                <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{liveStats.total}</p>
-                    <p style={{ fontSize: 11, color: "#9B89CC" }}>Odpowiedziało</p>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ height: 10, background: "rgba(255,255,255,.1)", borderRadius: 5, overflow: "hidden" }}>
-                      <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)", width: liveStats.total ? `${(liveStats.correct / liveStats.total) * 100}%` : "0%", transition: "width .5s" }} />
-                    </div>
-                    <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 5 }}>
-                      {liveStats.total ? Math.round((liveStats.correct / liveStats.total) * 100) : 0}% poprawnych · {liveStats.correct} dobrze · {liveStats.total - liveStats.correct} źle
-                    </p>
-                  </div>
+      {/* ── Lobby presence list ──────────────────────────────────────── */}
+      {st === "waiting" && (
+        <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 14, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
+          <p style={{ fontSize: 11, color: "#10D9A0", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: lobbyPresenceList.length ? 10 : 0 }}>
+            👥 W poczekalni — {lobbyCount} online
+          </p>
+          {lobbyPresenceList.length === 0 ? (
+            <p style={{ color: "rgba(155,137,204,.5)", fontSize: 13, marginTop: 8 }}>Czekam na uczestników…</p>
+          ) : (
+            <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+              {lobbyPresenceList.map((p, idx) => (
+                <div key={p.code || idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
+                  background: "rgba(16,217,160,.07)", border: "1px solid rgba(16,217,160,.14)", borderRadius: 8 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#10D9A0", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, letterSpacing: 1, color: "#C4B5FD", minWidth: 76 }}>{p.code}</span>
+                  <span style={{ fontSize: 13, color: "#EDE9FE", flex: 1 }}>{p.name} {p.surname}</span>
                 </div>
-              ) : (
-                <p style={{ color: "#9B89CC", fontSize: 13, textAlign: "center" }}>Ładowanie statystyk…</p>
-              )}
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Anti-cheat violations */}
+      {/* ── Live question stats — always visible when running ────────── */}
+      {st === "running" && (
+        <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 14, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <p style={{ fontSize: 11, color: "#10D9A0", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
+              📊 Odpowiedzi — pyt. {curQ}/{totalQ} <span style={{ color: "#F5C518", fontWeight: 400 }}>🔒 admin</span>
+            </p>
+            <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#EDE9FE" }}>{liveStats?.total ?? 0}</span>
+          </div>
+          {liveStats && liveStats.total > 0 ? (
+            <>
+              <div style={{ height: 8, background: "rgba(255,255,255,.1)", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{ height: "100%", background: "linear-gradient(90deg,#10D9A0,#6B21E8)",
+                  width: `${Math.round((liveStats.correct / liveStats.total) * 100)}%`, transition: "width .5s" }} />
+              </div>
+              <div style={{ display: "flex", gap: 16 }}>
+                <span style={{ fontSize: 12, color: "#10D9A0" }}>✅ {liveStats.correct} poprawnie</span>
+                <span style={{ fontSize: 12, color: "#E8376B" }}>❌ {liveStats.total - liveStats.correct} błędnie</span>
+                <span style={{ fontSize: 12, color: "#9B89CC", marginLeft: "auto" }}>{Math.round((liveStats.correct / liveStats.total) * 100)}%</span>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: "rgba(155,137,204,.5)", fontSize: 13 }}>Czekam na odpowiedzi…</p>
+          )}
+        </div>
+      )}
+
+      {/* ── Live view embed (running only) ──────────────────────────── */}
+      {st === "running" && !isPractice && (
+        <div style={liveExpanded
+          ? { position: "fixed", inset: 0, zIndex: 2000, background: "#070215", overflow: "auto" }
+          : { ...C.card({ marginBottom: 14, padding: 0, overflow: "hidden", borderColor: "rgba(232,55,107,.2)" }) }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px",
+            borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+            <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#E8376B", animation: "pulse 1s infinite" }} />
+              Live — podgląd pytania
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={openLive} style={{ ...C.btn("ghost", { fontSize: 11, padding: "4px 10px" }) }}>🖥️ Nowa karta</button>
+              <button onClick={() => setLiveExpanded((v) => !v)} style={{ ...C.btn("ghost", { fontSize: 11, padding: "4px 10px" }) }}>
+                {liveExpanded ? "✕ Zamknij" : "⤢ Rozwiń"}
+              </button>
+            </div>
+          </div>
+          <div style={liveExpanded ? { padding: "20px" } : { padding: "12px 16px" }}>
+            <LiveTab city={city} autoStart />
+          </div>
+        </div>
+      )}
+
+      {/* ── Anti-cheat violations ────────────────────────────────────── */}
       {violations.length > 0 && (
-        <div style={{ ...C.card({ padding: "14px 18px", marginBottom: 20, borderColor: "rgba(232,55,107,.3)", background: "rgba(232,55,107,.06)" }) }}>
-          <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>⚠️ Naruszenia regulaminu ({violations.length})</p>
-          {violations.slice(0, 5).map((v, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: i ? "1px solid rgba(255,255,255,.05)" : "none" }}>
-              <span style={{ fontSize: 13 }}>{v.type === "tab_switch" ? "🔀" : "📸"}</span>
-              <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1 }}>{v.participant_code || v.participantCode}</span>
-              <span style={{ fontSize: 12, color: "#E8376B", flex: 1 }}>{v.type === "tab_switch" ? "Zmiana zakładki" : "Próba screenshota"}</span>
+        <div style={{ ...C.card({ padding: "14px 18px", marginBottom: 14, borderColor: "rgba(232,55,107,.25)", background: "rgba(232,55,107,.04)" }) }}>
+          <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
+            ⚠️ Naruszenia regulaminu ({violations.length})
+          </p>
+          {violations.slice(0, 6).map((v, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: i ? "1px solid rgba(255,255,255,.04)" : "none" }}>
+              <span>{v.type === "tab_switch" ? "🔀" : "📸"}</span>
+              <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1, minWidth: 76 }}>{v.participant_code || v.participantCode}</span>
+              <span style={{ fontSize: 12, color: "#E8376B", flex: 1 }}>{v.type === "tab_switch" ? "Zmiana zakładki" : "Screenshot"}</span>
               <span style={{ fontSize: 11, color: "#9B89CC" }}>×{v.count}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Live ghost view — auto-shown when quiz is running, expandable to fullscreen */}
-      {session?.status === "running" && !isPractice && (
-        <div style={liveExpanded ? {
-          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-          width: "100%", height: "100%",
-          zIndex: 2000, background: "#070215", overflow: "auto", padding: "20px",
-          fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE",
-        } : {
-          ...C.card({ marginBottom: 20, padding: "16px 20px", borderColor: "rgba(232,55,107,.25)", background: "rgba(232,55,107,.04)" }),
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>🔴 Live — widok pytania (jak uczestnik)</p>
-            <button onClick={() => setLiveExpanded((v) => !v)}
-              style={{ ...C.btn("ghost", { fontSize: 12, padding: "5px 12px" }) }}>
-              {liveExpanded ? "✕ Zwiń" : "⤢ Pełny ekran"}
-            </button>
-          </div>
-          <LiveTab city={city} autoStart />
-        </div>
-      )}
-
-      {participants.length > 0 && session?.status !== "ended" && (
-        <div style={{ marginBottom: 24 }}>
-          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Kody aktywowane ({participants.length})</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: 8 }}>
+      {/* ── Participants grid ────────────────────────────────────────── */}
+      {participants.length > 0 && st !== "ended" && st !== "results" && (
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
+            Uczestnicy ({participants.length})
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 7 }}>
             {participants.map((p) => (
-              <div key={p.id} style={{ ...C.card({ padding: "10px 12px" }), display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0 }}>
+              <div key={p.id} style={{ ...C.card({ padding: "9px 12px" }), display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.4)",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0 }}>
                   {p.name?.[0]}{p.surname?.[0]}
                 </div>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600 }}>{p.name} {p.surname}</p>
+                <div style={{ overflow: "hidden" }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name} {p.surname}</p>
                   <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.code}</p>
                 </div>
               </div>
@@ -640,27 +677,41 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       )}
 
-      {session?.status === "ended" && results.length > 0 && (
+      {/* ── Results ─────────────────────────────────────────────────── */}
+      {(st === "ended" || st === "results") && (
         <div>
-          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Wyniki końcowe</p>
-          <p style={{ fontSize: 11, color: "rgba(155,137,204,.6)", marginBottom: 12 }}>Przy równej liczbie punktów decyduje krótszy średni czas odpowiedzi.</p>
-          {onPodium && (
-            <button style={{ ...C.btn("gold", { width: "100%", marginBottom: 16 }) }} onClick={() => onPodium(results)}>
-              🏆 Pokaż podium ceremonię
-            </button>
-          )}
-          {results.map((r, i) => (
-            <div key={r.code} style={{ ...C.card({ padding: "12px 16px", marginBottom: 8 }), display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center" }}>{i + 1}</span>
-              <p style={{ flex: 1, fontWeight: 600 }}>{r.name}</p>
-              <div style={{ textAlign: "right", marginRight: 8 }}>
-                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#F5C518" }}>{r.points} pkt</p>
-                <p style={{ fontSize: 10, color: r.avgResponseTime != null ? "#9B89CC" : "rgba(155,137,204,.3)" }}>
-                  ⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}
-                </p>
-              </div>
+          {results.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <p style={{ color: "#9B89CC", fontSize: 14 }}>Brak wyników — odśwież lub poczekaj chwilę.</p>
+              <button onClick={load} style={{ ...C.btn("ghost", { marginTop: 12, fontSize: 13 }) }}>🔄 Odśwież wyniki</button>
             </div>
-          ))}
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div>
+                  <p style={{ fontSize: 11, color: "#F5C518", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Wyniki końcowe</p>
+                  <p style={{ fontSize: 11, color: "rgba(155,137,204,.5)", marginTop: 2 }}>Przy równej liczbie pkt decyduje krótszy średni czas.</p>
+                </div>
+                {onPodium && (
+                  <button style={C.btn("gold", { fontSize: 13, padding: "8px 16px" })} onClick={() => onPodium(results)}>
+                    🏆 Podium
+                  </button>
+                )}
+              </div>
+              {results.map((r, i) => (
+                <div key={r.code} style={{ ...C.card({ padding: "11px 16px", marginBottom: 7 }), display: "flex", alignItems: "center", gap: 12,
+                  borderColor: i === 0 ? "rgba(245,197,24,.3)" : i === 1 ? "rgba(192,192,192,.2)" : i === 2 ? "rgba(205,127,50,.2)" : undefined,
+                  background: i === 0 ? "rgba(245,197,24,.05)" : i < 3 ? "rgba(255,255,255,.03)" : undefined }}>
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center", flexShrink: 0 }}>{i + 1}</span>
+                  <p style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{r.name}</p>
+                  <div style={{ textAlign: "right" }}>
+                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#F5C518", lineHeight: 1 }}>{r.points} pkt</p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}</p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

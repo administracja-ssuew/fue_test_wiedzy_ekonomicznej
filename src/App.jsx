@@ -187,7 +187,9 @@ export default function App() {
           const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
           const remaining = Math.max(1, state.mod.timePerQ - elapsed);
           qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
-          clearInterval(timerRef.current);
+          // Do NOT clearInterval here — the timer effect handles its own lifecycle when
+          // currentMod/qIdx change. Calling clearInterval without a guaranteed re-run
+          // of the effect (when state values happen to be the same) kills the timer permanently.
           setCurrentMod(state.modId); setQIdx(state.qIdx);
           setTimer(remaining); setAnswered(false); setPicked(null); setScreen("quiz");
         }

@@ -239,8 +239,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [cityQuestions, setCityQuestions] = useState([]);
   const [showAdminStats, setShowAdminStats] = useState(false);
   const [liveExpanded, setLiveExpanded] = useState(false);
-  const pollRef    = useRef(null);
-  const sessionRef = useRef(null); // always-current session for poll closures
+  const pollRef        = useRef(null);
+  const sessionRef     = useRef(null); // always-current session for poll closures
+  const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
@@ -277,8 +278,11 @@ function SesjaTab({ city, adminId, onPodium }) {
       }, 4000);
     } else if (session?.status === "running" || session?.status === "paused") {
       pollRef.current = setInterval(async () => {
-        // Always fetch fresh session — participants may have advanced the question index
+        const myVersion = pollVersionRef.current; // snapshot before async call
         const { data: fresh } = await getOrCreateSession(city, adminId, isPractice);
+        // Discard if upd() was called while this fetch was in-flight — prevents stale "running"
+        // response from reverting a just-written "paused" status in local state.
+        if (pollVersionRef.current !== myVersion) return;
         if (fresh) { setSession(fresh); sessionRef.current = fresh; }
         const s = sessionRef.current;
         const q = cityQuestions[s?.current_question_idx ?? 0];
@@ -297,7 +301,8 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   const upd = async (updates) => {
     if (!session) return;
-    // Clear poll BEFORE the async update so a stale poll response can't revert the new status
+    // Increment version + clear interval: any in-flight poll will see version mismatch and discard itself
+    pollVersionRef.current++;
     clearInterval(pollRef.current);
     const { error } = await updateSession(session.id, updates);
     if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
@@ -507,7 +512,8 @@ function UstawieniaTab({ city }) {
 
     // Overlay ciemny + obraz — tekst zawsze czytelny
     const bgCss = `linear-gradient(rgba(7,2,21,.72),rgba(14,4,53,.72)), url("${url}") center/cover no-repeat fixed`;
-    await setCityBg(city, bgCss);
+    const { error: bgErr } = await setCityBg(city, bgCss);
+    if (bgErr) { setUploading(false); setStatus("error:Błąd zapisu tła do bazy: " + bgErr); return; }
     document.documentElement.style.setProperty("--fue-bg", bgCss);
     setPreviewUrl(url);
     setUploading(false); setStatus("ok");

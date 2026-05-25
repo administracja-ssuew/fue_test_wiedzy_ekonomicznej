@@ -340,7 +340,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     setSession(data);
     sessionRef.current = data;
     if (data) {
-      setParticipants(await getParticipantsInSession(city));
+      setParticipants(await getParticipantsInSession(city, data.id));
       if (data.status === "ended" || data.status === "results") setResults(await getSessionResults(data.id));
     }
     // Always load real questions — practice sessions also use real question IDs for answers
@@ -362,7 +362,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     clearInterval(pollRef.current);
     if (session?.status === "waiting") {
       pollRef.current = setInterval(async () => {
-        setParticipants(await getParticipantsInSession(city));
+        setParticipants(await getParticipantsInSession(city, sessionRef.current?.id));
       }, 4000);
     } else if (session?.status === "running" || session?.status === "paused") {
       pollRef.current = setInterval(async () => {
@@ -378,7 +378,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         const q = cityQuestions[s?.current_question_idx ?? 0];
         const [stats, parts, viols] = await Promise.all([
           q && s?.id && s.status === "running" ? getLiveQuestionStats(s.id, q.id) : Promise.resolve(null),
-          getParticipantsInSession(city),
+          getParticipantsInSession(city, s?.id),
           s?.id ? getViolationsForSession(s.id) : Promise.resolve([]),
         ]);
         if (stats) setLiveStats(stats);

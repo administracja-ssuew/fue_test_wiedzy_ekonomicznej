@@ -125,9 +125,9 @@ CREATE TABLE IF NOT EXISTS public.quiz_sessions (
   created_at            TIMESTAMPTZ DEFAULT now()
 );
 
--- Migration for existing databases (run if table already exists):
--- ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS is_practice BOOLEAN NOT NULL DEFAULT false;
--- ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS bg TEXT;
+-- Migrations for existing databases (idempotent — safe to run on any installation):
+ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS is_practice BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS bg TEXT;
 
 ALTER TABLE public.quiz_sessions ENABLE ROW LEVEL SECURITY;
 
@@ -185,10 +185,13 @@ ALTER TABLE public.violations ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "violations_anon_insert"  ON public.violations;
 DROP POLICY IF EXISTS "violations_admin_select" ON public.violations;
+-- Allow any code that exists in participant_codes (not requiring used=true to avoid circular dependency).
 CREATE POLICY "violations_anon_insert"  ON public.violations FOR INSERT
-  WITH CHECK (participant_code IN (SELECT code FROM public.participant_codes WHERE used = true));
+  WITH CHECK (participant_code IN (SELECT code FROM public.participant_codes));
 CREATE POLICY "violations_admin_select" ON public.violations FOR SELECT
   USING (get_my_role() IN ('city_admin', 'superadmin'));
+
+GRANT INSERT ON public.violations TO anon;
 
 -- ─── MODULES (dynamic — overrides hardcoded fallback) ────────────
 
@@ -233,9 +236,29 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND tablename='participant_codes') THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.participant_codes;
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND tablename='violations') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.violations;
+  END IF;
 END $$;
 
 -- ─── RPC FUNCTIONS ───────────────────────────────────────────────
+
+-- Allows anon participants to mark their code as used when joining the lobby.
+-- Direct UPDATE is blocked by RLS (only admins can update); SECURITY DEFINER bypasses it.
+CREATE OR REPLACE FUNCTION public.mark_code_used(p_code TEXT, p_session_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.participant_codes
+  SET used = true, session_id = p_session_id
+  WHERE code = p_code AND used = false;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.mark_code_used(TEXT, UUID) TO anon, authenticated;
 
 -- Returns aggregated session results (one row per participant).
 -- Uses SECURITY DEFINER to bypass RLS row-count limits on answers table.
@@ -304,11 +327,16 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO authenticated, anon;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
-GRANT SELECT ON public.quiz_sessions, public.participant_codes TO anon;
+GRANT SELECT ON public.quiz_sessions TO anon;
+GRANT SELECT ON public.participant_codes TO anon;
+GRANT SELECT ON public.questions TO anon;
+GRANT SELECT ON public.modules TO anon;
 GRANT INSERT ON public.answers TO anon;
+GRANT INSERT ON public.violations TO anon;
 GRANT EXECUTE ON FUNCTION public.get_my_role() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_city() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_code_used(TEXT, UUID) TO anon, authenticated;
 
 -- Starts the quiz from 'waiting' state, sets q_started_at using the server clock.
 -- Using clock_timestamp() (not now()) ensures the timestamp reflects the actual

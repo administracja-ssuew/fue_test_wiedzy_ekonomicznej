@@ -329,12 +329,14 @@ export async function getSessionById(sessionId) {
   return data || null;
 }
 
-export async function getParticipantsInSession(city) {
+export async function getParticipantsInSession(city, sessionId) {
   if (DEMO) {
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
-    return codes.filter((c) => c.city === city && c.used);
+    return codes.filter((c) => c.city === city && c.used && (!sessionId || c.session_id === sessionId));
   }
-  const { data } = await supabase.from("participant_codes").select("*").eq("city", city).eq("used", true);
+  let q = supabase.from("participant_codes").select("*").eq("city", city).eq("used", true);
+  if (sessionId) q = q.eq("session_id", sessionId);
+  const { data } = await q;
   return data || [];
 }
 
@@ -347,13 +349,13 @@ export async function saveAnswer({ sessionId, participantCode, participantName, 
     localStorage.setItem("fue_answers", JSON.stringify(answers));
     return { error: null };
   }
-  // INSERT + ignoreDuplicates avoids needing UPDATE grant for anon.
-  // Participants answer each question once; duplicates (reconnect edge case) are silently ignored.
-  const { error } = await supabase.from("answers").insert({
+  // upsert with ignoreDuplicates silently skips re-answers (reconnect edge case).
+  // onConflict matches the UNIQUE constraint (session_id, participant_code, question_id).
+  const { error } = await supabase.from("answers").upsert({
     session_id: sessionId, participant_code: participantCode, participant_name: participantName,
     city, question_id: questionId, module, chosen, is_correct: isCorrect, points,
     response_time_s: responseTimeS ?? null,
-  }, { ignoreDuplicates: true });
+  }, { onConflict: "session_id,participant_code,question_id", ignoreDuplicates: true });
   return { error: error?.message || null };
 }
 

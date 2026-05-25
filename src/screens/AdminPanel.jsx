@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import {
+  supabase, DEMO,
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
@@ -242,6 +243,8 @@ function SesjaTab({ city, adminId, onPodium }) {
   const pollRef        = useRef(null);
   const sessionRef     = useRef(null); // always-current session for poll closures
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
+  const presenceChRef  = useRef(null);
+  const [lobbyCount, setLobbyCount] = useState(0);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
@@ -301,6 +304,18 @@ function SesjaTab({ city, adminId, onPodium }) {
     return () => clearInterval(pollRef.current);
   }, [session?.status, cityQuestions]);
 
+  // Realtime Presence — count participants actually on the lobby screen
+  useEffect(() => {
+    if (DEMO || !supabase) return;
+    if (presenceChRef.current) { supabase.removeChannel(presenceChRef.current); presenceChRef.current = null; }
+    if (session?.status !== "waiting") { setLobbyCount(0); return; }
+    const ch = supabase.channel(`presence-lobby-${city}`);
+    ch.on("presence", { event: "sync" }, () => setLobbyCount(Object.keys(ch.presenceState()).length))
+      .subscribe();
+    presenceChRef.current = ch;
+    return () => { if (presenceChRef.current) { supabase.removeChannel(presenceChRef.current); presenceChRef.current = null; } };
+  }, [city, session?.status]);
+
   const upd = async (updates) => {
     if (!session) return;
     // Increment version + clear interval: any in-flight poll will see version mismatch and discard itself
@@ -336,8 +351,18 @@ function SesjaTab({ city, adminId, onPodium }) {
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{participants.length}</p>
-            <p style={{ fontSize: 11, color: "#9B89CC" }}>w lobby</p>
+            {session?.status === "waiting" ? (
+              <>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#10D9A0", lineHeight: 1 }}>{lobbyCount}</p>
+                <p style={{ fontSize: 11, color: "#9B89CC" }}>w poczekalni</p>
+                <p style={{ fontSize: 10, color: "rgba(155,137,204,.5)", marginTop: 2 }}>{participants.length} aktywowanych</p>
+              </>
+            ) : (
+              <>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 36, color: "#EDE9FE", lineHeight: 1 }}>{participants.length}</p>
+                <p style={{ fontSize: 11, color: "#9B89CC" }}>uczestników</p>
+              </>
+            )}
           </div>
         </div>
 

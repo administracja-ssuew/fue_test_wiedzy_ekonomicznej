@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from "react";
 
 import { moduleQuestions } from "../lib/gameLogic.js";
 import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
+
+// Broadcast presence so the admin lobby counter shows real-time waiting count
 import { useModules } from "../context/ModulesContext.jsx";
 
 const CITY_ICONS = { Kraków: "🏰", Warszawa: "🏛️", Poznań: "🐐", Wrocław: "🦌", Katowice: "⚙️" };
-const CITY_COLORS = { Kraków: "#FFA653", Warszawa: "#FF6B6B", Poznań: "#4ECDC4", Wrocław: "#45B7D1", Katowice: "#FF6B9D" };
+const CITY_COLORS = { Kraków: "#D41D1F", Warszawa: "#82179F", Poznań: "#699BF2", Wrocław: "#00A74D", Katowice: "#FFCC3C" };
 
 export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz, onPractice }) {
   const MODULES = useModules();
@@ -19,6 +21,15 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
   const color                   = CITY_COLORS[city] || "#6B21E8";
 
   useEffect(() => { onStartQuizRef.current = onStartQuiz; }, [onStartQuiz]);
+
+  useEffect(() => {
+    if (DEMO || !supabase || !city || !participant?.code) return;
+    const ch = supabase.channel(`presence-lobby-${city}`);
+    ch.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") await ch.track({ code: participant.code, name: participant?.name });
+    });
+    return () => supabase.removeChannel(ch);
+  }, [city, participant?.code]);
 
   // Animate waiting dots
   useEffect(() => {
@@ -109,7 +120,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
                 🔬 PRÓBNY TEST
               </span>
             )}
-            <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>🐐 FUE QUIZ</p>
+            <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>TEST WIEDZY EKONOMICZNEJ</p>
             <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: isDesktop ? 48 : 34, letterSpacing: 1 }}>Test Wiedzy Ekonomicznej</h2>
           </div>
           <div style={{ background: `${color}20`, border: `1px solid ${color}40`, borderRadius: 14, padding: "10px 16px", textAlign: "center" }}>
@@ -165,7 +176,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
         </div>
 
         <p style={{ color: "rgba(155,137,204,.3)", fontSize: 11, textAlign: "center", marginTop: 20 }}>
-          🐐 Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
+          Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
         </p>
       </div>
     </div>

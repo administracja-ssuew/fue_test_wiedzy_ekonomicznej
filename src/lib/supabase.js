@@ -203,8 +203,10 @@ export async function getOrCreateSession(city, adminId, isPractice = false) {
     .select("*").eq("city", city).eq("is_practice", isPractice).neq("status", "ended")
     .order("created_at", { ascending: false }).limit(1);
   if (existing?.[0]) return { data: existing[0], error: null };
+  const { data: lastSess } = await supabase.from("quiz_sessions")
+    .select("bg").eq("city", city).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const { data, error } = await supabase.from("quiz_sessions")
-    .insert({ city, status: "waiting", is_practice: isPractice, created_by: adminId }).select().single();
+    .insert({ city, status: "waiting", is_practice: isPractice, created_by: adminId, bg: lastSess?.bg || null }).select().single();
   return { data, error: error?.message || null };
 }
 
@@ -412,8 +414,8 @@ const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)"
 export async function getCityBg(city) {
   if (DEMO) return localStorage.getItem(`fue_bg_${city}`) || null;
   const { data } = await supabase.from("quiz_sessions")
-    .select("bg").eq("city", city).neq("status", "ended")
-    .order("created_at", { ascending: false }).limit(1).single();
+    .select("bg").eq("city", city)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
   return data?.bg || null;
 }
 

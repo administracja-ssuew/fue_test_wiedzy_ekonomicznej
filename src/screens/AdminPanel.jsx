@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
-  getOrCreateSession, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
+  getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
   getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
@@ -279,7 +279,9 @@ function SesjaTab({ city, adminId, onPodium }) {
     } else if (session?.status === "running" || session?.status === "paused") {
       pollRef.current = setInterval(async () => {
         const myVersion = pollVersionRef.current; // snapshot before async call
-        const { data: fresh } = await getOrCreateSession(city, adminId, isPractice);
+        const sid = sessionRef.current?.id;
+        if (!sid) return;
+        const fresh = await getSessionById(sid);
         // Discard if upd() was called while this fetch was in-flight — prevents stale "running"
         // response from reverting a just-written "paused" status in local state.
         if (pollVersionRef.current !== myVersion) return;

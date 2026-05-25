@@ -50,14 +50,16 @@ export default function App() {
   const screenRef      = useRef(screen); // always-current screen value (avoids stale closures)
   const qStartedAtRef  = useRef(null);   // authoritative question start time (derived from DB)
   const modTimePerQRef = useRef(60);     // always-current timePerQ for active module
-  const currentModRef  = useRef(currentMod); // always-current module (avoids stale closures in Realtime)
-  const qIdxRef        = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
+  const currentModRef      = useRef(currentMod); // always-current module (avoids stale closures in Realtime)
+  const qIdxRef            = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
+  const cityQuestionsRef   = useRef([]);          // always-current questions for session event handler
   const isDesktop = useWindowWidth() >= 900;
 
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
   useEffect(() => { qIdxRef.current = qIdx; }, [qIdx]);
   useEffect(() => { pickedRef.current = picked; }, [picked]);
+  useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
 
   // Auto-restore admin session: redirect to panel when Supabase session is found on page load
   useEffect(() => {
@@ -136,108 +138,83 @@ export default function App() {
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
 
-  // ── Synchronizacja pytań przez Realtime (wszyscy na tym samym pytaniu) ──
-  useEffect(() => {
-    if (!quizSession?.id || !participant || !cityQuestions.length || DEMO || !supabase) return;
-
-    const ch = supabase.channel(`q-sync-${quizSession.id}`)
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "quiz_sessions",
-        filter: `id=eq.${quizSession.id}`,
-      }, ({ new: s }) => {
-        if (s.status !== "running" || s.current_question_idx === undefined) return;
-        // Use refs for currentMod and qIdx to avoid stale closure values
-        // (this callback is registered once and must always read the latest state).
-        const myGlobalIdx = cityQuestions.filter((q) => q.module < currentModRef.current).length + qIdxRef.current;
-        if (s.current_question_idx > myGlobalIdx) {
-          // Serwer jest do przodu — pełna synchronizacja (slow client / reconnect)
-          const state = getQuestionState(s.current_question_idx, cityQuestions);
-          if (state) {
-            const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
-            const remaining = Math.max(1, state.mod.timePerQ - elapsed);
-            qStartedAtRef.current  = s.q_started_at;
-            modTimePerQRef.current = state.mod.timePerQ;
-            clearInterval(timerRef.current);
-            setCurrentMod(state.modId); setQIdx(state.qIdx);
-            setTimer(remaining); setAnswered(false); setPicked(null);
-            setScreen("quiz");
-          }
-        } else if (s.current_question_idx === myGlobalIdx && !qStartedAtRef.current && s.q_started_at) {
-          // Same question index but we lost the optimistic-lock race and have no local
-          // q_started_at yet — adopt the winner's server-generated timestamp.
-          const state = getQuestionState(myGlobalIdx, cityQuestions);
-          if (state) {
-            const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
-            const remaining = Math.max(1, state.mod.timePerQ - elapsed);
-            qStartedAtRef.current  = s.q_started_at;
-            modTimePerQRef.current = state.mod.timePerQ;
-            setTimer(remaining);
-          }
-        }
-      })
-      .subscribe();
-
-    return () => supabase.removeChannel(ch);
-  }, [quizSession?.id, participant?.code, cityQuestions.length]);
-
-  // ── Session status sync — handles pause, force-end, and results reveal ──
+  // ── Pojedynczy kanał Realtime + poll dla wszystkich zdarzeń sesji ──
+  // Łączy q-sync i session-sync w jedną subskrypcję, eliminując problem
+  // deduplikacji Supabase gdy dwa kanały mają identyczny filtr event:table:id.
+  // cityQuestionsRef zawsze ma aktualne pytania bez dodawania ich jako dep.
   useEffect(() => {
     if (!quizSession?.id || !participant) return;
 
     const QUIZ_SCREENS = ["quiz", "module_intro", "admin_pause", "break", "waiting_results"];
-
     const isPracticeSession = !!quizSession?.is_practice;
 
-    const handleSessionStatus = (status) => {
+    const handleUpdate = (s) => {
       const cur = screenRef.current;
-      if (status === "paused" && ["quiz", "module_intro"].includes(cur)) {
+
+      // Status changes take priority over question sync
+      if (s.status === "paused" && ["quiz", "module_intro"].includes(cur)) {
+        clearInterval(timerRef.current); setAnswered(true); setScreen("admin_pause"); return;
+      }
+      if (s.status === "running" && cur === "admin_pause") {
+        qStartedAtRef.current = null; setPicked(null); setAnswered(false);
+        setTimer(modTimePerQRef.current || 60); setScreen("quiz"); return;
+      }
+      if (s.status === "ended" && QUIZ_SCREENS.includes(cur)) {
         clearInterval(timerRef.current);
-        setAnswered(true);
-        setScreen("admin_pause");
-      } else if (status === "running" && cur === "admin_pause") {
-        // Admin resumed — clear stale q_started_at so timer doesn't immediately expire
-        qStartedAtRef.current = null;
-        setPicked(null); setAnswered(false);
-        setTimer(modTimePerQRef.current || 60);
-        setScreen("quiz");
-      } else if (status === "ended" && QUIZ_SCREENS.includes(cur)) {
-        clearInterval(timerRef.current);
-        if (isPracticeSession) {
-          // Practice ended — return to lobby to wait for real quiz
-          setQuizSession(null);
-          setCityQuestions([]);
-          setScreen("lobby");
-        } else {
-          setScreen("ended");
+        if (isPracticeSession) { setQuizSession(null); setCityQuestions([]); setScreen("lobby"); }
+        else { setScreen("ended"); }
+        return;
+      }
+      if (s.status === "results" && QUIZ_SCREENS.includes(cur)) {
+        clearInterval(timerRef.current); setScreen("ended"); return;
+      }
+
+      // Question advancement — only when session is running
+      if (s.status !== "running" || s.current_question_idx === undefined) return;
+      const questions = cityQuestionsRef.current;
+      if (!questions.length) return;
+      const myGlobalIdx = questions.filter((q) => q.module < currentModRef.current).length + qIdxRef.current;
+      if (s.current_question_idx > myGlobalIdx) {
+        const state = getQuestionState(s.current_question_idx, questions);
+        if (state) {
+          const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+          const remaining = Math.max(1, state.mod.timePerQ - elapsed);
+          qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
+          clearInterval(timerRef.current);
+          setCurrentMod(state.modId); setQIdx(state.qIdx);
+          setTimer(remaining); setAnswered(false); setPicked(null); setScreen("quiz");
         }
-      } else if (status === "results" && QUIZ_SCREENS.includes(cur)) {
-        clearInterval(timerRef.current);
-        setScreen("ended");
+      } else if (s.current_question_idx === myGlobalIdx && !qStartedAtRef.current && s.q_started_at) {
+        const state = getQuestionState(myGlobalIdx, questions);
+        if (state) {
+          const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+          const remaining = Math.max(1, state.mod.timePerQ - elapsed);
+          qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
+          setTimer(remaining);
+        }
       }
     };
 
     if (DEMO) {
-      // DEMO: poll every 2s using session ID directly — avoids fetching wrong session
       const poll = setInterval(async () => {
         const s = await getSessionById(quizSession.id);
-        if (s) handleSessionStatus(s.status);
+        if (s) handleUpdate(s);
       }, 2000);
       return () => clearInterval(poll);
     }
 
-    // Production: Realtime + 3s poll fallback using session ID — always the right session
-    const ch = supabase.channel(`session-sync-${quizSession.id}`)
+    const ch = supabase.channel(`ses-sync-${quizSession.id}`)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
         filter: `id=eq.${quizSession.id}`,
-      }, ({ new: s }) => handleSessionStatus(s.status))
+      }, ({ new: s }) => handleUpdate(s))
       .subscribe();
     const poll = setInterval(async () => {
       const s = await getSessionById(quizSession.id);
-      if (s) handleSessionStatus(s.status);
+      if (s) handleUpdate(s);
     }, 3000);
     return () => { supabase.removeChannel(ch); clearInterval(poll); };
-  }, [quizSession?.id, participant?.code]); // stable deps — uses screenRef internally
+  }, [quizSession?.id, participant?.code]);
 
   // ── Quiz logic ───────────────────────────────────────────────────
 

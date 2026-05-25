@@ -345,11 +345,13 @@ export async function saveAnswer({ sessionId, participantCode, participantName, 
     localStorage.setItem("fue_answers", JSON.stringify(answers));
     return { error: null };
   }
-  const { error } = await supabase.from("answers").upsert({
+  // INSERT + ignoreDuplicates avoids needing UPDATE grant for anon.
+  // Participants answer each question once; duplicates (reconnect edge case) are silently ignored.
+  const { error } = await supabase.from("answers").insert({
     session_id: sessionId, participant_code: participantCode, participant_name: participantName,
     city, question_id: questionId, module, chosen, is_correct: isCorrect, points,
     response_time_s: responseTimeS ?? null,
-  }, { onConflict: "session_id,participant_code,question_id" });
+  }, { ignoreDuplicates: true });
   return { error: error?.message || null };
 }
 

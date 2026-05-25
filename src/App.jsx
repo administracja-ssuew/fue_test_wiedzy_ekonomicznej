@@ -374,6 +374,11 @@ export default function App() {
   const startQuiz = async (session) => {
     setQuizSession(session);
 
+    // Re-mark code as used in case the participant joined before a session existed
+    if (participant?.code && session?.id) {
+      markCodeUsed(participant.code, session.id);
+    }
+
     // Apply bg when quiz starts (catches case where session had no bg when lobby was entered)
     const bg = session?.bg || await getCityBg(session?.city);
     if (bg) {

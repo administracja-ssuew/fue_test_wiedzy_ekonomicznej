@@ -297,11 +297,12 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   const upd = async (updates) => {
     if (!session) return;
+    // Clear poll BEFORE the async update so a stale poll response can't revert the new status
+    clearInterval(pollRef.current);
     const { error } = await updateSession(session.id, updates);
     if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
     setSession((s) => { const next = { ...s, ...updates }; sessionRef.current = next; return next; });
     if (updates.status === "ended" || updates.status === "results") {
-      clearInterval(pollRef.current);
       setResults(await getSessionResults(session.id));
       setLiveStats(null);
     }

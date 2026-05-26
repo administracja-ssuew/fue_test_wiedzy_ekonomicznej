@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
-  getSessionForCity, getCityBg, getLiveQuestionStats, getQuestions,
+  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
 
@@ -42,6 +42,7 @@ export default function LiveView({ city }) {
     const remaining = Math.max(0, timePerQ - elapsed);
     setGIdx(idx); gIdxRef.current = idx;
     setTimer(remaining);
+    setLiveCount(0);
     setReveal([]); setPhase("quiz"); phaseRef.current = "quiz";
   };
 
@@ -49,7 +50,9 @@ export default function LiveView({ city }) {
   useEffect(() => {
     if (!city) return;
     Promise.all([getSessionForCity(city), getCityBg(city), getQuestions(city)])
-      .then(([sess, bgVal, qs]) => {
+      .then(([sess, bgData, qs]) => {
+        // LiveView is always on a large screen — prefer desktop bg, fall back to mobile
+        const bgVal = bgData?.bg || bgData?.bgMobile;
         if (bgVal) setBg(bgVal);
         if (qs?.length) { setQuestions(qs); questionsRef.current = qs; }
         if (!sess) return;
@@ -175,8 +178,8 @@ export default function LiveView({ city }) {
     liveRef.current = setInterval(async () => {
       const q   = questionsRef.current[gIdxRef.current];
       const sid = sessionRef.current?.id;
-      if (sid && q?.id) getLiveQuestionStats(sid, q.id).then((st) => setLiveCount(st.total));
-    }, 2000);
+      if (sid && q?.id) getLiveAnswerCount(sid, q.id).then((c) => setLiveCount(c));
+    }, 1000);
     return () => { clearInterval(timerRef.current); clearInterval(liveRef.current); };
   }, [gIdx, phase]); // eslint-disable-line
 

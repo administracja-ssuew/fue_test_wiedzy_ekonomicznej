@@ -720,50 +720,114 @@ function SesjaTab({ city, adminId, onPodium }) {
 
 // ─── Tab: Ustawienia ─────────────────────────────────────────────────────────
 
-function UstawieniaTab({ city }) {
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [uploading, setUploading]   = useState(false);
-  const [status, setStatus]         = useState(""); // "", "uploading", "ok", "error"
+function BgUploader({ city, isMobile, preview, onPreviewChange }) {
+  const [uploading, setUploading] = useState(false);
+  const [status, setStatus]       = useState("");
   const fileRef = useRef(null);
-
-  useEffect(() => {
-    setPreviewUrl(null); setStatus("");
-    getCityBg(city).then((bg) => {
-      const match = bg?.match(/url\(["']?([^"')]+)["']?\)/);
-      if (match) setPreviewUrl(match[1]);
-    });
-  }, [city]);
+  const label   = isMobile ? "Mobile (telefon)" : "Desktop (projektor)";
+  const icon    = isMobile ? "📱" : "🖥️";
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) return setStatus("error:Plik musi być obrazem (PNG, JPG, WEBP).");
-    if (file.size > 5 * 1024 * 1024) return setStatus("error:Plik za duży — max 5 MB.");
-
+    if (!file.type.startsWith("image/")) { setStatus("error:Plik musi być obrazem (PNG, JPG, WEBP)."); return; }
+    if (file.size > 5 * 1024 * 1024)    { setStatus("error:Plik za duży — max 5 MB."); return; }
     setUploading(true); setStatus("uploading");
-    const { url, error } = await uploadCityBg(city, file);
+    const { url, error } = await uploadCityBg(city, file, isMobile);
     if (error) { setUploading(false); setStatus("error:" + error); return; }
-
-    // Overlay ciemny + obraz — tekst zawsze czytelny
-    const bgCss = `linear-gradient(rgba(7,2,21,.72),rgba(14,4,53,.72)), url("${url}") center/cover no-repeat fixed`;
-    const { error: bgErr } = await setCityBg(city, bgCss);
-    if (bgErr) { setUploading(false); setStatus("error:Błąd zapisu tła do bazy: " + bgErr); return; }
-    document.documentElement.style.setProperty("--fue-bg", bgCss);
-    setPreviewUrl(url);
+    // Desktop: fixed attachment for parallax. Mobile: scroll (fixed breaks on iOS Safari).
+    const bgCss = isMobile
+      ? `linear-gradient(rgba(7,2,21,.72),rgba(14,4,53,.72)), url("${url}") center/cover no-repeat`
+      : `linear-gradient(rgba(7,2,21,.72),rgba(14,4,53,.72)), url("${url}") center/cover no-repeat fixed`;
+    const { error: bgErr } = await setCityBg(city, bgCss, isMobile);
+    if (bgErr) { setUploading(false); setStatus("error:Błąd zapisu: " + bgErr); return; }
+    if (!isMobile) document.documentElement.style.setProperty("--fue-bg", bgCss);
+    onPreviewChange(url);
     setUploading(false); setStatus("ok");
     setTimeout(() => setStatus(""), 3000);
     e.target.value = "";
   };
 
-  const handleReset = async () => {
-    await setCityBg(city, DEFAULT_BG);
-    document.documentElement.style.setProperty("--fue-bg", DEFAULT_BG);
-    setPreviewUrl(null); setStatus("ok");
-    setTimeout(() => setStatus(""), 2000);
+  const handleClear = async () => {
+    if (isMobile) {
+      await setCityBg(city, null, true);
+    } else {
+      await setCityBg(city, DEFAULT_BG, false);
+      document.documentElement.style.setProperty("--fue-bg", DEFAULT_BG);
+    }
+    onPreviewChange(null);
+    setStatus("ok"); setTimeout(() => setStatus(""), 2000);
   };
 
   const isError = status.startsWith("error:");
   const errMsg  = isError ? status.slice(6) : "";
+
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <p style={{ fontWeight: 700, fontSize: 13, color: "#EDE9FE" }}>{label}</p>
+        {isMobile && !preview && (
+          <span style={{ fontSize: 10, color: "#9B89CC", marginLeft: "auto", fontStyle: "italic" }}>
+            (fallback → desktop)
+          </span>
+        )}
+      </div>
+
+      {/* Preview */}
+      {preview ? (
+        <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", marginBottom: 10, border: "1px solid rgba(255,255,255,.1)" }}>
+          <img src={preview} alt={label} style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }} />
+          <div style={{ position: "absolute", inset: 0, background: "rgba(7,2,21,.6)", display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "8px" }}>
+            <button onClick={handleClear} style={{ ...C.btn("danger", { padding: "4px 10px", fontSize: 11, width: "auto" }) }}>
+              {isMobile ? "✕ Usuń" : "✕ Domyślne"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ height: 110, marginBottom: 10, borderRadius: 10, border: "1px dashed rgba(255,255,255,.12)", background: "rgba(255,255,255,.02)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 12, color: "#9B89CC" }}>{isMobile ? "Brak — używa tła desktop" : "Brak tła"}</span>
+        </div>
+      )}
+
+      {/* Drop zone */}
+      <div onClick={() => !uploading && fileRef.current?.click()}
+        style={{ ...C.card({ padding: "18px 12px", borderColor: uploading ? "rgba(107,33,232,.5)" : "rgba(255,255,255,.12)", background: uploading ? "rgba(107,33,232,.08)" : "rgba(255,255,255,.02)", textAlign: "center", cursor: uploading ? "wait" : "pointer", transition: "all .2s" }) }}>
+        <div style={{ fontSize: 24, marginBottom: 6 }}>{uploading ? "⏳" : "📁"}</div>
+        <p style={{ fontWeight: 600, fontSize: 12, color: "#EDE9FE" }}>{uploading ? "Wgrywanie…" : "Kliknij aby wybrać"}</p>
+        <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 4 }}>PNG · JPG · WEBP · max 5 MB</p>
+      </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleFile} style={{ display: "none" }} />
+
+      {/* Status */}
+      {status === "ok" && (
+        <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(11,158,107,.15)", border: "1px solid rgba(11,158,107,.3)", borderRadius: 8, fontSize: 12, color: "#10D9A0" }}>
+          ✓ Zapisano
+        </div>
+      )}
+      {isError && (
+        <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(232,55,107,.12)", border: "1px solid rgba(232,55,107,.3)", borderRadius: 8, fontSize: 12, color: "#E8376B" }}>
+          ⚠️ {errMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UstawieniaTab({ city }) {
+  const [previewDesktop, setPreviewDesktop] = useState(null);
+  const [previewMobile,  setPreviewMobile]  = useState(null);
+
+  useEffect(() => {
+    setPreviewDesktop(null); setPreviewMobile(null);
+    getCityBg(city).then(({ bg, bgMobile }) => {
+      const matchD = bg?.match(/url\(["']?([^"')]+)["']?\)/);
+      const matchM = bgMobile?.match(/url\(["']?([^"')]+)["']?\)/);
+      if (matchD) setPreviewDesktop(matchD[1]);
+      if (matchM) setPreviewMobile(matchM[1]);
+    });
+  }, [city]);
 
   return (
     <div>
@@ -772,49 +836,20 @@ function UstawieniaTab({ city }) {
           Tło dla: <span style={{ color: CITY_COLORS[city] }}>{city}</span>
         </p>
         <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>
-          Wgraj plik graficzny — zostanie ustawiony jako tło quizu dla uczestników z {city}.
+          Wgraj dwie wersje tła: osobne dla projektora (desktop) i osobne dla telefonów (mobile). Gdy brak wersji mobile — uczestnicy widzą tło desktop.
         </p>
       </div>
 
-      {/* Aktualne tło */}
-      {previewUrl && (
-        <div style={{ ...C.card({ padding: 0, overflow: "hidden", marginBottom: 20 }), position: "relative" }}>
-          <img src={previewUrl} alt="Aktualne tło" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: "rgba(7,2,21,.65)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px" }}>
-            <span style={{ fontSize: 13, color: "#EDE9FE", fontWeight: 600 }}>✓ Aktualne tło — {city}</span>
-            <button onClick={handleReset} style={{ ...C.btn("danger", { padding: "7px 14px", fontSize: 12, width: "auto" }) }}>
-              ✕ Usuń (przywróć domyślne)
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Upload area */}
-      <div onClick={() => !uploading && fileRef.current?.click()}
-        style={{ ...C.card({ padding: "36px 20px", borderColor: uploading ? "rgba(107,33,232,.5)" : "rgba(255,255,255,.15)", background: uploading ? "rgba(107,33,232,.08)" : "rgba(255,255,255,.03)", textAlign: "center", cursor: uploading ? "wait" : "pointer", transition: "all .2s" }) }}>
-        <div style={{ fontSize: 36, marginBottom: 10 }}>{uploading ? "⏳" : "📁"}</div>
-        <p style={{ fontWeight: 600, fontSize: 14, color: "#EDE9FE" }}>
-          {uploading ? "Wgrywanie…" : "Kliknij aby wybrać plik"}
-        </p>
-        <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 6 }}>PNG, JPG, WEBP — max 5 MB</p>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <BgUploader city={city} isMobile={false} preview={previewDesktop} onPreviewChange={setPreviewDesktop} />
+        <div style={{ width: 1, background: "rgba(255,255,255,.08)", alignSelf: "stretch" }} />
+        <BgUploader city={city} isMobile={true}  preview={previewMobile}  onPreviewChange={setPreviewMobile} />
       </div>
-      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleFile} style={{ display: "none" }} />
 
-      {/* Status */}
-      {status === "ok" && (
-        <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(11,158,107,.15)", border: "1px solid rgba(11,158,107,.35)", borderRadius: 10, fontSize: 13, color: "#10D9A0" }}>
-          ✓ Tło zapisane — uczestnicy {city} zobaczą je po dołączeniu do quizu.
-        </div>
-      )}
-      {isError && (
-        <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(232,55,107,.12)", border: "1px solid rgba(232,55,107,.3)", borderRadius: 10, fontSize: 13, color: "#E8376B" }}>
-          ⚠️ {errMsg}
-        </div>
-      )}
-
-      <div style={{ ...C.card({ padding: "12px 16px", borderColor: "rgba(107,33,232,.2)", background: "rgba(107,33,232,.04)", marginTop: 16 }) }}>
+      <div style={{ ...C.card({ padding: "10px 14px", borderColor: "rgba(107,33,232,.2)", background: "rgba(107,33,232,.04)", marginTop: 16 }) }}>
         <p style={{ fontSize: 12, color: "#9B89CC" }}>
-          📐 Zalecana rozdzielczość: <strong style={{ color: "#EDE9FE" }}>1920 × 1080 px</strong> (format 16:9). Obraz zostanie przyciemniony — tekst quizu pozostaje czytelny.
+          🖥️ Desktop: <strong style={{ color: "#EDE9FE" }}>1920×1080 px</strong> (16:9) &nbsp;·&nbsp;
+          📱 Mobile: <strong style={{ color: "#EDE9FE" }}>1080×1920 px</strong> (9:16). Obrazy są przyciemniane — tekst quizu pozostaje czytelny.
         </p>
       </div>
     </div>

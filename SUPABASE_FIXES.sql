@@ -22,6 +22,7 @@ ALTER TABLE public.answers
 -- function bypasses RLS so anon participants can mark their own code
 -- as used when they join the lobby.
 
+DROP FUNCTION IF EXISTS public.mark_code_used(TEXT, UUID);
 CREATE OR REPLACE FUNCTION public.mark_code_used(p_code TEXT, p_session_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
@@ -107,6 +108,31 @@ DO $$ BEGIN
       UNIQUE (session_id, participant_code, question_id);
   END IF;
 END $$;
+
+-- ─── 8. bg_mobile COLUMN ─────────────────────────────────────────
+-- Separate background for mobile participants (phones).
+-- Falls back to bg (desktop) when not set.
+
+ALTER TABLE public.quiz_sessions
+  ADD COLUMN IF NOT EXISTS bg_mobile TEXT;
+
+-- ─── 9. get_live_answer_count RPC ────────────────────────────────
+-- LiveView runs as anon; answers_admin_select blocks SELECT for anon.
+-- This SECURITY DEFINER function returns only the count — no row data exposed.
+
+DROP FUNCTION IF EXISTS public.get_live_answer_count(UUID, UUID);
+CREATE OR REPLACE FUNCTION public.get_live_answer_count(p_session_id UUID, p_question_id UUID)
+RETURNS INT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COUNT(*)::INT FROM public.answers
+  WHERE session_id = p_session_id AND question_id = p_question_id;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_live_answer_count(UUID, UUID) TO anon, authenticated;
 
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.

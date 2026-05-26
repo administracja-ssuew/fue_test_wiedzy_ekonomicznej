@@ -120,7 +120,8 @@ CREATE TABLE IF NOT EXISTS public.quiz_sessions (
   current_question_idx  INT NOT NULL DEFAULT 0,
   q_started_at          TIMESTAMPTZ,
   is_practice           BOOLEAN NOT NULL DEFAULT false,
-  bg                    TEXT,                        -- per-city background gradient
+  bg                    TEXT,                        -- per-city background (desktop)
+  bg_mobile             TEXT,                        -- per-city background (mobile, falls back to bg)
   created_by            UUID REFERENCES public.profiles(id),
   created_at            TIMESTAMPTZ DEFAULT now()
 );
@@ -128,6 +129,7 @@ CREATE TABLE IF NOT EXISTS public.quiz_sessions (
 -- Migrations for existing databases (idempotent — safe to run on any installation):
 ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS is_practice BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS bg TEXT;
+ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS bg_mobile TEXT;
 
 ALTER TABLE public.quiz_sessions ENABLE ROW LEVEL SECURITY;
 
@@ -245,6 +247,7 @@ END $$;
 
 -- Allows anon participants to mark their code as used when joining the lobby.
 -- Direct UPDATE is blocked by RLS (only admins can update); SECURITY DEFINER bypasses it.
+DROP FUNCTION IF EXISTS public.mark_code_used(TEXT, UUID);
 CREATE OR REPLACE FUNCTION public.mark_code_used(p_code TEXT, p_session_id UUID)
 RETURNS VOID
 LANGUAGE plpgsql
@@ -359,6 +362,22 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
+-- Returns only the answer count for a question — safe for anon (LiveView).
+-- SECURITY DEFINER bypasses answers_admin_select RLS without exposing row data.
+DROP FUNCTION IF EXISTS public.get_live_answer_count(UUID, UUID);
+CREATE OR REPLACE FUNCTION public.get_live_answer_count(p_session_id UUID, p_question_id UUID)
+RETURNS INT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COUNT(*)::INT FROM public.answers
+  WHERE session_id = p_session_id AND question_id = p_question_id;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_live_answer_count(UUID, UUID) TO anon, authenticated;
 
 -- ─── SEED: create admin accounts manually in Supabase Auth, then: ─
 -- INSERT INTO public.profiles(id, full_name, city, role)

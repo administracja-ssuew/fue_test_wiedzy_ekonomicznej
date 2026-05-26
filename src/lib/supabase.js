@@ -204,9 +204,9 @@ export async function getOrCreateSession(city, adminId, isPractice = false) {
     .order("created_at", { ascending: false }).limit(1);
   if (existing?.[0]) return { data: existing[0], error: null };
   const { data: lastSess } = await supabase.from("quiz_sessions")
-    .select("bg").eq("city", city).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    .select("bg, bg_mobile").eq("city", city).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const { data, error } = await supabase.from("quiz_sessions")
-    .insert({ city, status: "waiting", is_practice: isPractice, created_by: adminId, bg: lastSess?.bg || null }).select().single();
+    .insert({ city, status: "waiting", is_practice: isPractice, created_by: adminId, bg: lastSess?.bg || null, bg_mobile: lastSess?.bg_mobile || null }).select().single();
   return { data, error: error?.message || null };
 }
 
@@ -409,36 +409,56 @@ export async function getLiveQuestionStats(sessionId, questionId) {
   };
 }
 
+// Lightweight count-only query for LiveView (anon-safe via SECURITY DEFINER RPC).
+export async function getLiveAnswerCount(sessionId, questionId) {
+  if (DEMO) {
+    return JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId && a.questionId === questionId).length;
+  }
+  const { data } = await supabase.rpc("get_live_answer_count", {
+    p_session_id: sessionId, p_question_id: questionId,
+  });
+  return data || 0;
+}
+
 // ─── PER-CITY BACKGROUND ──────────────────────────────────────────────────────
 
 const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";
 
+// Returns { bg, bgMobile } — both may be null.
 export async function getCityBg(city) {
-  if (DEMO) return localStorage.getItem(`fue_bg_${city}`) || null;
+  if (DEMO) return {
+    bg:       localStorage.getItem(`fue_bg_${city}`) || null,
+    bgMobile: localStorage.getItem(`fue_bg_mobile_${city}`) || null,
+  };
   const { data } = await supabase.from("quiz_sessions")
-    .select("bg").eq("city", city)
+    .select("bg, bg_mobile").eq("city", city)
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
-  return data?.bg || null;
+  return { bg: data?.bg || null, bgMobile: data?.bg_mobile || null };
 }
 
-export async function setCityBg(city, bg) {
+// isMobile=true updates bg_mobile column; false updates bg.
+// Pass null as bg to clear (mobile falls back to desktop).
+export async function setCityBg(city, bg, isMobile = false) {
+  const col = isMobile ? "bg_mobile" : "bg";
   if (DEMO) {
-    localStorage.setItem(`fue_bg_${city}`, bg);
+    const lsKey = isMobile ? `fue_bg_mobile_${city}` : `fue_bg_${city}`;
+    if (bg) localStorage.setItem(lsKey, bg); else localStorage.removeItem(lsKey);
     for (const key of [`fue_session_${city}`, `fue_session_${city}_practice`]) {
       const s = localStorage.getItem(key);
-      if (s) localStorage.setItem(key, JSON.stringify({ ...JSON.parse(s), bg }));
+      if (s) localStorage.setItem(key, JSON.stringify({ ...JSON.parse(s), [col]: bg ?? null }));
     }
     return { error: null };
   }
   const { error } = await supabase.from("quiz_sessions")
-    .update({ bg }).eq("city", city).neq("status", "ended");
+    .update({ [col]: bg ?? null }).eq("city", city).neq("status", "ended");
   return { error: error?.message || null };
 }
 
-// Upload image to Supabase Storage bucket "backgrounds"
-export async function uploadCityBg(city, file) {
+// Upload image to Supabase Storage bucket "backgrounds".
+// isMobile=true stores to "mobile" variant path and updates bg_mobile column.
+export async function uploadCityBg(city, file, isMobile = false) {
   if (DEMO) {
-    // In demo mode: read as data URL (base64) and store locally
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve({ url: e.target.result, error: null });
@@ -447,9 +467,9 @@ export async function uploadCityBg(city, file) {
     });
   }
   const ext = file.name.split(".").pop().toLowerCase();
-  // Supabase Storage keys must be ASCII — strip Polish diacritics from city name
   const safeCity = city.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const path = `${safeCity}/bg.${ext}`;
+  const variant = isMobile ? "mobile" : "desktop";
+  const path = `${safeCity}/${variant}.${ext}`;
   const { error: uploadError } = await supabase.storage
     .from("backgrounds")
     .upload(path, file, { upsert: true, contentType: file.type });

@@ -351,8 +351,9 @@ export default function App() {
       setQuizSession(session);
       await markCodeUsed(participantData.code, session.id);
     }
-    // Apply city-specific background and cache it for refresh
-    const bg = session?.bg || await getCityBg(participantData.city);
+    // Apply city-specific background (mobile vs desktop variant) and cache for refresh
+    const bgRaw = session ? { bg: session.bg, bgMobile: session.bg_mobile } : await getCityBg(participantData.city);
+    const bg = isDesktop ? (bgRaw.bg || bgRaw.bgMobile) : (bgRaw.bgMobile || bgRaw.bg);
     if (bg) {
       document.documentElement.style.setProperty("--fue-bg", bg);
       sessionStorage.setItem("fue_bg", bg);
@@ -369,11 +370,12 @@ export default function App() {
       markCodeUsed(participant.code, session.id);
     }
 
-    // Apply bg when quiz starts (catches case where session had no bg when lobby was entered)
-    const bg = session?.bg || await getCityBg(session?.city);
-    if (bg) {
-      document.documentElement.style.setProperty("--fue-bg", bg);
-      sessionStorage.setItem("fue_bg", bg);
+    // Apply bg when quiz starts — re-check in case bg was set after lobby was entered
+    const bgRaw2 = session ? { bg: session.bg, bgMobile: session.bg_mobile } : await getCityBg(session?.city);
+    const bg2 = isDesktop ? (bgRaw2.bg || bgRaw2.bgMobile) : (bgRaw2.bgMobile || bgRaw2.bg);
+    if (bg2) {
+      document.documentElement.style.setProperty("--fue-bg", bg2);
+      sessionStorage.setItem("fue_bg", bg2);
     }
 
     const dbQs = session?.city ? await getQuestions(session.city) : [];

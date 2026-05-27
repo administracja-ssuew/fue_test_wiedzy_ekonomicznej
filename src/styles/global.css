@@ -27,6 +27,8 @@ button { cursor: pointer; }
 @keyframes cardIn { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
 @keyframes watermarkA { 0%,35%{opacity:.055} 45%,90%{opacity:0} 100%{opacity:.055} }
 @keyframes watermarkB { 0%,35%{opacity:0} 45%,90%{opacity:.055} 100%{opacity:0} }
+@keyframes cdnum { 0%{transform:scale(2.2);opacity:0;filter:blur(12px)} 18%{transform:scale(1);opacity:1;filter:blur(0)} 72%{transform:scale(1);opacity:1;filter:blur(0)} 100%{transform:scale(.6);opacity:0;filter:blur(6px)} }
+@keyframes cdring { 0%{transform:scale(.4);opacity:.8} 100%{transform:scale(2.4);opacity:0} }
 
 .su { animation: su .35s ease both; }
 .pi { animation: pi .45s cubic-bezier(.34,1.56,.64,1) both; }

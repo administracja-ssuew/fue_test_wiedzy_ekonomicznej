@@ -18,6 +18,7 @@ import Ended       from "./screens/Ended.jsx";
 import AdminPanel  from "./screens/AdminPanel.jsx";
 import Podium      from "./screens/Podium.jsx";
 import LiveView    from "./screens/LiveView.jsx";
+import Countdown   from "./screens/Countdown.jsx";
 
 export default function App() {
   const [screen, setScreen] = useState("welcome");
@@ -39,6 +40,7 @@ export default function App() {
   const [nextModule, setNextModule]     = useState(null); // module to start after break
   const [podStep, setPodStep]           = useState(0);
   const [podiumResults, setPodiumResults] = useState([]);
+  const [countdownNum, setCountdownNum] = useState(null); // 3/2/1/0="START!"/null=hidden
 
   // Auto-break only after module 2 (between mod 2 and 3)
   // After module 5 → waiting_results (admin reveals ranking manually)
@@ -399,6 +401,19 @@ export default function App() {
     setCityQuestions(dbQs);
     setMyPts(0); setAllAnswers([]);
 
+    // Show 3→2→1→START! countdown only for fresh quiz starts (q_started_at set < 5s ago).
+    // Reconnects/refreshes skip the countdown to avoid showing it mid-question.
+    const freshStart = session?.q_started_at &&
+      (Date.now() - new Date(session.q_started_at).getTime()) < 5000;
+    if (freshStart) {
+      setScreen("countdown");
+      for (const n of [3, 2, 1, 0]) {
+        setCountdownNum(n);
+        await new Promise((r) => setTimeout(r, n > 0 ? 1000 : 700));
+      }
+      setCountdownNum(null);
+    }
+
     // Admin ustawił q_started_at → idź od razu do pytania (bez kliku uczestnika)
     if (session?.q_started_at && syncToSession(session, dbQs)) {
       setScreen("quiz");
@@ -479,6 +494,9 @@ export default function App() {
       </div>
     </div>
   );
+
+  if (screen === "countdown")
+    return <Countdown num={countdownNum} />;
 
   if (screen === "lobby")
     return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;

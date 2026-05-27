@@ -383,7 +383,9 @@ export async function getSessionResults(sessionId) {
   return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, points: Number(r.total_points), avgResponseTime: r.avg_response_time_s ?? null }));
 }
 
-// Live stats for current question (admin panel)
+// Live stats for current question (admin panel).
+// Uses a SECURITY DEFINER RPC to bypass answers_admin_select RLS
+// — ensures the count works regardless of JWT/RLS edge cases.
 export async function getLiveQuestionStats(sessionId, questionId) {
   if (DEMO) {
     const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
@@ -394,19 +396,18 @@ export async function getLiveQuestionStats(sessionId, questionId) {
       answers: raw.map((a) => ({ code: a.participantCode, name: a.participantName, isCorrect: a.isCorrect, points: a.points })),
     };
   }
-  const { data } = await supabase.from("answers")
-    .select("participant_code, participant_name, is_correct, points, answered_at, response_time_s")
-    .eq("session_id", sessionId)
-    .eq("question_id", questionId);
+  const { data, error } = await supabase.rpc("get_admin_question_stats", {
+    p_session_id: sessionId, p_question_id: questionId,
+  });
+  if (error) console.error("[getLiveQuestionStats]", error.message);
   if (!data) return { total: 0, correct: 0, avgTime: 0, answers: [] };
-  const correct = data.filter((a) => a.is_correct).length;
-  const timed   = data.filter((a) => a.response_time_s != null);
-  const avgTime = timed.length ? Math.round(timed.reduce((s, a) => s + a.response_time_s, 0) / timed.length) : 0;
   return {
-    total: data.length,
-    correct,
-    avgTime,
-    answers: data.map((a) => ({ code: a.participant_code, name: a.participant_name, isCorrect: a.is_correct, points: a.points, responseTime: a.response_time_s ?? null })),
+    total:   data.total   || 0,
+    correct: data.correct || 0,
+    avgTime: data.avg_time || 0,
+    answers: (data.answers || []).map((a) => ({
+      code: a.code, name: a.name, isCorrect: a.isCorrect, points: a.points, responseTime: a.responseTime ?? null,
+    })),
   };
 }
 

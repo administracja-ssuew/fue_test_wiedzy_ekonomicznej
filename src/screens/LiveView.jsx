@@ -4,6 +4,7 @@ import {
   getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
+import Countdown from "./Countdown.jsx";
 
 const ANS_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const ANS_LABELS = ["A", "B", "C", "D"];
@@ -20,13 +21,16 @@ export default function LiveView({ city }) {
   const [bg, setBg]               = useState("linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)");
   const [liveCount, setLiveCount] = useState(0);
 
-  const sessionRef   = useRef(null);
-  const timerRef     = useRef(null);
-  const revealRef    = useRef(null);
-  const liveRef      = useRef(null);
-  const gIdxRef      = useRef(0);
-  const questionsRef = useRef([]);
-  const phaseRef     = useRef("waiting");
+  const [cdNum, setCdNum]             = useState(null); // countdown: 3/2/1/0=START!/null=hidden
+
+  const sessionRef      = useRef(null);
+  const timerRef        = useRef(null);
+  const revealRef       = useRef(null);
+  const liveRef         = useRef(null);
+  const gIdxRef         = useRef(0);
+  const questionsRef    = useRef([]);
+  const phaseRef        = useRef("waiting");
+  const countingDownRef = useRef(false); // prevent double-countdown on rapid events
 
   useEffect(() => { gIdxRef.current = gIdx; }, [gIdx]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
@@ -76,6 +80,19 @@ export default function LiveView({ city }) {
         // Without this guard, handleSess fires every poll cycle with curPhase!=="quiz"
         // and calls syncSession with an already-expired q_started_at → timer=0 → doReveal loop.
         if (questionChanged || (curPhase !== "quiz" && curPhase !== "reveal")) {
+          // Show 3→2→1→START! only when transitioning from waiting to running (fresh start).
+          // Skip if already counting down, if the question changed mid-quiz, or if reconnecting.
+          const freshStart = curPhase === "waiting" && !countingDownRef.current && s.q_started_at &&
+            (Date.now() - new Date(s.q_started_at).getTime()) < 5000;
+          if (freshStart) {
+            countingDownRef.current = true;
+            for (const n of [3, 2, 1, 0]) {
+              setCdNum(n);
+              await new Promise((r) => setTimeout(r, n > 0 ? 1000 : 700));
+            }
+            setCdNum(null);
+            countingDownRef.current = false;
+          }
           syncSession(s, qs);
         }
       } else if (s.status === "waiting" || s.status === "paused") {
@@ -191,6 +208,8 @@ export default function LiveView({ city }) {
 
   const correct   = reveal.filter((a) => a.isCorrect);
   const incorrect = reveal.filter((a) => !a.isCorrect);
+
+  if (cdNum !== null) return <Countdown num={cdNum} />;
 
   return (
     <div style={{

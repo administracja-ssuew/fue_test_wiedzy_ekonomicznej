@@ -171,6 +171,42 @@ CREATE POLICY "backgrounds_auth_delete" ON storage.objects
 ALTER TABLE public.quiz_sessions
   ADD COLUMN IF NOT EXISTS pause_elapsed_s INT;
 
+-- ─── 12. get_admin_question_stats RPC ───────────────────────────
+-- Admin panel polls this for live correct/total count + full answer list.
+-- SECURITY DEFINER bypasses answers_admin_select RLS — works even if the
+-- admin's JWT has unusual claims or the RLS policy evaluates unexpectedly.
+
+DROP FUNCTION IF EXISTS public.get_admin_question_stats(UUID, UUID);
+CREATE OR REPLACE FUNCTION public.get_admin_question_stats(p_session_id UUID, p_question_id UUID)
+RETURNS JSON
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT json_build_object(
+    'total',    COUNT(*)::INT,
+    'correct',  COUNT(*) FILTER (WHERE is_correct = true)::INT,
+    'avg_time', COALESCE(ROUND(AVG(response_time_s))::INT, 0),
+    'answers',  COALESCE(
+      json_agg(
+        json_build_object(
+          'code',         participant_code,
+          'name',         participant_name,
+          'isCorrect',    is_correct,
+          'points',       points,
+          'responseTime', response_time_s
+        ) ORDER BY answered_at
+      ),
+      '[]'::json
+    )
+  )
+  FROM public.answers
+  WHERE session_id = p_session_id AND question_id = p_question_id;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_admin_question_stats(UUID, UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

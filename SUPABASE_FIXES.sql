@@ -224,13 +224,13 @@ BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
   UPDATE public.quiz_sessions SET
     status               = CASE WHEN p_data ? 'status'
-                             THEN p_data->>'status'                                  ELSE status               END,
+                             THEN p_data->>'status'                              ELSE status               END,
     q_started_at         = CASE WHEN p_data ? 'q_started_at'
-                             THEN (p_data->>'q_started_at')::TIMESTAMPTZ             ELSE q_started_at         END,
+                             THEN (p_data->>'q_started_at')::TIMESTAMPTZ         ELSE q_started_at         END,
     pause_elapsed_s      = CASE WHEN p_data ? 'pause_elapsed_s'
-                             THEN (p_data->'pause_elapsed_s')::INT                   ELSE pause_elapsed_s      END,
+                             THEN (p_data->>'pause_elapsed_s')::INT              ELSE pause_elapsed_s      END,
     current_question_idx = CASE WHEN p_data ? 'current_question_idx'
-                             THEN (p_data->>'current_question_idx')::INT             ELSE current_question_idx END
+                             THEN (p_data->>'current_question_idx')::INT         ELSE current_question_idx END
   WHERE id = p_session_id;
 END;
 $$;
@@ -240,3 +240,4 @@ GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authe
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════
+

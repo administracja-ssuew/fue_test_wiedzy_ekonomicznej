@@ -233,11 +233,8 @@ export async function updateSession(sessionId, updates) {
     }
     return { error: null };
   }
-  const { data, error } = await supabase.from("quiz_sessions")
-    .update(updates).eq("id", sessionId).select("id").maybeSingle();
-  if (error) return { error: error.message };
-  if (!data) return { error: "Sesja niedostępna — odśwież stronę lub zaloguj się ponownie." };
-  return { error: null };
+  const { error } = await supabase.from("quiz_sessions").update(updates).eq("id", sessionId);
+  return { error: error?.message || null };
 }
 
 // Advance quiz to the next question using a server-generated timestamp.

@@ -485,9 +485,20 @@ function SesjaTab({ city, adminId, onPodium }) {
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#E8376B", animation: "pulse 1s infinite", display: "inline-block" }} />
           Otwórz Live
         </button>
-        {(st === "ended" || st === "results") && (
-          <button onClick={newQuiz} style={C.btn("primary", { fontSize: 12, padding: "7px 14px" })}>➕ Nowy quiz</button>
-        )}
+        <button onClick={async () => {
+          const msg = st === "waiting"
+            ? "Zresetować sesję (usunąć oczekującą i zacząć od nowa)?"
+            : st === "running" || st === "paused"
+            ? "⚠️ Quiz jest aktualnie w toku! Na pewno zakończyć go i zacząć nowy?"
+            : "Zresetować i przygotować nową sesję quizu?";
+          if (!confirm(msg)) return;
+          setLoading(true);
+          await endAndResetSession(city, adminId, isPractice);
+          await load(isPractice);
+        }} style={C.btn(
+          st === "running" || st === "paused" ? "danger" : "primary",
+          { fontSize: 12, padding: "7px 14px" }
+        )}>➕ Nowy quiz</button>
       </div>
 
       {/* ── Status banner ───────────────────────────────────────────── */}
@@ -568,9 +579,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
-          {(st === "ended" || st === "results") && (
-            <button onClick={load} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
-          )}
+          <button onClick={load} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
         </div>
       </div>
 

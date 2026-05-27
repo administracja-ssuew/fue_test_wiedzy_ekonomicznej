@@ -163,6 +163,14 @@ CREATE POLICY "backgrounds_auth_delete" ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'backgrounds');
 
+-- ─── 11. pause_elapsed_s COLUMN ─────────────────────────────────
+-- Stores seconds elapsed when admin pauses mid-question.
+-- On resume the admin back-dates q_started_at by this amount so
+-- participants see remaining time (not full time) after resuming.
+
+ALTER TABLE public.quiz_sessions
+  ADD COLUMN IF NOT EXISTS pause_elapsed_s INT;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

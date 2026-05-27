@@ -71,7 +71,11 @@ export default function LiveView({ city }) {
       const qs = questionsRef.current;
       if (s.status === "running") {
         const curPhase = phaseRef.current;
-        if (s.current_question_idx !== gIdxRef.current || curPhase !== "quiz") {
+        const questionChanged = s.current_question_idx !== gIdxRef.current;
+        // During reveal: only interrupt if the question actually advanced.
+        // Without this guard, handleSess fires every poll cycle with curPhase!=="quiz"
+        // and calls syncSession with an already-expired q_started_at → timer=0 → doReveal loop.
+        if (questionChanged || (curPhase !== "quiz" && curPhase !== "reveal")) {
           syncSession(s, qs);
         }
       } else if (s.status === "waiting" || s.status === "paused") {
@@ -145,6 +149,8 @@ export default function LiveView({ city }) {
     if (nextIdx >= qs.length) { setPhase("waiting"); phaseRef.current = "waiting"; return; }
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 1000));
+      // handleSess may have already advanced to the next question — don't double-sync.
+      if (phaseRef.current !== "reveal") return;
       const s = await getSessionForCity(city);
       if (!s || s.status !== "running") { setPhase("waiting"); phaseRef.current = "waiting"; return; }
       if (s.current_question_idx > gIdxRef.current) {

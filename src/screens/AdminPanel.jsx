@@ -549,11 +549,20 @@ function SesjaTab({ city, adminId, onPodium }) {
             }}>▶ Start quizu</button>
           )}
           {st === "running" && <>
-            <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => upd({ status: "paused" })}>⏸ Pauza</button>
+            <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => {
+              const elapsed = session?.q_started_at
+                ? Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000)
+                : 0;
+              upd({ status: "paused", pause_elapsed_s: elapsed });
+            }}>⏸ Pauza</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
           {st === "paused" && <>
-            <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={() => upd({ status: "running", q_started_at: new Date().toISOString() })}>▶ Wznów quiz</button>
+            <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={() => {
+              const pe = sessionRef.current?.pause_elapsed_s ?? 0;
+              const newStartedAt = new Date(Date.now() - pe * 1000).toISOString();
+              upd({ status: "running", q_started_at: newStartedAt, pause_elapsed_s: null });
+            }}>▶ Wznów quiz</button>
             <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}

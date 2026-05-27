@@ -16,14 +16,15 @@ export default function Break({ participant, nextModule, isAdminPause, sessionId
   // Poll co 3s — specific session when sessionId known, city-wide otherwise
   useEffect(() => {
     if (!city) return;
+    let mounted = true;
     const check = async () => {
       const s = sessionId ? await getSessionById(sessionId) : await getSessionForCity(city);
-      if (s?.status === "running") { clearInterval(pollRef.current); onResume(); }
+      if (mounted && s?.status === "running") { clearInterval(pollRef.current); onResume(s); }
     };
     check();
     pollRef.current = setInterval(check, 3000);
-    return () => clearInterval(pollRef.current);
-  }, [city, sessionId]);
+    return () => { mounted = false; clearInterval(pollRef.current); };
+  }, [city, sessionId]); // eslint-disable-line
 
   // Realtime — specific session or city-wide
   useEffect(() => {
@@ -32,10 +33,10 @@ export default function Break({ participant, nextModule, isAdminPause, sessionId
     const channelKey = sessionId || city;
     const ch = supabase.channel(`break-${channelKey}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "quiz_sessions", filter: filterStr },
-        ({ new: s }) => { if (s.status === "running") { clearInterval(pollRef.current); onResume(); } })
+        ({ new: s }) => { if (s.status === "running") { clearInterval(pollRef.current); onResume(s); } })
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [city, sessionId]);
+  }, [city, sessionId]); // eslint-disable-line
 
   const isResults     = !nextModule && !isAdminPause;
   const isAdminPauseMode = isAdminPause;
@@ -60,7 +61,7 @@ export default function Break({ participant, nextModule, isAdminPause, sessionId
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#F5C518", animation: "pulse 1.5s infinite" }} />
           <span style={{ fontSize: 13, color: "#9B89CC" }}>Oczekiwanie na administratora{dots}</span>
         </div>
-        <p style={{ fontSize: 11, color: "rgba(155,137,204,.3)", marginTop: 28 }}>🐐 Forum Uczelni Ekonomicznych</p>
+        <p style={{ fontSize: 11, color: "rgba(155,137,204,.3)", marginTop: 28 }}>Forum Uczelni Ekonomicznych</p>
       </div>
     </div>
   );

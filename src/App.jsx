@@ -163,8 +163,15 @@ export default function App() {
         clearInterval(timerRef.current); setAnswered(true); setScreen("admin_pause"); return;
       }
       if (s.status === "running" && cur === "admin_pause") {
-        qStartedAtRef.current = null; setPicked(null); setAnswered(false);
-        setTimer(modTimePerQRef.current || 60); setScreen("quiz"); return;
+        if (s.q_started_at) {
+          qStartedAtRef.current = s.q_started_at;
+          const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+          setTimer(Math.max(1, modTimePerQRef.current - elapsed));
+        } else {
+          qStartedAtRef.current = null;
+          setTimer(modTimePerQRef.current || 60);
+        }
+        setPicked(null); setAnswered(false); setScreen("quiz"); return;
       }
       if (s.status === "ended" && QUIZ_SCREENS.includes(cur)) {
         clearInterval(timerRef.current);
@@ -436,10 +443,16 @@ export default function App() {
 
   // Admin manually paused mid-quiz — participant waits
   if (screen === "admin_pause")
-    return <Break participant={participant} nextModule={currentMod} isAdminPause sessionId={quizSession?.id} onResume={() => {
-      // Clear stale q_started_at so the timer restarts from full duration instead of immediately expiring
-      qStartedAtRef.current = null;
-      setPicked(null); setAnswered(false); setTimer(modTimePerQRef.current || 60); setScreen("quiz");
+    return <Break participant={participant} nextModule={currentMod} isAdminPause sessionId={quizSession?.id} onResume={(s) => {
+      if (s?.q_started_at) {
+        qStartedAtRef.current = s.q_started_at;
+        const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+        setTimer(Math.max(1, modTimePerQRef.current - elapsed));
+      } else {
+        qStartedAtRef.current = null;
+        setTimer(modTimePerQRef.current || 60);
+      }
+      setPicked(null); setAnswered(false); setScreen("quiz");
     }} />;
 
   if (screen === "waiting_results")

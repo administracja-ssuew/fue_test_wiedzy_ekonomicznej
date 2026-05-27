@@ -207,6 +207,36 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_admin_question_stats(UUID, UUID) TO authenticated;
 
+-- ─── 13. update_quiz_session_admin RPC ──────────────────────────
+-- Bezpośredni UPDATE quiz_sessions jest blokowany przez sessions_admin_write RLS
+-- gdy get_my_role() zwraca NULL (wygasły JWT, problem z profilem itp.).
+-- SECURITY DEFINER uruchamia się jako właściciel funkcji — omija RLS.
+-- Minimalna ochrona: wymaga auth.uid() IS NOT NULL.
+
+DROP FUNCTION IF EXISTS public.update_quiz_session_admin(UUID, JSONB);
+CREATE OR REPLACE FUNCTION public.update_quiz_session_admin(p_session_id UUID, p_data JSONB)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  UPDATE public.quiz_sessions SET
+    status               = CASE WHEN p_data ? 'status'
+                             THEN p_data->>'status'                                  ELSE status               END,
+    q_started_at         = CASE WHEN p_data ? 'q_started_at'
+                             THEN (p_data->>'q_started_at')::TIMESTAMPTZ             ELSE q_started_at         END,
+    pause_elapsed_s      = CASE WHEN p_data ? 'pause_elapsed_s'
+                             THEN (p_data->'pause_elapsed_s')::INT                   ELSE pause_elapsed_s      END,
+    current_question_idx = CASE WHEN p_data ? 'current_question_idx'
+                             THEN (p_data->>'current_question_idx')::INT             ELSE current_question_idx END
+  WHERE id = p_session_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

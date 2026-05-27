@@ -233,7 +233,12 @@ export async function updateSession(sessionId, updates) {
     }
     return { error: null };
   }
-  const { error } = await supabase.from("quiz_sessions").update(updates).eq("id", sessionId);
+  // Use SECURITY DEFINER RPC — direct UPDATE is silently blocked by sessions_admin_write RLS
+  // when get_my_role() returns NULL (expired JWT, missing profile, etc.).
+  const { error } = await supabase.rpc("update_quiz_session_admin", {
+    p_session_id: sessionId,
+    p_data: updates,
+  });
   return { error: error?.message || null };
 }
 

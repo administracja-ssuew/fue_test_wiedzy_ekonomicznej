@@ -134,6 +134,35 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_live_answer_count(UUID, UUID) TO anon, authenticated;
 
+-- ─── 10. STORAGE — backgrounds bucket ───────────────────────────
+-- Create the bucket (public so URLs work without signed tokens).
+-- ON CONFLICT DO NOTHING is safe to re-run.
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('backgrounds', 'backgrounds', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Drop any stale policies then recreate them cleanly.
+DROP POLICY IF EXISTS "backgrounds_public_read" ON storage.objects;
+DROP POLICY IF EXISTS "backgrounds_auth_insert" ON storage.objects;
+DROP POLICY IF EXISTS "backgrounds_auth_update" ON storage.objects;
+DROP POLICY IF EXISTS "backgrounds_auth_delete" ON storage.objects;
+
+CREATE POLICY "backgrounds_public_read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'backgrounds');
+
+CREATE POLICY "backgrounds_auth_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'backgrounds');
+
+CREATE POLICY "backgrounds_auth_update" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'backgrounds');
+
+CREATE POLICY "backgrounds_auth_delete" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'backgrounds');
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

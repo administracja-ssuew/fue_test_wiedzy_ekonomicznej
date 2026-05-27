@@ -233,8 +233,11 @@ export async function updateSession(sessionId, updates) {
     }
     return { error: null };
   }
-  const { error } = await supabase.from("quiz_sessions").update(updates).eq("id", sessionId);
-  return { error: error?.message || null };
+  const { error, count } = await supabase.from("quiz_sessions")
+    .update(updates, { count: "exact" }).eq("id", sessionId);
+  if (error) return { error: error.message };
+  if (count === 0) return { error: "Sesja niedostępna — odśwież stronę lub zaloguj się ponownie." };
+  return { error: null };
 }
 
 // Advance quiz to the next question using a server-generated timestamp.
@@ -349,13 +352,14 @@ export async function saveAnswer({ sessionId, participantCode, participantName, 
     localStorage.setItem("fue_answers", JSON.stringify(answers));
     return { error: null };
   }
-  // upsert with ignoreDuplicates silently skips re-answers (reconnect edge case).
-  // onConflict matches the UNIQUE constraint (session_id, participant_code, question_id).
-  const { error } = await supabase.from("answers").upsert({
+  // Plain INSERT — PostgREST upsert checks UPDATE policy even with DO NOTHING,
+  // which anon doesn't have. Use INSERT and swallow 23505 (duplicate = already answered).
+  const { error } = await supabase.from("answers").insert({
     session_id: sessionId, participant_code: participantCode, participant_name: participantName,
     city, question_id: questionId, module, chosen, is_correct: isCorrect, points,
     response_time_s: responseTimeS ?? null,
-  }, { onConflict: "session_id,participant_code,question_id", ignoreDuplicates: true });
+  });
+  if (error?.code === "23505") return { error: null }; // already answered — ignore duplicate
   return { error: error?.message || null };
 }
 
@@ -468,8 +472,7 @@ export async function uploadCityBg(city, file, isMobile = false) {
   }
   const ext = file.name.split(".").pop().toLowerCase();
   const safeCity = city.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const variant = isMobile ? "mobile" : "desktop";
-  const path = `${safeCity}/${variant}.${ext}`;
+  const path = isMobile ? `${safeCity}/mobile.${ext}` : `${safeCity}/bg.${ext}`;
   const { error: uploadError } = await supabase.storage
     .from("backgrounds")
     .upload(path, file, { upsert: true, contentType: file.type });

@@ -438,10 +438,11 @@ function SesjaTab({ city, adminId, onPodium }) {
     clearInterval(pollRef.current);
     const { error } = await updateSession(session.id, updates);
     if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
-    setSession((s) => { const next = { ...s, ...updates }; sessionRef.current = next; return next; });
-    // Broadcast status change instantly to all participants on the same session channel
+    const nextSession = { ...sessionRef.current, ...updates };
+    setSession((s) => { sessionRef.current = nextSession; return nextSession; });
+    // Broadcast full merged session — participants use payload directly, no extra DB fetch needed
     if (!DEMO && supabase && quizBcChRef.current && updates.status) {
-      quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: { status: updates.status } });
+      quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: nextSession });
     }
     if (updates.status === "ended" || updates.status === "results") {
       setResults(await getSessionResults(session.id));
@@ -542,9 +543,10 @@ function SesjaTab({ city, adminId, onPodium }) {
             <button style={{ ...C.btn("success", { flex: 1, fontSize: 14, padding: "12px 20px" }) }} onClick={async () => {
               const { startedAt, error } = await startQuizSession(session.id);
               if (!startedAt) return alert(error || "Błąd startu — spróbuj ponownie.");
-              setSession((s) => ({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
+              const startedSession = { ...sessionRef.current, status: "running", q_started_at: startedAt, current_question_idx: 0 };
+              setSession(() => { sessionRef.current = startedSession; return startedSession; });
               if (!DEMO && supabase && quizBcChRef.current) {
-                quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: { status: "running" } });
+                quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: startedSession });
               }
             }}>▶ Start quizu</button>
           )}

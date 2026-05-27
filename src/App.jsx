@@ -221,8 +221,11 @@ export default function App() {
 
     const ch = supabase.channel(`quiz-${quizSession.id}`)
       .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
-        // Admin broadcast: status changed — immediately fetch fresh session
-        if (payload?.status) getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
+        // Admin broadcast: payload now contains the full merged session — no extra DB fetch needed.
+        // Fallback: fetch from DB if payload looks incomplete (old client compatibility).
+        if (!payload?.status) return;
+        if (payload.id) { handleUpdate(payload); }
+        else { getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); }); }
       })
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",

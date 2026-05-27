@@ -233,10 +233,10 @@ export async function updateSession(sessionId, updates) {
     }
     return { error: null };
   }
-  const { error, count } = await supabase.from("quiz_sessions")
-    .update(updates, { count: "exact" }).eq("id", sessionId);
+  const { data, error } = await supabase.from("quiz_sessions")
+    .update(updates).eq("id", sessionId).select("id").maybeSingle();
   if (error) return { error: error.message };
-  if (count === 0) return { error: "Sesja niedostępna — odśwież stronę lub zaloguj się ponownie." };
+  if (!data) return { error: "Sesja niedostępna — odśwież stronę lub zaloguj się ponownie." };
   return { error: null };
 }
 

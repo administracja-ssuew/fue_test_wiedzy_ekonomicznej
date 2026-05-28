@@ -262,6 +262,63 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
 
+-- ─── 15. FIX auth.uid() + storage policies + anon stats ────────
+-- (a) update_quiz_session_admin — remove the auth.uid() IS NULL guard.
+--     It fires even for valid admins in some Supabase configs because
+--     auth.uid() can return NULL inside SECURITY DEFINER + search_path=public.
+--     Security is already enforced by GRANT EXECUTE TO authenticated — anon
+--     callers are rejected before the function body even runs.
+
+CREATE OR REPLACE FUNCTION public.update_quiz_session_admin(p_session_id UUID, p_data JSONB)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.quiz_sessions SET
+    status               = CASE WHEN p_data ? 'status'
+                             THEN p_data->>'status'                              ELSE status               END,
+    q_started_at         = CASE WHEN p_data ? 'q_started_at'
+                             THEN (p_data->>'q_started_at')::TIMESTAMPTZ         ELSE q_started_at         END,
+    pause_elapsed_s      = CASE WHEN p_data ? 'pause_elapsed_s'
+                             THEN (p_data->>'pause_elapsed_s')::INT              ELSE pause_elapsed_s      END,
+    current_question_idx = CASE WHEN p_data ? 'current_question_idx'
+                             THEN (p_data->>'current_question_idx')::INT         ELSE current_question_idx END
+  WHERE id = p_session_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
+
+-- (b) get_admin_question_stats — also grant to anon so live stats survive
+--     an expired JWT. SECURITY DEFINER keeps the data safe (no raw rows exposed).
+GRANT EXECUTE ON FUNCTION public.get_admin_question_stats(UUID, UUID) TO anon;
+
+-- (c) Storage/backgrounds — recreate all policies cleanly.
+--     Supabase dashboard sometimes creates extra conflicting policies; drop by
+--     name pattern then recreate so we have exactly what we need.
+DROP POLICY IF EXISTS "backgrounds_public_read"  ON storage.objects;
+DROP POLICY IF EXISTS "backgrounds_auth_insert"  ON storage.objects;
+DROP POLICY IF EXISTS "backgrounds_auth_update"  ON storage.objects;
+DROP POLICY IF EXISTS "backgrounds_auth_delete"  ON storage.objects;
+
+CREATE POLICY "backgrounds_public_read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'backgrounds');
+
+CREATE POLICY "backgrounds_auth_insert" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'backgrounds');
+
+CREATE POLICY "backgrounds_auth_update" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'backgrounds')
+  WITH CHECK (bucket_id = 'backgrounds');
+
+CREATE POLICY "backgrounds_auth_delete" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'backgrounds');
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

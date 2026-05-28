@@ -233,6 +233,9 @@ export async function updateSession(sessionId, updates) {
     }
     return { error: null };
   }
+  // Ensure the access token is fresh before calling the RPC — getSession() automatically
+  // uses the stored refresh token when the access token has expired.
+  await supabase.auth.getSession();
   // Use SECURITY DEFINER RPC — direct UPDATE is silently blocked by sessions_admin_write RLS
   // when get_my_role() returns NULL (expired JWT, missing profile, etc.).
   const { error } = await supabase.rpc("update_quiz_session_admin", {
@@ -473,6 +476,8 @@ export async function uploadCityBg(city, file, isMobile = false) {
       reader.readAsDataURL(file);
     });
   }
+  // Refresh access token before upload — storage RLS requires authenticated role.
+  await supabase.auth.getSession();
   const ext = file.name.split(".").pop().toLowerCase();
   const safeCity = city.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   const path = isMobile ? `${safeCity}/mobile.${ext}` : `${safeCity}/bg.${ext}`;

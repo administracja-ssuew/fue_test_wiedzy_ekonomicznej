@@ -126,10 +126,19 @@ export default function LiveView({ city }) {
   const timerPct = timer / timePerQ;
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
+  // Minimum time the reveal screen is shown before transitioning.
+  // Must match the setTimeout(advanceQuestion, 5000) delay in App.jsx so LiveView
+  // and participants reach the next question at the same moment.
+  const REVEAL_MIN_MS = 5000;
+
   const doReveal = async () => {
+    const revealStart = Date.now();
     setPhase("reveal"); phaseRef.current = "reveal";
     clearInterval(timerRef.current); clearInterval(liveRef.current);
+
     const capturedIdx = gIdxRef.current;
+
+    // Fetch answer stats after 2s (participants finishing last submissions)
     setTimeout(async () => {
       const q   = questionsRef.current[capturedIdx];
       const sid = sessionRef.current?.id;
@@ -138,32 +147,39 @@ export default function LiveView({ city }) {
         setReveal(stats.answers || []);
       }
     }, 2000);
-    setAutoSec(8);
-    let cd = 8;
+
+    // Countdown display: counts down REVEAL_MIN_MS then holds at 0
+    setAutoSec(Math.ceil(REVEAL_MIN_MS / 1000));
     clearInterval(revealRef.current);
     revealRef.current = setInterval(() => {
-      cd--; setAutoSec(cd);
-      if (cd <= 0) { clearInterval(revealRef.current); doNext(); }
-    }, 1000);
-  };
+      setAutoSec(Math.max(0, Math.ceil((REVEAL_MIN_MS - (Date.now() - revealStart)) / 1000)));
+    }, 500);
 
-  const doNext = async () => {
-    clearInterval(revealRef.current);
-    const qs      = questionsRef.current;
-    const nextIdx = gIdxRef.current + 1;
-    if (nextIdx >= qs.length) { setPhase("waiting"); phaseRef.current = "waiting"; return; }
+    // Poll every second. Transition when DB shows question advanced AND
+    // REVEAL_MIN_MS have elapsed — keeps LiveView in sync with participants.
+    const qs = questionsRef.current;
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 1000));
-      // handleSess may have already advanced to the next question — don't double-sync.
-      if (phaseRef.current !== "reveal") return;
+      if (phaseRef.current !== "reveal") { clearInterval(revealRef.current); return; }
+      if (capturedIdx + 1 >= qs.length) {
+        clearInterval(revealRef.current);
+        setPhase("waiting"); phaseRef.current = "waiting";
+        return;
+      }
       const s = await getSessionForCity(city);
-      if (!s || s.status !== "running") { setPhase("waiting"); phaseRef.current = "waiting"; return; }
-      if (s.current_question_idx > gIdxRef.current) {
+      if (!s || s.status !== "running") {
+        clearInterval(revealRef.current);
+        setPhase("waiting"); phaseRef.current = "waiting";
+        return;
+      }
+      if (s.current_question_idx > capturedIdx && Date.now() - revealStart >= REVEAL_MIN_MS) {
+        clearInterval(revealRef.current);
         setSession(s); sessionRef.current = s;
         syncSession(s, qs);
         return;
       }
     }
+    clearInterval(revealRef.current);
     setPhase("waiting"); phaseRef.current = "waiting";
   };
 

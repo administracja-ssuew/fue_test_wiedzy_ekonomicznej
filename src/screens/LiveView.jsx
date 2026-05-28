@@ -76,13 +76,11 @@ export default function LiveView({ city }) {
       if (s.status === "running") {
         const curPhase = phaseRef.current;
         const questionChanged = s.current_question_idx !== gIdxRef.current;
-        // During reveal: only interrupt if the question actually advanced.
-        // Without this guard, handleSess fires every poll cycle with curPhase!=="quiz"
-        // and calls syncSession with an already-expired q_started_at → timer=0 → doReveal loop.
-        if (questionChanged || (curPhase !== "quiz" && curPhase !== "reveal")) {
-          // syncSession sets phase="quiz" and starts the timer effect.
-          // If q_started_at is in the future, the timer effect drives the 3→2→1 countdown
-          // via setCdNum; once elapsed >= 0, the countdown clears and the timer begins.
+        // During reveal, doNext() is already polling for the next question — don't
+        // interrupt it. Without this guard, a Realtime event with questionChanged=true
+        // calls syncSession ~3s into the 8s reveal countdown, cutting it off early.
+        if (curPhase === "reveal") return;
+        if (questionChanged || curPhase !== "quiz") {
           syncSession(s, qs);
         }
       } else if (s.status === "waiting" || s.status === "paused") {

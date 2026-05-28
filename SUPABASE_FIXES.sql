@@ -237,6 +237,31 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
 
+-- ─── 14. start_quiz_session — delayed start (+4 s) ──────────────
+-- q_started_at is set 4 seconds in the future so all clients can
+-- display a 3→2→1→START! countdown driven purely by the timestamp.
+-- status is set to "running" immediately so participants leave the
+-- lobby; they count down locally until q_started_at arrives, then
+-- the timer begins from the full timePerQ.
+
+CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_start TIMESTAMPTZ := clock_timestamp() + interval '4 seconds';
+BEGIN
+  UPDATE public.quiz_sessions
+  SET status = 'running', q_started_at = v_start, current_question_idx = 0
+  WHERE id = p_session_id AND status = 'waiting';
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

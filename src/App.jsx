@@ -114,7 +114,7 @@ export default function App() {
     const globalIdx = Math.min(session.current_question_idx || 0, questions.length - 1);
     const state = getQuestionState(globalIdx, questions);
     if (!state) return false;
-    const elapsed    = Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000);
+    const elapsed    = Math.max(0, Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000));
     const remaining  = Math.max(1, state.mod.timePerQ - elapsed);
     qStartedAtRef.current  = session.q_started_at;
     modTimePerQRef.current = state.mod.timePerQ;
@@ -139,7 +139,7 @@ export default function App() {
         });
         return;
       }
-      const elapsed    = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+      const elapsed    = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
       const remaining  = Math.max(0, modTimePerQRef.current - elapsed);
       setTimer(remaining);
       if (remaining <= 0) { clearInterval(timerRef.current); handleTimeout(); }
@@ -167,7 +167,7 @@ export default function App() {
       if (s.status === "running" && cur === "admin_pause") {
         if (s.q_started_at) {
           qStartedAtRef.current = s.q_started_at;
-          const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
           setTimer(Math.max(1, modTimePerQRef.current - elapsed));
         } else {
           qStartedAtRef.current = null;
@@ -193,7 +193,7 @@ export default function App() {
       if (s.current_question_idx > myGlobalIdx) {
         const state = getQuestionState(s.current_question_idx, questions);
         if (state) {
-          const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
           const remaining = Math.max(1, state.mod.timePerQ - elapsed);
           qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
           // Do NOT clearInterval here — the timer effect handles its own lifecycle when
@@ -205,7 +205,7 @@ export default function App() {
       } else if (s.current_question_idx === myGlobalIdx && !qStartedAtRef.current && s.q_started_at) {
         const state = getQuestionState(myGlobalIdx, questions);
         if (state) {
-          const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
           const remaining = Math.max(1, state.mod.timePerQ - elapsed);
           qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
           setTimer(remaining);
@@ -401,17 +401,24 @@ export default function App() {
     setCityQuestions(dbQs);
     setMyPts(0); setAllAnswers([]);
 
-    // Show 3→2→1→START! countdown only for fresh quiz starts (q_started_at set < 5s ago).
-    // Reconnects/refreshes skip the countdown to avoid showing it mid-question.
-    const freshStart = session?.q_started_at &&
-      (Date.now() - new Date(session.q_started_at).getTime()) < 5000;
-    if (freshStart) {
+    // Show countdown when q_started_at is in the future — only happens on fresh start
+    // because start_quiz_session sets q_started_at = clock_timestamp() + 4s.
+    // Reconnects/refreshes have a past q_started_at so they skip straight to quiz.
+    const qStartedAtMs = session?.q_started_at ? new Date(session.q_started_at).getTime() : null;
+    if (qStartedAtMs && qStartedAtMs > Date.now()) {
       setScreen("countdown");
-      for (const n of [3, 2, 1, 0]) {
-        setCountdownNum(n);
-        await new Promise((r) => setTimeout(r, n > 0 ? 1000 : 700));
-      }
-      setCountdownNum(null);
+      await new Promise((resolve) => {
+        const tick = () => {
+          const msLeft = qStartedAtMs - Date.now();
+          if (msLeft > 0) setCountdownNum(Math.max(0, Math.ceil(msLeft / 1000) - 1));
+        };
+        tick();
+        const iv = setInterval(() => {
+          const msLeft = qStartedAtMs - Date.now();
+          if (msLeft <= 0) { clearInterval(iv); setCountdownNum(null); resolve(); }
+          else tick();
+        }, 100);
+      });
     }
 
     // Admin ustawił q_started_at → idź od razu do pytania (bez kliku uczestnika)
@@ -464,7 +471,7 @@ export default function App() {
     return <Break participant={participant} nextModule={currentMod} isAdminPause sessionId={quizSession?.id} onResume={(s) => {
       if (s?.q_started_at) {
         qStartedAtRef.current = s.q_started_at;
-        const elapsed = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+        const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
         setTimer(Math.max(1, modTimePerQRef.current - elapsed));
       } else {
         qStartedAtRef.current = null;

@@ -949,7 +949,7 @@ function LiveTab({ city, autoStart = false }) {
 
     let startTimer = timePerQ;
     if (freshSession?.q_started_at) {
-      const elapsedSec = Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000);
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000));
       startTimer = Math.max(1, timePerQ - elapsedSec);
     }
 
@@ -974,7 +974,7 @@ function LiveTab({ city, autoStart = false }) {
         });
         return;
       }
-      const elapsed   = Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000);
+      const elapsed   = Math.max(0, Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000));
       const remaining = Math.max(0, modTimePerQ - elapsed);
       setTimer(remaining);
       if (remaining <= 0) { clearInterval(timerRef.current); doReveal(); }
@@ -1031,7 +1031,7 @@ function LiveTab({ city, autoStart = false }) {
         if (!nextQ) { setPhase("done"); return; }
         const nextMod = MODULES.find((m) => m.id === nextQ.module);
         const timePerQ = nextMod?.timePerQ || 60;
-        const elapsed  = Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000);
+        const elapsed  = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
         setTimer(Math.max(0, timePerQ - elapsed));
         setGIdx(s.current_question_idx);
         setPhase("quiz"); setRevealData([]); setLiveCount(0);

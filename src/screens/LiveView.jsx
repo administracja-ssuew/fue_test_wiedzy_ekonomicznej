@@ -30,7 +30,6 @@ export default function LiveView({ city }) {
   const gIdxRef         = useRef(0);
   const questionsRef    = useRef([]);
   const phaseRef        = useRef("waiting");
-  const countingDownRef = useRef(false); // prevent double-countdown on rapid events
 
   useEffect(() => { gIdxRef.current = gIdx; }, [gIdx]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
@@ -42,11 +41,12 @@ export default function LiveView({ city }) {
     const q   = qs[idx];
     const m   = MODULES.find((mod) => mod.id === q?.module);
     const timePerQ = m?.timePerQ || 60;
-    const elapsed  = Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000);
+    const elapsed  = Math.max(0, Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000));
     const remaining = Math.max(0, timePerQ - elapsed);
     setGIdx(idx); gIdxRef.current = idx;
     setTimer(remaining);
     setLiveCount(0);
+    setCdNum(null); // clear stale countdown from previous question
     setReveal([]); setPhase("quiz"); phaseRef.current = "quiz";
   };
 
@@ -80,19 +80,9 @@ export default function LiveView({ city }) {
         // Without this guard, handleSess fires every poll cycle with curPhase!=="quiz"
         // and calls syncSession with an already-expired q_started_at → timer=0 → doReveal loop.
         if (questionChanged || (curPhase !== "quiz" && curPhase !== "reveal")) {
-          // Show 3→2→1→START! only when transitioning from waiting to running (fresh start).
-          // Skip if already counting down, if the question changed mid-quiz, or if reconnecting.
-          const freshStart = curPhase === "waiting" && !countingDownRef.current && s.q_started_at &&
-            (Date.now() - new Date(s.q_started_at).getTime()) < 5000;
-          if (freshStart) {
-            countingDownRef.current = true;
-            for (const n of [3, 2, 1, 0]) {
-              setCdNum(n);
-              await new Promise((r) => setTimeout(r, n > 0 ? 1000 : 700));
-            }
-            setCdNum(null);
-            countingDownRef.current = false;
-          }
+          // syncSession sets phase="quiz" and starts the timer effect.
+          // If q_started_at is in the future, the timer effect drives the 3→2→1 countdown
+          // via setCdNum; once elapsed >= 0, the countdown clears and the timer begins.
           syncSession(s, qs);
         }
       } else if (s.status === "waiting" || s.status === "paused") {
@@ -193,8 +183,15 @@ export default function LiveView({ city }) {
         });
         return;
       }
-      const elapsed   = Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000);
-      const remaining = Math.max(0, modTimePerQ - elapsed);
+      const elapsedRaw = (Date.now() - new Date(sess.q_started_at).getTime()) / 1000;
+      if (elapsedRaw < 0) {
+        // q_started_at is still in the future — show countdown
+        setCdNum(Math.max(0, Math.ceil(-elapsedRaw) - 1));
+        setTimer(modTimePerQ);
+        return;
+      }
+      setCdNum(null); // clear countdown once timer starts
+      const remaining = Math.max(0, modTimePerQ - Math.floor(elapsedRaw));
       setTimer(remaining);
       if (remaining <= 0) { clearInterval(timerRef.current); doReveal(); }
     }, 1000);

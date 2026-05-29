@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "bot": "vite-node scripts/bot-runner.js",
     "load": "vite-node scripts/load-runner.js",
-    "rls": "vite-node scripts/rls-check.js"
+    "rls": "vite-node scripts/rls-check.js",
+    "seed-admin": "vite-node scripts/seed-admin.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

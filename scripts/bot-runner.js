@@ -175,14 +175,14 @@ async function phaseAdminOps(admin) {
   const codes2 = await getParticipantCodes(BOT_CITY);
   assert("deleteParticipantCode", !codes2.some((c) => c.id === codeEntry.id), "kod nieobecny");
 
-  // A7: getCityBg / setCityBg
-  state.originalBg = await getCityBg(BOT_CITY);
+  // A7: getCityBg / setCityBg — getCityBg returns { bg, bgMobile }; compare the .bg field.
+  state.originalBg = (await getCityBg(BOT_CITY)).bg;
   const testBg = "linear-gradient(180deg,#ff0000 0%,#0000ff 100%)";
   const { error: bgErr } = await setCityBg(BOT_CITY, testBg);
   if (bgErr) { fail("setCityBg", bgErr); throw new Error(bgErr); }
-  const bgAfter = await getCityBg(BOT_CITY);
+  const bgAfter = (await getCityBg(BOT_CITY)).bg;
   assert("getCityBg / setCityBg", bgAfter === testBg, "tło zaktualizowane");
-  await setCityBg(BOT_CITY, state.originalBg || "");
+  await setCityBg(BOT_CITY, state.originalBg);
   state.originalBg = null; // cleanup already done
 
   // A8: getModules

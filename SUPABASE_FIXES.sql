@@ -533,6 +533,27 @@ GRANT EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID)       TO a
 GRANT EXECUTE ON FUNCTION public.get_participant_answers(UUID, TEXT)        TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.log_event(TEXT, UUID, TEXT, TEXT, TEXT)    TO anon, authenticated;
 
+-- ─── 24. mark_code_used — pozwól na re-join do nowej sesji ──────
+-- Usuwamy warunek "AND used = false". Po resecie/nowej sesji uczestnik wracający
+-- na ten sam kod MUSI zaktualizować session_id — inaczej getParticipantsInSession
+-- go nie liczy (licznik uczestników = 0 mimo odpowiadania → "1/0" na przycisku
+-- Następne i zablokowanie). Idempotentne, bezpieczne do wielokrotnego uruchomienia.
+
+CREATE OR REPLACE FUNCTION public.mark_code_used(p_code TEXT, p_session_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.participant_codes
+  SET used = true, session_id = p_session_id
+  WHERE code = p_code;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.mark_code_used(TEXT, UUID) TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

@@ -74,9 +74,10 @@ export async function markCodeUsed(code, sessionId) {
   // If RPC doesn't exist yet, fall back to direct UPDATE.
   const { error: rpcErr } = await supabase.rpc("mark_code_used", { p_code: code, p_session_id: sessionId });
   if (!rpcErr) return { error: null };
-  // Fallback: direct UPDATE (works if anon UPDATE policy exists or RLS is relaxed)
+  // Fallback: direct UPDATE. No "used=false" guard — a participant rejoining a NEW
+  // session (after a reset) must update their session_id, else they aren't counted.
   const { error: updErr } = await supabase.from("participant_codes")
-    .update({ used: true, session_id: sessionId }).eq("code", code).eq("used", false);
+    .update({ used: true, session_id: sessionId }).eq("code", code);
   return { error: updErr?.message || null };
 }
 

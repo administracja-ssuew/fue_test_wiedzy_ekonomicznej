@@ -620,6 +620,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         <div style={{ padding: "14px 20px", borderTop: `1px solid ${stCol}20`, display: "flex", gap: 10, flexWrap: "wrap" }}>
           {st === "waiting" && (
             <button style={{ ...C.btn("success", { flex: 1, fontSize: 14, padding: "12px 20px" }) }} onClick={async () => {
+              if (!session?.id) { alert("Sesja nie jest jeszcze załadowana — kliknij 🔄 Odśwież i spróbuj ponownie."); return; }
               const { startedAt, error } = await startQuizSession(session.id);
               if (!startedAt) return alert(error || "Błąd startu — spróbuj ponownie.");
               const startedSession = { ...sessionRef.current, status: "running", q_started_at: startedAt, current_question_idx: 0 };
@@ -655,7 +656,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
-          <button onClick={load} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
+          <button onClick={() => load()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
         </div>
       </div>
 
@@ -779,7 +780,7 @@ function SesjaTab({ city, adminId, onPodium }) {
           {results.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 0" }}>
               <p style={{ color: "#9B89CC", fontSize: 14 }}>Brak wyników — odśwież lub poczekaj chwilę.</p>
-              <button onClick={load} style={{ ...C.btn("ghost", { marginTop: 12, fontSize: 13 }) }}>🔄 Odśwież wyniki</button>
+              <button onClick={() => load()} style={{ ...C.btn("ghost", { marginTop: 12, fontSize: 13 }) }}>🔄 Odśwież wyniki</button>
             </div>
           ) : (
             <>

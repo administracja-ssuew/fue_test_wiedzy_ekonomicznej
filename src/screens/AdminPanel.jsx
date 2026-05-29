@@ -325,6 +325,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [cityQuestions, setCityQuestions] = useState([]);
   const [liveExpanded, setLiveExpanded] = useState(false);
   const pollRef        = useRef(null);
+  const liveStatsRef   = useRef(null); // dedicated 1s poll for the live answer counter
   const sessionRef     = useRef(null); // always-current session for poll closures
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
   const presenceChRef  = useRef(null);
@@ -391,6 +392,23 @@ function SesjaTab({ city, adminId, onPodium }) {
       }, 3000);
     }
     return () => clearInterval(pollRef.current);
+  }, [session?.status, cityQuestions]);
+
+  // Dedicated fast (1s) poll of JUST the answer counter so the admin's live banner
+  // is second-accurate during a question — matches the LiveView/embed cadence.
+  // The heavier participants/violations bundle above stays at 3s to keep DB load low.
+  useEffect(() => {
+    clearInterval(liveStatsRef.current);
+    if (session?.status !== "running") return;
+    liveStatsRef.current = setInterval(async () => {
+      const s = sessionRef.current;
+      const q = cityQuestions[s?.current_question_idx ?? 0];
+      if (s?.id && q?.id && s.status === "running") {
+        const stats = await getLiveAnswerSummary(s.id, q.id);
+        if (stats) setLiveStats(stats);
+      }
+    }, 1000);
+    return () => clearInterval(liveStatsRef.current);
   }, [session?.status, cityQuestions]);
 
   // Realtime Presence — count participants actually on the lobby screen

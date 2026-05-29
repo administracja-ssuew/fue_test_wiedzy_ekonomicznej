@@ -458,6 +458,21 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
 
+-- ─── 21. REALTIME na tabeli answers (instant push licznika) ─────
+-- Dodaje answers do publikacji Realtime, by panel admina dostawał INSERT-y
+-- natychmiast (push <100ms) zamiast pollingu. RLS answers_admin_select sprawia,
+-- że eventy widzi WYŁĄCZNIE admin — anon (uczestnicy/LiveView) ich nie otrzyma,
+-- więc żadnych danych odpowiedzi nie wyciekamy.
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'answers'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.answers;
+  END IF;
+END $$;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

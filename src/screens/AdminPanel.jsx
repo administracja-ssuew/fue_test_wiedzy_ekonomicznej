@@ -324,9 +324,10 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [isPractice, setIsPractice]     = useState(false);
   const [cityQuestions, setCityQuestions] = useState([]);
   const [liveExpanded, setLiveExpanded] = useState(false);
-  const pollRef        = useRef(null);
-  const liveStatsRef   = useRef(null); // dedicated 1s poll for the live answer counter
-  const sessionRef     = useRef(null); // always-current session for poll closures
+  const pollRef          = useRef(null);
+  const liveStatsRef     = useRef(null); // dedicated 1s poll for the live answer counter
+  const cityQuestionsRef = useRef([]);   // always-current questions for the realtime answer handler
+  const sessionRef       = useRef(null); // always-current session for poll closures
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
   const presenceChRef  = useRef(null);
   const quizBcChRef    = useRef(null); // broadcast channel for instant status push to participants
@@ -335,6 +336,13 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [violAlert, setViolAlert]           = useState(null);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
+
+  // Keep questions ref current for the realtime INSERT handler (avoids stale closure).
+  useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
+
+  // Reset the live counter the instant the question changes so realtime increments
+  // start from 0 for the new question (don't stack onto the previous question's total).
+  useEffect(() => { setLiveStats(null); }, [session?.current_question_idx]);
 
   const load = async (practice = isPractice) => {
     setLoading(true);
@@ -434,7 +442,9 @@ function SesjaTab({ city, adminId, onPodium }) {
     const bcCh = supabase.channel(`quiz-${session.id}`)
       .subscribe();
     quizBcChRef.current = bcCh;
-    // Violations real-time
+    // Violations real-time + INSTANT answer counter (push <100ms, no polling lag).
+    // Requires SUPABASE_FIXES.sql section 21 (answers in realtime publication);
+    // RLS answers_admin_select means only the admin receives these events.
     const violCh = supabase.channel(`viol-rt-${session.id}`)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "violations",
@@ -445,6 +455,19 @@ function SesjaTab({ city, adminId, onPodium }) {
           return exists ? prev : [v, ...prev];
         });
         setViolAlert(v);
+      })
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "answers",
+        filter: `session_id=eq.${session.id}`,
+      }, ({ new: a }) => {
+        // Only count answers for the question currently on screen; the 1s poll
+        // reconciles the exact value, so a missed event self-corrects within 1s.
+        const curQid = cityQuestionsRef.current[sessionRef.current?.current_question_idx ?? 0]?.id;
+        if (a.question_id !== curQid) return;
+        setLiveStats((prev) => {
+          const cur = prev || { total: 0, correct: 0 };
+          return { total: cur.total + 1, correct: cur.correct + (a.is_correct ? 1 : 0) };
+        });
       })
       .subscribe();
     return () => {

@@ -147,6 +147,27 @@ export default function App() {
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
 
+  // ── Pre-question countdown (3→2→1→START), synced via q_started_at ──
+  // Whenever the active question's start is still in the future (set by
+  // advance_session_question / start_quiz_session a few seconds ahead), show the
+  // fullscreen countdown instead of the question. Driven by the same server
+  // timestamp as LiveView/admin, so the animation is time-synced on every screen.
+  // Answering is naturally blocked because <Quiz> isn't rendered meanwhile.
+  useEffect(() => {
+    if (screen !== "quiz") return;
+    const tick = () => {
+      const startedAt = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
+      if (startedAt && startedAt > Date.now()) {
+        setCountdownNum(Math.max(0, Math.ceil((startedAt - Date.now()) / 1000) - 1));
+      } else {
+        setCountdownNum((n) => (n === null ? n : null));
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 200);
+    return () => clearInterval(iv);
+  }, [screen, currentMod, qIdx]);
+
   // ── Pojedynczy kanał Realtime + poll dla wszystkich zdarzeń sesji ──
   // Łączy q-sync i session-sync w jedną subskrypcję, eliminując problem
   // deduplikacji Supabase gdy dwa kanały mają identyczny filtr event:table:id.
@@ -337,6 +358,12 @@ export default function App() {
         // No session (solo practice without session) — local timestamp is fine.
         qStartedAtRef.current = new Date().toISOString();
       }
+
+      // Show the pre-question countdown immediately if the next start is in the future
+      // (winner gets the server timestamp; losers pick it up via the countdown effect
+      // once Realtime delivers it). Avoids a 1-frame flash of the question.
+      const startedMs = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
+      setCountdownNum(startedMs && startedMs > Date.now() ? Math.max(0, Math.ceil((startedMs - Date.now()) / 1000) - 1) : null);
 
       setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
     } else {
@@ -547,6 +574,8 @@ export default function App() {
         // For subsequent modules, previous question was globalIdx-1.
         const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx);
         qStartedAtRef.current = startedAt || null;
+        const ms = startedAt ? new Date(startedAt).getTime() : null;
+        if (ms && ms > Date.now()) setCountdownNum(Math.max(0, Math.ceil((ms - Date.now()) / 1000) - 1));
         if (!startedAt) {
           const capturedCity = participant?.city;
           setTimeout(async () => {
@@ -561,6 +590,11 @@ export default function App() {
         qStartedAtRef.current = new Date().toISOString();
       }
     }} />;
+
+  // Pre-question countdown overlay (between questions): question start is still in
+  // the future → show 3→2→1→START instead of the question, synced via q_started_at.
+  if (screen === "quiz" && countdownNum !== null)
+    return <Countdown num={countdownNum} />;
 
   if (screen === "quiz" && currentQ && mod)
     return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;

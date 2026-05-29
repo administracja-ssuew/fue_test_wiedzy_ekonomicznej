@@ -967,8 +967,19 @@ function LiveTab({ city }) {
   // Pure projection of DB state — same hook as the standalone LiveView, so the
   // admin embed stays perfectly in sync with participants (incl. pause/resume,
   // live module times and the 5s reveal countdown). No local quiz state machine.
-  const { phase, gIdx, timer, autoSec, currentQ, questions, mod, timePerQ, reveal, liveCount } =
+  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount } =
     useLiveProjection(city);
+
+  // During the pre-question countdown show 3→2→1→START instead of revealing the
+  // next question early — keeps the embed in step with participants/LiveView.
+  if (cdNum !== null) return (
+    <div style={{ textAlign: "center", padding: "48px 0" }}>
+      <p style={{ fontSize: 12, color: "#9B89CC", textTransform: "uppercase", letterSpacing: 1 }}>Następne pytanie za</p>
+      <p style={{ fontFamily: '"Bebas Neue"', fontSize: 72, lineHeight: 1, color: cdNum === 0 ? "#10D9A0" : "#F5C518" }}>
+        {cdNum === 0 ? "START!" : cdNum}
+      </p>
+    </div>
+  );
 
   const revealData   = reveal;
   const correct      = revealData.filter((a) => a.isCorrect);

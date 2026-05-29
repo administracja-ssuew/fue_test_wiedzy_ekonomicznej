@@ -473,6 +473,36 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- ─── 22. advance_session_question — odliczanie między pytaniami ──
+-- Start następnego pytania ustawiamy 4 s w przyszłość (jak start_quiz_session),
+-- żeby WSZYSTKIE ekrany (uczestnik, LiveView, panel) pokazały to samo odliczanie
+-- 3→2→1→START liczone z jednego serwerowego q_started_at — pełna synchronizacja.
+-- Timer pytania rusza dopiero po odliczaniu (klienci liczą remaining z q_started_at).
+
+CREATE OR REPLACE FUNCTION public.advance_session_question(
+  p_session_id    UUID,
+  p_expected_idx  INT,
+  p_next_idx      INT
+)
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_start TIMESTAMPTZ := clock_timestamp() + interval '4 seconds';
+BEGIN
+  UPDATE public.quiz_sessions
+  SET current_question_idx = p_next_idx, q_started_at = v_start, status = 'running'
+  WHERE id = p_session_id
+    AND current_question_idx = p_expected_idx
+    AND status = 'running';
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT) TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

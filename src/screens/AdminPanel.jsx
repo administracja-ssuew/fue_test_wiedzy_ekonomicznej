@@ -335,6 +335,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
+  const [answersSettled, setAnswersSettled] = useState(false); // odpowiedzi przestały napływać
+  const totalSeenRef     = useRef(0);
+  const totalChangedAtRef = useRef(0);
 
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
@@ -343,7 +346,34 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   // Reset the live counter the instant the question changes so realtime increments
   // start from 0 for the new question (don't stack onto the previous question's total).
-  useEffect(() => { setLiveStats(null); }, [session?.current_question_idx]);
+  useEffect(() => {
+    setLiveStats(null);
+    setAnswersSettled(false);
+    totalSeenRef.current = 0;
+    totalChangedAtRef.current = Date.now();
+  }, [session?.current_question_idx]);
+
+  // Track when the live answer count last grew → "settled" = no new answer for a few
+  // seconds (everyone still connected has answered). Robust fallback when the joined
+  // count never reaches participants.length (someone disconnected mid-quiz).
+  useEffect(() => {
+    const total = liveStats?.total ?? 0;
+    if (total !== totalSeenRef.current) {
+      totalSeenRef.current = total;
+      totalChangedAtRef.current = Date.now();
+      setAnswersSettled(false);
+    }
+  }, [liveStats?.total]);
+
+  useEffect(() => {
+    if (session?.status !== "running") { setAnswersSettled(false); return; }
+    const iv = setInterval(() => {
+      if (totalSeenRef.current > 0 && Date.now() - totalChangedAtRef.current >= 4000) {
+        setAnswersSettled(true);
+      }
+    }, 500);
+    return () => clearInterval(iv);
+  }, [session?.status]);
 
   const load = async (practice = isPractice) => {
     setLoading(true);
@@ -526,9 +556,12 @@ function SesjaTab({ city, adminId, onPodium }) {
   const curQ   = (session?.current_question_idx ?? 0) + 1;
   const openLive = () => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank");
 
-  // "Wszyscy odpowiedzieli" — gdy liczba odpowiedzi na bieżące pytanie osiągnie
-  // liczbę uczestników w sesji. Odblokowuje przycisk wcześniejszego przejścia dalej.
-  const allAnswered = st === "running" && participants.length > 0 && (liveStats?.total ?? 0) >= participants.length;
+  // "Wszyscy odpowiedzieli" — odblokowuje przycisk wcześniejszego przejścia dalej.
+  // Szybka ścieżka: liczba odpowiedzi osiągnęła liczbę uczestników. Fallback: licznik
+  // przestał rosnąć (settled) — bo ktoś mógł się rozłączyć i total nigdy nie dobije.
+  const liveTotal = liveStats?.total ?? 0;
+  const allAnswered = st === "running" && liveTotal > 0 &&
+    ((participants.length > 0 && liveTotal >= participants.length) || answersSettled);
   // Czas bieżącego pytania (do "force-end" — back-date q_started_at o tyle sekund).
   const curQuestionTimePerQ = (() => {
     const q = cityQuestions[session?.current_question_idx ?? 0];
@@ -665,10 +698,10 @@ function SesjaTab({ city, adminId, onPodium }) {
             }}>🔁 Powtórz</button>
             <button
               disabled={!allAnswered}
-              title={allAnswered ? "Wszyscy odpowiedzieli — przejdź dalej bez czekania" : "Aktywne, gdy wszyscy uczestnicy odpowiedzą"}
+              title={allAnswered ? "Można przejść dalej bez czekania na czas" : "Aktywne, gdy wszyscy odpowiedzą (lub gdy odpowiedzi przestaną napływać)"}
               style={{ ...C.btn(allAnswered ? "success" : "ghost"), opacity: allAnswered ? 1 : .45, cursor: allAnswered ? "pointer" : "not-allowed" }}
               onClick={() => { if (allAnswered) goToNextQuestion(); }}>
-              ⏭ Następne ({liveStats?.total ?? 0}/{participants.length})
+              ⏭ Następne ({liveTotal}/{participants.length})
             </button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}

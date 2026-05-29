@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calcPts, cityInfo, projectLiveState, REVEAL_SECONDS } from "./gameLogic.js";
+import { calcPts, cityInfo, projectLiveState, remainingSeconds, REVEAL_SECONDS } from "./gameLogic.js";
 
 describe("calcPts", () => {
   it("returns 750 for correct answer with half time remaining", () => {
@@ -107,5 +107,49 @@ describe("projectLiveState", () => {
   it("clamps current_question_idx to the last question", () => {
     const r = projectLiveState({ session: sess({ current_question_idx: 99, q_started_at: startedAgo(5) }), questions, modules, now: NOW });
     expect(r.idx).toBe(questions.length - 1);
+  });
+});
+
+describe("remainingSeconds — timing precision", () => {
+  const NOW = 1_700_000_000_000;
+  const ago = (sec) => NOW - sec * 1000;
+
+  it("counts down by whole seconds", () => {
+    expect(remainingSeconds(30, ago(0), NOW)).toBe(30);
+    expect(remainingSeconds(30, ago(10), NOW)).toBe(20);
+    expect(remainingSeconds(30, ago(29.5), NOW)).toBe(1);
+    expect(remainingSeconds(30, ago(30), NOW)).toBe(0);
+  });
+
+  it("never goes negative or above timePerQ (late / future timestamps)", () => {
+    expect(remainingSeconds(30, ago(100), NOW)).toBe(0);   // long past
+    expect(remainingSeconds(30, ago(-5), NOW)).toBe(30);   // future → clamp to max
+  });
+
+  // THE core guarantee: the participant timer (App.jsx) and the spectator
+  // projection (LiveView / admin embed) must show the SAME number every second.
+  // Participant historically used `timePerQ - floor(elapsed)`; prove it is
+  // identical to the shared remainingSeconds across an entire question.
+  it("participant formula == remainingSeconds for every 100ms of a question", () => {
+    for (const tpq of [30, 60, 90, 45]) {
+      for (let ms = 0; ms <= tpq * 1000; ms += 100) {
+        const started = NOW - ms;
+        const elapsed = ms / 1000;
+        const participant = Math.max(0, tpq - Math.floor(elapsed));
+        expect(remainingSeconds(tpq, started, NOW)).toBe(participant);
+      }
+    }
+  });
+
+  it("projectLiveState quiz timer == remainingSeconds (single source of truth)", () => {
+    const questions = [{ id: "q1", module: 1 }];
+    const modules = [{ id: 1, timePerQ: 30 }];
+    for (let sec = 0; sec < 30; sec += 0.3) {
+      const q_started_at = new Date(NOW - sec * 1000).toISOString();
+      const proj = projectLiveState({ session: { status: "running", current_question_idx: 0, q_started_at }, questions, modules, now: NOW });
+      if (proj.phase === "quiz") {
+        expect(proj.timer).toBe(remainingSeconds(30, NOW - sec * 1000, NOW));
+      }
+    }
   });
 });

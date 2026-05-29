@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
-import { calcPts, getModule, REVEAL_SECONDS } from "./lib/gameLogic.js";
+import { calcPts, getModule, REVEAL_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -139,8 +139,8 @@ export default function App() {
         });
         return;
       }
-      const elapsed    = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
-      const remaining  = Math.max(0, modTimePerQRef.current - elapsed);
+      // Same canonical formula as the spectator projection → identical second on every screen.
+      const remaining  = remainingSeconds(modTimePerQRef.current, new Date(startedAt).getTime());
       setTimer(remaining);
       if (remaining <= 0) { clearInterval(timerRef.current); handleTimeout(); }
     }, 1000);

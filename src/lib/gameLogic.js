@@ -15,6 +15,15 @@ export const calcPts = (timeLeft, maxTime, correct) =>
 export const getModule = (id, modules = MODULES) => modules.find((m) => m.id === id);
 export const moduleQuestions = (mod) => QUESTIONS.filter((q) => q.module === mod);
 
+// Canonical "seconds left on the current question" formula. Used by BOTH the
+// participant timer (App.jsx) and the spectator projection so every screen shows
+// the exact same number each second. Derived from the server timestamp q_started_at.
+// Clamped to [0, timePerQ] so a future/late timestamp can never show a wrong value.
+export function remainingSeconds(timePerQ, startedAtMs, nowMs = Date.now()) {
+  const elapsed = (nowMs - startedAtMs) / 1000;
+  return Math.min(timePerQ, Math.max(0, Math.ceil(timePerQ - elapsed)));
+}
+
 // Pure projection of a quiz session into spectator UI state (used by LiveView and
 // the admin ghost embed via useLiveProjection). Deriving everything from the DB
 // timestamp guarantees all spectators + participants stay in sync.
@@ -37,12 +46,13 @@ export function projectLiveState({ session: s, questions: qs, modules, now = Dat
   if (s.status === "paused")  return { phase: "paused", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: null };
   if (!s.q_started_at)        return { phase: "quiz",   idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: null };
 
-  const elapsed = (now - new Date(s.q_started_at).getTime()) / 1000;
+  const startedMs = new Date(s.q_started_at).getTime();
+  const elapsed = (now - startedMs) / 1000;
   if (elapsed < 0) {
     return { phase: "quiz", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: Math.max(0, Math.ceil(-elapsed) - 1) };
   }
   if (elapsed < tpq) {
-    return { phase: "quiz", idx, timer: Math.max(0, Math.ceil(tpq - elapsed)), autoSec: REVEAL_SECONDS, cdNum: null };
+    return { phase: "quiz", idx, timer: remainingSeconds(tpq, startedMs, now), autoSec: REVEAL_SECONDS, cdNum: null };
   }
   return { phase: "reveal", idx, timer: 0, autoSec: Math.max(0, Math.ceil(tpq + REVEAL_SECONDS - elapsed)), cdNum: null };
 }

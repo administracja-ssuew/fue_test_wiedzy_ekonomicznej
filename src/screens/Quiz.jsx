@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
+import { ANSWER_BG, ANSWER_LABELS, REVEAL_SECONDS } from "../lib/gameLogic.js";
 import useAntiCheat from "../hooks/useAntiCheat.js";
 import { useModules } from "../context/ModulesContext.jsx";
 
@@ -45,11 +45,12 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
     sessionId,
   });
 
-  // 2-second result countdown shown after timer hits 0
+  // Result countdown shown after timer hits 0 — matches REVEAL_SECONDS so the
+  // "następne" number lines up with LiveView / admin and the actual advance delay.
   const [resultSec, setResultSec] = useState(null);
   useEffect(() => {
     if (!answered) { setResultSec(null); return; }
-    setResultSec(2);
+    setResultSec(REVEAL_SECONDS);
     const t = setInterval(() => setResultSec((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(t);
   }, [answered]);

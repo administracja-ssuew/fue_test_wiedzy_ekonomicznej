@@ -1,222 +1,17 @@
-import { useState, useEffect, useRef } from "react";
-import {
-  supabase, DEMO,
-  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions,
-} from "../lib/supabase.js";
-import { useModules } from "../context/ModulesContext.jsx";
+import useLiveProjection from "../hooks/useLiveProjection.js";
 import Countdown from "./Countdown.jsx";
 
 const ANS_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const ANS_LABELS = ["A", "B", "C", "D"];
 
+// Standalone spectator view (opened via ?live=1&city=X). Pure render over the
+// shared DB-state projection — stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
-  const MODULES = useModules();
-  const [session, setSession]     = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [phase, setPhase]         = useState("waiting"); // waiting|quiz|reveal
-  const [gIdx, setGIdx]           = useState(0);
-  const [timer, setTimer]         = useState(0);
-  const [reveal, setReveal]       = useState([]);
-  const [autoSec, setAutoSec]     = useState(5);
-  const [bg, setBg]               = useState("linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)");
-  const [liveCount, setLiveCount] = useState(0);
+  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount, bg } =
+    useLiveProjection(city);
 
-  const [cdNum, setCdNum]             = useState(null); // countdown: 3/2/1/0=START!/null=hidden
-
-  const sessionRef      = useRef(null);
-  const timerRef        = useRef(null);
-  const revealRef       = useRef(null);
-  const liveRef         = useRef(null);
-  const gIdxRef         = useRef(0);
-  const questionsRef    = useRef([]);
-  const phaseRef        = useRef("waiting");
-
-  useEffect(() => { gIdxRef.current = gIdx; }, [gIdx]);
-  useEffect(() => { questionsRef.current = questions; }, [questions]);
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
-
-  const syncSession = (sess, qs) => {
-    if (!sess?.q_started_at || !qs.length) return;
-    const idx = Math.min(sess.current_question_idx || 0, qs.length - 1);
-    const q   = qs[idx];
-    const m   = MODULES.find((mod) => mod.id === q?.module);
-    const timePerQ = m?.timePerQ || 60;
-    const elapsed  = Math.max(0, Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000));
-    const remaining = Math.max(0, timePerQ - elapsed);
-    setGIdx(idx); gIdxRef.current = idx;
-    setTimer(remaining);
-    setLiveCount(0);
-    setCdNum(null); // clear stale countdown from previous question
-    setReveal([]); setPhase("quiz"); phaseRef.current = "quiz";
-  };
-
-  // Initial load
-  useEffect(() => {
-    if (!city) return;
-    Promise.all([getSessionForCity(city), getCityBg(city), getQuestions(city)])
-      .then(([sess, bgData, qs]) => {
-        // LiveView is always on a large screen — prefer desktop bg, fall back to mobile
-        const bgVal = bgData?.bg || bgData?.bgMobile;
-        if (bgVal) setBg(bgVal);
-        if (qs?.length) { setQuestions(qs); questionsRef.current = qs; }
-        if (!sess) return;
-        setSession(sess); sessionRef.current = sess;
-        if (sess.status === "running") syncSession(sess, qs || []);
-      });
-  }, [city]); // eslint-disable-line
-
-  // Realtime + poll
-  useEffect(() => {
-    if (!city) return;
-
-    const handleSess = async (s) => {
-      if (!s) return;
-      setSession(s); sessionRef.current = s;
-      const qs = questionsRef.current;
-      if (s.status === "running") {
-        const curPhase = phaseRef.current;
-        const questionChanged = s.current_question_idx !== gIdxRef.current;
-        // During reveal, doNext() is already polling for the next question — don't
-        // interrupt it. Without this guard, a Realtime event with questionChanged=true
-        // calls syncSession ~3s into the 8s reveal countdown, cutting it off early.
-        if (curPhase === "reveal") return;
-        if (questionChanged || curPhase !== "quiz") {
-          syncSession(s, qs);
-        }
-      } else if (s.status === "waiting" || s.status === "paused") {
-        if (phaseRef.current === "quiz") {
-          clearInterval(timerRef.current); clearInterval(liveRef.current);
-        }
-        setPhase("waiting"); phaseRef.current = "waiting";
-      } else if (s.status === "ended" || s.status === "results") {
-        clearInterval(timerRef.current); clearInterval(liveRef.current);
-        setPhase("waiting"); phaseRef.current = "waiting";
-      }
-    };
-
-    if (!DEMO && supabase) {
-      const ch = supabase.channel(`live-view-${city}`)
-        .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
-          if (payload?.status) {
-            getSessionForCity(city).then((s) => { if (s) handleSess(s); });
-          }
-        })
-        .on("postgres_changes", {
-          event: "UPDATE", schema: "public", table: "quiz_sessions",
-          filter: `city=eq.${city}`,
-        }, ({ new: s }) => handleSess(s))
-        .subscribe();
-      const poll = setInterval(async () => {
-        const s = await getSessionForCity(city);
-        handleSess(s);
-      }, 5000);
-      return () => { supabase.removeChannel(ch); clearInterval(poll); };
-    }
-
-    const poll = setInterval(async () => {
-      const s = await getSessionForCity(city);
-      handleSess(s);
-    }, 3000);
-    return () => clearInterval(poll);
-  }, [city]); // eslint-disable-line
-
-  const currentQ = questions[gIdx];
-  const mod      = MODULES.find((m) => m.id === currentQ?.module);
-  const timePerQ = mod?.timePerQ || 60;
-  const timerPct = timer / timePerQ;
+  const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
-
-  // Minimum time the reveal screen is shown before transitioning.
-  // Must match the setTimeout(advanceQuestion, 5000) delay in App.jsx so LiveView
-  // and participants reach the next question at the same moment.
-  const REVEAL_MIN_MS = 5000;
-
-  const doReveal = async () => {
-    const revealStart = Date.now();
-    setPhase("reveal"); phaseRef.current = "reveal";
-    clearInterval(timerRef.current); clearInterval(liveRef.current);
-
-    const capturedIdx = gIdxRef.current;
-
-    // Fetch answer stats after 2s (participants finishing last submissions)
-    setTimeout(async () => {
-      const q   = questionsRef.current[capturedIdx];
-      const sid = sessionRef.current?.id;
-      if (sid && q?.id) {
-        const stats = await getLiveQuestionStats(sid, q.id);
-        setReveal(stats.answers || []);
-      }
-    }, 2000);
-
-    // Countdown display: counts down REVEAL_MIN_MS then holds at 0
-    setAutoSec(Math.ceil(REVEAL_MIN_MS / 1000));
-    clearInterval(revealRef.current);
-    revealRef.current = setInterval(() => {
-      setAutoSec(Math.max(0, Math.ceil((REVEAL_MIN_MS - (Date.now() - revealStart)) / 1000)));
-    }, 500);
-
-    // Poll every second. Transition when DB shows question advanced AND
-    // REVEAL_MIN_MS have elapsed — keeps LiveView in sync with participants.
-    const qs = questionsRef.current;
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
-      if (phaseRef.current !== "reveal") { clearInterval(revealRef.current); return; }
-      if (capturedIdx + 1 >= qs.length) {
-        clearInterval(revealRef.current);
-        setPhase("waiting"); phaseRef.current = "waiting";
-        return;
-      }
-      const s = await getSessionForCity(city);
-      if (!s || s.status !== "running") {
-        clearInterval(revealRef.current);
-        setPhase("waiting"); phaseRef.current = "waiting";
-        return;
-      }
-      if (s.current_question_idx > capturedIdx && Date.now() - revealStart >= REVEAL_MIN_MS) {
-        clearInterval(revealRef.current);
-        setSession(s); sessionRef.current = s;
-        syncSession(s, qs);
-        return;
-      }
-    }
-    clearInterval(revealRef.current);
-    setPhase("waiting"); phaseRef.current = "waiting";
-  };
-
-  // Timer effect
-  useEffect(() => {
-    if (phase !== "quiz" || !mod || !currentQ) return;
-    clearInterval(timerRef.current); clearInterval(liveRef.current);
-    const modTimePerQ = mod.timePerQ;
-    timerRef.current = setInterval(() => {
-      const sess = sessionRef.current;
-      if (!sess?.q_started_at) {
-        setTimer((t) => {
-          if (t <= 1) { clearInterval(timerRef.current); doReveal(); return 0; }
-          return t - 1;
-        });
-        return;
-      }
-      const elapsedRaw = (Date.now() - new Date(sess.q_started_at).getTime()) / 1000;
-      if (elapsedRaw < 0) {
-        // q_started_at is still in the future — show countdown
-        setCdNum(Math.max(0, Math.ceil(-elapsedRaw) - 1));
-        setTimer(modTimePerQ);
-        return;
-      }
-      setCdNum(null); // clear countdown once timer starts
-      const remaining = Math.max(0, modTimePerQ - Math.floor(elapsedRaw));
-      setTimer(remaining);
-      if (remaining <= 0) { clearInterval(timerRef.current); doReveal(); }
-    }, 1000);
-    liveRef.current = setInterval(async () => {
-      const q   = questionsRef.current[gIdxRef.current];
-      const sid = sessionRef.current?.id;
-      if (sid && q?.id) getLiveAnswerCount(sid, q.id).then((c) => setLiveCount(c));
-    }, 1000);
-    return () => { clearInterval(timerRef.current); clearInterval(liveRef.current); };
-  }, [gIdx, phase]); // eslint-disable-line
-
   const correct   = reveal.filter((a) => a.isCorrect);
   const incorrect = reveal.filter((a) => !a.isCorrect);
 
@@ -236,7 +31,7 @@ export default function LiveView({ city }) {
           LIVE
         </div>
         <span style={{ fontFamily: '"Bebas Neue"', fontSize: 20, letterSpacing: 1 }}>{city}</span>
-        {phase === "quiz" && (
+        {(phase === "quiz" || phase === "reveal") && (
           <span style={{ fontSize: 13, color: "#9B89CC", marginLeft: "auto" }}>
             {mod?.icon} {mod?.name} · {gIdx + 1}/{questions.length} · {liveCount} odp.
           </span>
@@ -252,10 +47,18 @@ export default function LiveView({ city }) {
         </div>
       )}
 
+      {/* Paused */}
+      {phase === "paused" && (
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>⏸️</div>
+          <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Wstrzymano</p>
+          <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8 }}>Administrator wstrzymał quiz — za chwilę wznowienie.</p>
+        </div>
+      )}
+
       {/* Quiz phase */}
       {phase === "quiz" && currentQ && (
         <div style={{ width: "100%", maxWidth: 900 }}>
-          {/* Timer + question */}
           <div style={{
             background: "rgba(0,0,0,.45)", backdropFilter: "blur(12px)",
             borderRadius: 20, padding: "28px 32px", marginBottom: 20,
@@ -277,7 +80,6 @@ export default function LiveView({ city }) {
               <span style={{ fontFamily: '"Bebas Neue"', fontSize: 30, color: tColor }}>{timer}</span>
             </div>
           </div>
-          {/* Answers */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {currentQ.opts.map((opt, i) => (
               <div key={i} style={{

@@ -4,13 +4,14 @@ import {
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
-  getLiveQuestionStats, getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
+  getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
   logEvent,
 } from "../lib/supabase.js";
 import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
+import useLiveProjection from "../hooks/useLiveProjection.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -686,7 +687,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             </div>
           </div>
           <div style={liveExpanded ? { padding: "20px" } : { padding: "12px 16px" }}>
-            <LiveTab city={city} autoStart />
+            <LiveTab city={city} />
           </div>
         </div>
       )}
@@ -920,197 +921,32 @@ function UstawieniaTab({ city }) {
 const LIVE_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const LIVE_LABELS = ["A", "B", "C", "D"];
 
-function LiveTab({ city, autoStart = false }) {
-  const MODULES = useModules();
-  const [questions, setQuestions]   = useState([]);
-  const [session, setSession]       = useState(null);
-  const [phase, setPhase]           = useState("idle");    // idle|loading|quiz|reveal|done
-  const [gIdx, setGIdx]             = useState(0);          // global question index
-  const [timer, setTimer]           = useState(0);
-  const [revealData, setRevealData] = useState([]);
-  const [autoSec, setAutoSec]       = useState(8);
-  const [liveCount, setLiveCount]   = useState(0);
-  const timerRef     = useRef(null);
-  const revealRef    = useRef(null);
-  const liveRef      = useRef(null);
-  const sessionRef   = useRef(null); // always-current session (avoids stale closure in timer)
-  const gIdxRef      = useRef(0);    // always-current gIdx (avoids stale closure in intervals)
-  const questionsRef = useRef([]);   // always-current questions array
-  const autoStarted  = useRef(false);
+function LiveTab({ city }) {
+  // Pure projection of DB state — same hook as the standalone LiveView, so the
+  // admin embed stays perfectly in sync with participants (incl. pause/resume,
+  // live module times and the 5s reveal countdown). No local quiz state machine.
+  const { phase, gIdx, timer, autoSec, currentQ, questions, mod, timePerQ, reveal, liveCount } =
+    useLiveProjection(city);
 
-  useEffect(() => {
-    Promise.all([
-      getOrCreateSession(city, null, false),
-      import("../lib/supabase.js").then(({ getQuestions: gq }) => gq(city)),
-    ]).then(([{ data: sess }, dbQs]) => {
-      setSession(sess);
-      sessionRef.current = sess;
-      setQuestions(dbQs);
-      questionsRef.current = dbQs;
-    });
-  }, [city]);
-
-  // Keep refs in sync so closures inside intervals always see current values
-  useEffect(() => { gIdxRef.current = gIdx; }, [gIdx]);
-  useEffect(() => { questionsRef.current = questions; }, [questions]);
-
-  // Auto-start live view when embedded in SesjaTab (autoStart prop) and data is ready
-  useEffect(() => {
-    if (!autoStart || autoStarted.current || phase !== "idle" || !questions.length || !session) return;
-    if (session.status === "running") {
-      autoStarted.current = true;
-      startLive();
-    }
-  }, [autoStart, phase, questions.length, session?.status]);
-
-  const currentQ = questions[gIdx];
-  const mod      = MODULES.find((m) => m.id === currentQ?.module);
-
-  // Start live view — load fresh session + questions then sync timer
-  const startLive = async () => {
-    setPhase("loading");
-
-    // Fetch fresh data in parallel
-    const [{ data: freshSession }, freshQs] = await Promise.all([
-      getOrCreateSession(city, null, false),
-      import("../lib/supabase.js").then(({ getQuestions: gq }) => gq(city)),
-    ]);
-
-    setSession(freshSession);
-    sessionRef.current = freshSession;
-    if (freshQs.length > 0) setQuestions(freshQs);
-
-    const qs = freshQs.length > 0 ? freshQs : questions;
-    const startIdx = Math.min(freshSession?.current_question_idx || 0, qs.length - 1);
-    const q        = qs[startIdx];
-    const qMod     = MODULES.find((m) => m.id === q?.module);
-    const timePerQ = qMod?.timePerQ || 60;
-
-    let startTimer = timePerQ;
-    if (freshSession?.q_started_at) {
-      const elapsedSec = Math.max(0, Math.floor((Date.now() - new Date(freshSession.q_started_at).getTime()) / 1000));
-      startTimer = Math.max(1, timePerQ - elapsedSec);
-    }
-
-    setGIdx(startIdx);
-    setTimer(startTimer);
-    setRevealData([]); setAutoSec(8);
-    setPhase("quiz");
-  };
-
-  // Timer effect — derived from q_started_at so it stays in sync with participants
-  useEffect(() => {
-    if (phase !== "quiz" || !mod || !currentQ) return;
-    clearInterval(timerRef.current);
-    const modTimePerQ = mod.timePerQ; // capture from render (fresh per gIdx change)
-    timerRef.current = setInterval(() => {
-      const sess = sessionRef.current;
-      if (!sess?.q_started_at) {
-        // Fallback countdown if no q_started_at yet
-        setTimer((t) => {
-          if (t <= 1) { clearInterval(timerRef.current); doReveal(); return 0; }
-          return t - 1;
-        });
-        return;
-      }
-      const elapsed   = Math.max(0, Math.floor((Date.now() - new Date(sess.q_started_at).getTime()) / 1000));
-      const remaining = Math.max(0, modTimePerQ - elapsed);
-      setTimer(remaining);
-      if (remaining <= 0) { clearInterval(timerRef.current); doReveal(); }
-    }, 1000);
-    // Poll live answers count — use refs to avoid stale closure
-    liveRef.current = setInterval(async () => {
-      const q = questionsRef.current[gIdxRef.current];
-      if (sessionRef.current?.id && q?.id) {
-        const stats = await getLiveQuestionStats(sessionRef.current.id, q.id);
-        setLiveCount(stats.total);
-      }
-    }, 2000);
-    return () => { clearInterval(timerRef.current); clearInterval(liveRef.current); };
-  }, [gIdx, phase]);
-
-  const doReveal = async () => {
-    setPhase("reveal"); setAutoSec(5); clearInterval(liveRef.current);
-    // Capture current index now; delay fetch 2s so participants finish submitting to DB
-    const capturedGIdx = gIdxRef.current;
-    setTimeout(async () => {
-      const q = questionsRef.current[capturedGIdx];
-      if (sessionRef.current?.id && q?.id) {
-        const stats = await getLiveQuestionStats(sessionRef.current.id, q.id);
-        setRevealData(stats.answers || []);
-      }
-    }, 2000);
-    let cd = 5;
-    clearInterval(revealRef.current);
-    revealRef.current = setInterval(() => {
-      cd--;
-      setAutoSec(cd);
-      if (cd <= 0) {
-        clearInterval(revealRef.current);
-        skipReveal();
-      }
-    }, 1000);
-  };
-
-  const skipReveal = async () => {
-    clearInterval(revealRef.current);
-    const currentGIdx = gIdxRef.current;
-    const qs = questionsRef.current;
-    if (currentGIdx + 1 >= qs.length) { setPhase("done"); return; }
-    // Poll DB until participants actually advance current_question_idx.
-    // Without polling we'd fetch q_started_at from the old question (≥60s elapsed)
-    // which makes initialTimer = max(1, 60-62) = 1 → immediate doReveal → cascade.
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 1000));
-      const { data: s } = await getOrCreateSession(city, null, false);
-      if (!s || s.status !== "running") { setPhase("done"); return; }
-      if (s.current_question_idx > currentGIdx) {
-        setSession(s); sessionRef.current = s;
-        const nextQ   = qs[s.current_question_idx];
-        if (!nextQ) { setPhase("done"); return; }
-        const nextMod = MODULES.find((m) => m.id === nextQ.module);
-        const timePerQ = nextMod?.timePerQ || 60;
-        const elapsed  = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
-        setTimer(Math.max(0, timePerQ - elapsed));
-        setGIdx(s.current_question_idx);
-        setPhase("quiz"); setRevealData([]); setLiveCount(0);
-        return;
-      }
-    }
-    setPhase("done");
-  };
-
-  const correct   = revealData.filter((a) => a.isCorrect);
-  const incorrect = revealData.filter((a) => !a.isCorrect);
-  const timePerQ  = mod?.timePerQ || 60;
+  const revealData   = reveal;
+  const correct      = revealData.filter((a) => a.isCorrect);
+  const incorrect    = revealData.filter((a) => !a.isCorrect);
   const timedAnswers = revealData.filter((a) => a.responseTime != null);
   const avgTimeSec   = timedAnswers.length ? Math.round(timedAnswers.reduce((s, a) => s + a.responseTime, 0) / timedAnswers.length) : null;
-  const timerPct  = timer / (mod?.timePerQ || 60);
+  const timerPct  = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor    = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
-  if (phase === "loading") return (
+  if (phase === "waiting") return (
     <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
-      <div className="spinner" style={{ width: 32, height: 32, border: "3px solid rgba(107,33,232,.2)", borderTop: "3px solid #6B21E8", borderRadius: "50%", margin: "0 auto 16px" }} />
-      <p>Synchronizuję z sesją…</p>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>👁️</div>
+      <p style={{ fontSize: 14 }}>Widok duchy — oczekiwanie na pytanie…</p>
     </div>
   );
 
-  if (phase === "idle") return (
-    <div style={{ textAlign: "center", padding: "48px 0" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>👁️</div>
-      <p style={{ color: "#9B89CC", marginBottom: 24, fontSize: 14, lineHeight: 1.6 }}>
-        Widok duchy — obserwujesz quiz jak uczestnik, bez możliwości odpowiadania.<br />
-        Po każdym pytaniu widzisz pełną tabelę odpowiedzi z kodami i wynikami.
-      </p>
-      <button onClick={startLive} style={{ ...C.btn("primary", { width: "auto", padding: "12px 32px" }) }}>▶ Start podglądu live</button>
-    </div>
-  );
-
-  if (phase === "done") return (
-    <div style={{ textAlign: "center", padding: "48px 0" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-      <p style={{ color: "#9B89CC", marginBottom: 24 }}>Wszystkie pytania zostały wyświetlone.</p>
-      <button onClick={() => { setPhase("idle"); setGIdx(0); }} style={C.btn("ghost", { width: "auto" })}>↩ Reset</button>
+  if (phase === "paused") return (
+    <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>⏸️</div>
+      <p style={{ fontSize: 14 }}>Quiz wstrzymany — za chwilę wznowienie.</p>
     </div>
   );
 
@@ -1173,9 +1009,10 @@ function LiveTab({ city, autoStart = false }) {
                   <p style={{ fontSize: 10, color: "#9B89CC" }}>{l}</p>
                 </div>
               ))}
-              <button onClick={skipReveal} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px", whiteSpace: "nowrap", alignSelf: "center" }) }}>
-                Następne → ({autoSec}s)
-              </button>
+              <div style={{ textAlign: "right", alignSelf: "center", minWidth: 96 }}>
+                <p style={{ fontSize: 10, color: "#9B89CC" }}>Następne za</p>
+                <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#F5C518", lineHeight: 1 }}>{autoSec}s</p>
+              </div>
             </div>
           </div>
 

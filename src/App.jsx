@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
-import { calcPts, getModule } from "./lib/gameLogic.js";
+import { calcPts, getModule, REVEAL_SECONDS } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -283,7 +283,7 @@ export default function App() {
     }
 
     setAnswered(true); // reveal correct/wrong colors — wait before advancing
-    setTimeout(advanceQuestion, 5000);
+    setTimeout(advanceQuestion, REVEAL_SECONDS * 1000);
   };
 
   // User clicks an answer — lock in choice but DON'T reveal yet (timer still runs)

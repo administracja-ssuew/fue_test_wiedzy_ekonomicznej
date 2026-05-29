@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
-  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions,
+  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerSummary, getLiveAnswerCount, getQuestions,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import { REVEAL_SECONDS, projectLiveState } from "../lib/gameLogic.js";
@@ -14,13 +14,20 @@ const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)"
 // q_started_at, timePerQ). This keeps every spectator perfectly in sync with the
 // participants and immune to pause/resume desync or stale module times.
 //
+// `detailed`: true only for the admin embed (authenticated) → fetches the full
+// per-participant answer list (get_admin_question_stats, admin-only). The public
+// LiveView (anon) uses detailed=false → only aggregate counts via an anon-safe RPC,
+// so no participant's individual answers are ever exposed to anon (anti-cheat).
+//
 // phase: "waiting" | "paused" | "quiz" | "reveal"
-export default function useLiveProjection(city) {
+export default function useLiveProjection(city, { detailed = false } = {}) {
   const MODULES = useModules();
   const [phase, setPhase]         = useState("waiting");
   const [gIdx, setGIdx]           = useState(0);
   const [timer, setTimer]         = useState(0);
   const [reveal, setReveal]       = useState([]);
+  const [revealTotal, setRevealTotal]     = useState(0);
+  const [revealCorrect, setRevealCorrect] = useState(0);
   const [autoSec, setAutoSec]     = useState(REVEAL_SECONDS);
   const [bg, setBg]               = useState(DEFAULT_BG);
   const [liveCount, setLiveCount] = useState(0);
@@ -78,9 +85,18 @@ export default function useLiveProjection(city) {
     const fetchReveal = async (idx) => {
       const q = questionsRef.current[idx];
       const sid = sessionRef.current?.id;
-      if (sid && q?.id) {
+      if (!sid || !q?.id) return;
+      if (detailed) {
+        // Admin embed (authenticated): full per-participant list + counts.
         const stats = await getLiveQuestionStats(sid, q.id);
         setReveal(stats.answers || []);
+        setRevealTotal(stats.total || 0);
+        setRevealCorrect(stats.correct || 0);
+      } else {
+        // Public projector (anon): aggregate counts only — no per-person data.
+        const s = await getLiveAnswerSummary(sid, q.id);
+        setRevealTotal(s.total || 0);
+        setRevealCorrect(s.correct || 0);
       }
     };
 
@@ -94,7 +110,7 @@ export default function useLiveProjection(city) {
       if (idx !== lastIdxRef.current) {
         lastIdxRef.current = idx;
         revealFetchedRef.current = -1;
-        setReveal([]); setLiveCount(0);
+        setReveal([]); setLiveCount(0); setRevealTotal(0); setRevealCorrect(0);
       }
       setGIdx(idx);
       setPhase(p);
@@ -129,5 +145,5 @@ export default function useLiveProjection(city) {
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
   const timePerQ = mod?.timePerQ || 60;
 
-  return { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount, bg };
+  return { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, liveCount, bg };
 }

@@ -69,7 +69,7 @@ async function checks() {
   // 2) anon NIE wywoła get_session_results (po REVOKE — sekcja 19)
   {
     const { error } = await anon.rpc("get_session_results", { p_session_id: st.sessionId });
-    expect("anon NIE wywoła get_session_results", !!error, error ? "(odmowa)" : "DOSTĘP! uruchom sekcję 19");
+    expect("anon NIE wywoła get_session_results", !!error, error ? "(odmowa)" : "DOSTĘP! uruchom sekcję 23");
   }
   // 3) get_participant_answers zwraca TYLKO własne odpowiedzi (i działa dla anon)
   {
@@ -128,7 +128,7 @@ async function main() {
   }
   const total = passed + failed;
   console.log(`\n${"─".repeat(56)}`);
-  console.log(failed === 0 ? `✅ WSZYSTKIE GRANICE OK (${total}/${total})` : `❌ ${failed}/${total} NARUSZEŃ — sprawdź sekcje SQL 16–20`);
+  console.log(failed === 0 ? `✅ WSZYSTKIE GRANICE OK (${total}/${total})` : `❌ ${failed}/${total} NARUSZEŃ — sprawdź sekcje SQL 16–23`);
   process.exit(failed === 0 ? 0 : 1);
 }
 

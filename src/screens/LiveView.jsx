@@ -7,13 +7,12 @@ const ANS_LABELS = ["A", "B", "C", "D"];
 // Standalone spectator view (opened via ?live=1&city=X). Pure render over the
 // shared DB-state projection — stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
-  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount, bg } =
+  // Public projector — anon, so no per-participant data; aggregate counts only.
+  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, liveCount, bg } =
     useLiveProjection(city);
 
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
-  const correct   = reveal.filter((a) => a.isCorrect);
-  const incorrect = reveal.filter((a) => !a.isCorrect);
 
   if (cdNum !== null) return <Countdown num={cdNum} />;
 
@@ -124,7 +123,7 @@ export default function LiveView({ city }) {
               ))}
             </div>
             <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-              {[["Odpowiedzi", reveal.length, "#EDE9FE"], ["✅ Poprawne", correct.length, "#10D9A0"], ["❌ Błędne", incorrect.length, "#E8376B"]].map(([l, v, c]) => (
+              {[["Odpowiedzi", revealTotal, "#EDE9FE"], ["✅ Poprawne", revealCorrect, "#10D9A0"], ["❌ Błędne", revealTotal - revealCorrect, "#E8376B"]].map(([l, v, c]) => (
                 <div key={l} style={{ textAlign: "center" }}>
                   <p style={{ fontFamily: '"Bebas Neue"', fontSize: 28, color: c, lineHeight: 1 }}>{v}</p>
                   <p style={{ fontSize: 11, color: "#9B89CC" }}>{l}</p>

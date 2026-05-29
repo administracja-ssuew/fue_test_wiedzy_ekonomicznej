@@ -503,6 +503,36 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT) TO anon, authenticated;
 
+-- ─── 23. HARDENING grantów EXECUTE (domyślny PUBLIC) ────────────
+-- PostgreSQL przy CREATE FUNCTION domyślnie nadaje EXECUTE roli PUBLIC (więc też
+-- anon). Dlatego samo "GRANT TO authenticated" NIE blokuje anona, a "REVOKE FROM
+-- anon" nie działa, gdy dostęp idzie przez PUBLIC. Tu jawnie odbieramy PUBLIC+anon
+-- z funkcji administracyjnych i zostawiamy anon tylko tam, gdzie jest potrzebny.
+-- (Uruchom na produkcji ORAZ na stagingu.)
+
+-- Tylko admin (uczestnik/anon NIE może):
+REVOKE EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.start_quiz_session(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
+
+-- Pełne statystyki per-uczestnik (kody, nazwiska, poprawność) — tylko admin.
+-- Publiczny LiveView (anon) używa get_admin_answer_summary (same liczby).
+REVOKE EXECUTE ON FUNCTION public.get_admin_question_stats(UUID, UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_admin_question_stats(UUID, UUID) TO authenticated;
+
+-- Celowo dostępne dla anon (uczestnicy / publiczny LiveView):
+GRANT EXECUTE ON FUNCTION public.mark_code_used(TEXT, UUID)                 TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT)   TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_live_answer_count(UUID, UUID)          TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID)       TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_participant_answers(UUID, TEXT)        TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.log_event(TEXT, UUID, TEXT, TEXT, TEXT)    TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

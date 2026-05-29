@@ -968,7 +968,7 @@ function LiveTab({ city }) {
   // admin embed stays perfectly in sync with participants (incl. pause/resume,
   // live module times and the 5s reveal countdown). No local quiz state machine.
   const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount } =
-    useLiveProjection(city);
+    useLiveProjection(city, { detailed: true });
 
   // During the pre-question countdown show 3→2→1→START instead of revealing the
   // next question early — keeps the embed in step with participants/LiveView.

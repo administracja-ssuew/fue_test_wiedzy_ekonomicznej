@@ -4,7 +4,7 @@ import {
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode,
   getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
-  getLiveQuestionStats, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
+  getLiveQuestionStats, getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
 } from "../lib/supabase.js";
@@ -321,7 +321,6 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [loading, setLoading]           = useState(true);
   const [isPractice, setIsPractice]     = useState(false);
   const [cityQuestions, setCityQuestions] = useState([]);
-  const [showAdminStats, setShowAdminStats] = useState(false);
   const [liveExpanded, setLiveExpanded] = useState(false);
   const pollRef        = useRef(null);
   const sessionRef     = useRef(null); // always-current session for poll closures
@@ -378,7 +377,9 @@ function SesjaTab({ city, adminId, onPodium }) {
         const s = sessionRef.current;
         const q = cityQuestions[s?.current_question_idx ?? 0];
         const [stats, parts, viols] = await Promise.all([
-          q && s?.id && s.status === "running" ? getLiveQuestionStats(s.id, q.id) : Promise.resolve(null),
+          // Lightweight {total, correct} during the question — full per-row list is
+          // only fetched at reveal (in the ghost LiveTab/LiveView), not here.
+          q && s?.id && s.status === "running" ? getLiveAnswerSummary(s.id, q.id) : Promise.resolve(null),
           getParticipantsInSession(city, s?.id),
           s?.id ? getViolationsForSession(s.id) : Promise.resolve([]),
         ]);

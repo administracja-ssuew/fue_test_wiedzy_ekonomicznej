@@ -345,6 +345,30 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_participant_answers(UUID, TEXT) TO anon, authenticated;
 
+-- ─── 17. get_admin_answer_summary RPC ───────────────────────────
+-- Lightweight live counter for the admin panel during a question:
+-- returns only {total, correct} — no per-row json_agg. The full answer
+-- list (get_admin_question_stats) is fetched only once, at reveal.
+-- Cuts the per-3s payload from up to 500 rows to a tiny object.
+
+DROP FUNCTION IF EXISTS public.get_admin_answer_summary(UUID, UUID);
+CREATE OR REPLACE FUNCTION public.get_admin_answer_summary(p_session_id UUID, p_question_id UUID)
+RETURNS JSON
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT json_build_object(
+    'total',   COUNT(*)::INT,
+    'correct', COUNT(*) FILTER (WHERE is_correct = true)::INT
+  )
+  FROM public.answers
+  WHERE session_id = p_session_id AND question_id = p_question_id;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID) TO authenticated, anon;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

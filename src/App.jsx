@@ -237,7 +237,8 @@ export default function App() {
     const poll = setInterval(async () => {
       const s = await getSessionById(quizSession.id);
       if (s) handleUpdate(s);
-    }, 5000); // longer poll — broadcast is the fast path
+    }, 10000); // pure safety-net — broadcast + Realtime are the fast path. Longer
+               // interval keeps DB load low at 500 concurrent participants.
     return () => { supabase.removeChannel(ch); clearInterval(poll); };
   }, [quizSession?.id, participant?.code]);
 

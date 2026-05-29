@@ -437,6 +437,20 @@ export async function getLiveQuestionStats(sessionId, questionId) {
   };
 }
 
+// Lightweight {total, correct} summary for the admin live banner during a question.
+// Avoids the full json_agg of get_admin_question_stats (which loads every answer row).
+export async function getLiveAnswerSummary(sessionId, questionId) {
+  if (DEMO) {
+    const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
+    return { total: raw.length, correct: raw.filter((a) => a.isCorrect).length };
+  }
+  const { data } = await supabase.rpc("get_admin_answer_summary", {
+    p_session_id: sessionId, p_question_id: questionId,
+  });
+  return { total: data?.total || 0, correct: data?.correct || 0 };
+}
+
 // Lightweight count-only query for LiveView (anon-safe via SECURITY DEFINER RPC).
 export async function getLiveAnswerCount(sessionId, questionId) {
   if (DEMO) {

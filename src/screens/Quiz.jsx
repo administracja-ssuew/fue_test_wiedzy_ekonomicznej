@@ -62,7 +62,10 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
   const total = totalQuestions?.length || qs.length * MODULES.length;
   const qNumGlobal = (totalQuestions || []).filter((q) => q.module < currentMod).length + qIdx + 1;
 
-  const QuizContent = () => (
+  // Plain JSX value (not a nested component) — rendering <QuizContent /> created a
+  // brand-new component type every render, remounting the whole subtree on each
+  // 1-second timer tick. Computing it as a value keeps the DOM stable.
+  const quizContent = (
     <div className="fue-quiz-main" style={{ display: "flex", flexDirection: "column", flex: 1 }}>
       {/* Top bar */}
       <div style={{ background: "rgba(0,0,0,.45)", backdropFilter: "blur(8px)", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -141,7 +144,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
   return (
     <div style={W.wrap}>
       <div className="fue-quiz-layout" style={{ width: "100%" }}>
-        <QuizContent />
+        {quizContent}
       </div>
 
       {/* 2-second result bar — shown after timer hits 0 */}

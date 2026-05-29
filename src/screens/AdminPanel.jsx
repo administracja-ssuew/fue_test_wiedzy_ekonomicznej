@@ -29,7 +29,8 @@ const C = {
   lbl:   { fontSize: 11, fontWeight: 600, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 6 },
 };
 
-const CITY_COLORS  = { Kraków: "#FFA653", Warszawa: "#FF6B6B", Poznań: "#4ECDC4", Wrocław: "#45B7D1", Katowice: "#FF6B9D" };
+// Single source of truth: derive city colours from CITIES (src/data/questions.js).
+const CITY_COLORS  = Object.fromEntries(CITIES.map((c) => [c.name, c.color]));
 const STATUS_LABEL = { waiting: "Oczekiwanie", running: "Trwa quiz", paused: "☕ Przerwa", ended: "Zakończona" };
 const STATUS_COLOR = { waiting: "#9B89CC", running: "#10D9A0", paused: "#F5C518", ended: "#E8376B" };
 

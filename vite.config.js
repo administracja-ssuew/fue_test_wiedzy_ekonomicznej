@@ -57,5 +57,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test-setup.js"],
+    // Exclude git worktrees (created by tooling under .claude) so tests don't run twice.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**"],
   },
 })

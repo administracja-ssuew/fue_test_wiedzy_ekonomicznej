@@ -37,8 +37,8 @@ const W = {
 };
 
 export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
-  if (!currentQ || !mod) return null;
-
+  // All hooks must run unconditionally (Rules of Hooks) — guard comes after.
+  const MODULES = useModules();
   const { violations, showWarning, lastType, dismiss } = useAntiCheat({
     active: true,
     participantCode,
@@ -53,6 +53,8 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
     const t = setInterval(() => setResultSec((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(t);
   }, [answered]);
+
+  if (!currentQ || !mod) return null;
 
   const timerPct = timer / mod.timePerQ;
   const r = 22, circ = 2 * Math.PI * r;

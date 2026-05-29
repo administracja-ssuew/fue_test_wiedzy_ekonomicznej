@@ -23,7 +23,7 @@ describe("cityInfo", () => {
     expect(cityInfo("Kraków").abbr).toBe("UEK");
   });
   it("returns correct color for known city", () => {
-    expect(cityInfo("Kraków").color).toBe("#FFA653");
+    expect(cityInfo("Kraków").color).toBe("#D41D1F");
   });
   it("returns fallback color for unknown city", () => {
     expect(cityInfo("Unknown").color).toBe("#888");

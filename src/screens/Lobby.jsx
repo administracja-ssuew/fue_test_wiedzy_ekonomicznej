@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 
-import { moduleQuestions } from "../lib/gameLogic.js";
+import { moduleQuestions, cityInfo } from "../lib/gameLogic.js";
 import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
 
 // Broadcast presence so the admin lobby counter shows real-time waiting count
 import { useModules } from "../context/ModulesContext.jsx";
 
 const CITY_ICONS = { Kraków: "🏰", Warszawa: "🏛️", Poznań: "🐐", Wrocław: "🦌", Katowice: "⚙️" };
-const CITY_COLORS = { Kraków: "#D41D1F", Warszawa: "#82179F", Poznań: "#699BF2", Wrocław: "#00A74D", Katowice: "#FFCC3C" };
 
 export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz, onPractice }) {
   const MODULES = useModules();
@@ -18,7 +17,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
   // the Realtime subscription is registered (App re-renders, Lobby effect does not).
   const onStartQuizRef          = useRef(onStartQuiz);
   const city                    = participant?.city;
-  const color                   = CITY_COLORS[city] || "#6B21E8";
+  const color                   = cityInfo(city).color || "#6B21E8";
 
   useEffect(() => { onStartQuizRef.current = onStartQuiz; }, [onStartQuiz]);
 

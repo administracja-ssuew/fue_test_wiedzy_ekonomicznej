@@ -21,12 +21,26 @@ Zalecane: osobny projekt Supabase z tym samym schematem (`SUPABASE_SCHEMA.sql` +
 
 `.env` (nie commitowany):
 ```
+# PRODUKCJA — aplikacja + npm run bot
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_KEY=...        # Settings → API → service_role (sekret)
 BOT_ADMIN_EMAIL=...            # tylko dla npm run bot
 BOT_ADMIN_PASSWORD=...
+
+# STAGING — TYLKO npm run load / npm run rls (aplikacja ich nie używa)
+VITE_SUPABASE_URL_STAGE=...
+VITE_SUPABASE_ANON_KEY_STAGE=...
+SUPABASE_SERVICE_KEY_STAGE=...
 ```
+`load`/`rls` używają kluczy `*_STAGE` (fallback na produkcyjne z ostrzeżeniem),
+więc produkcji nie trzeba „przełączać z powrotem".
+
+### Postawienie projektu staging (5 min, darmowe)
+1. supabase.com → New project (np. `fue-quiz-staging`).
+2. SQL Editor → uruchom **najpierw `SUPABASE_SCHEMA.sql`** (cały), **potem `SUPABASE_FIXES.sql`** (sekcje 1–21).
+   Kolejność jest ważna — FIXES zakłada, że tabele ze SCHEMA już istnieją.
+3. Settings → API → skopiuj Project URL / anon / service_role do kluczy `*_STAGE` w `.env`.
 
 ---
 

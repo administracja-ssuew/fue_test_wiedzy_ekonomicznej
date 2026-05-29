@@ -26,9 +26,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const URL         = process.env.VITE_SUPABASE_URL;
-const ANON_KEY    = process.env.VITE_SUPABASE_ANON_KEY;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+// Preferuj klucze STAGING — aplikacja używa produkcyjnych, testy obciążeniowe
+// celują w osobny projekt, więc nigdy nie obciążamy produkcji przez pomyłkę.
+const USING_STAGE = !!process.env.VITE_SUPABASE_URL_STAGE;
+const URL         = process.env.VITE_SUPABASE_URL_STAGE      || process.env.VITE_SUPABASE_URL;
+const ANON_KEY    = process.env.VITE_SUPABASE_ANON_KEY_STAGE || process.env.VITE_SUPABASE_ANON_KEY;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY_STAGE   || process.env.SUPABASE_SERVICE_KEY;
 
 const TOTAL         = parseInt(process.env.LOAD_TOTAL || "100", 10);
 const ROUNDS        = parseInt(process.env.LOAD_ROUNDS || "8", 10);
@@ -66,7 +69,8 @@ function preflight() {
     console.error("   Użyj OSOBNEGO projektu Supabase (staging), nie produkcji.");
     process.exit(1);
   }
-  console.log(`\n🌐 Cel: ${URL}`);
+  console.log(`\n🌐 Cel: ${URL}  ${USING_STAGE ? "(STAGING ✓)" : "⚠️ (brak *_STAGE w .env → PRODUKCJA!)"}`);
+  if (!USING_STAGE) console.log("   ⚠️ Uzupełnij VITE_SUPABASE_URL_STAGE itd. w .env, by nie obciążać produkcji.");
   console.log(`👥 Uczestnicy: ${TOTAL}  ·  Miasta: ${CITIES.join(", ")}  ·  Pytań: ${ROUNDS}`);
   if (TOTAL > 200) console.log("⚠️  >200 połączeń z jednej maszyny może trafić w limity socketów — rozważ sharding/VM.");
 }

@@ -3,6 +3,12 @@
 --  Run in: Supabase Dashboard → SQL Editor → Run
 -- ════════════════════════════════════════════════════════════════
 
+-- Pozwól tworzyć funkcje, które odwołują się do tabel definiowanych NIŻEJ
+-- (get_my_role/get_my_city używają public.profiles, która powstaje dalej).
+-- Bez tego świeża baza wywala: relation "public.profiles" does not exist.
+-- Ciało funkcji i tak waliduje się przy wywołaniu — wtedy tabela już istnieje.
+SET check_function_bodies = off;
+
 -- ─── HELPERS ─────────────────────────────────────────────────────
 -- IMPORTANT: SECURITY DEFINER is required on both functions.
 -- Without it, calling get_my_role() inside an RLS policy on "profiles"

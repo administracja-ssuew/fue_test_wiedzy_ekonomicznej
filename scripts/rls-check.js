@@ -17,14 +17,17 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const URL = process.env.VITE_SUPABASE_URL;
-const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+// Preferuj klucze STAGING (jak load-runner) — testy na osobnym projekcie.
+const USING_STAGE = !!process.env.VITE_SUPABASE_URL_STAGE;
+const URL = process.env.VITE_SUPABASE_URL_STAGE || process.env.VITE_SUPABASE_URL;
+const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY_STAGE || process.env.VITE_SUPABASE_ANON_KEY;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY_STAGE || process.env.SUPABASE_SERVICE_KEY;
 
 if (!URL || !ANON_KEY || !SERVICE_KEY) {
-  console.error("❌ Brak VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / SUPABASE_SERVICE_KEY w .env");
+  console.error("❌ Brak kluczy Supabase w .env (VITE_SUPABASE_URL[_STAGE] / ANON / SERVICE).");
   process.exit(1);
 }
+console.log(`🌐 Cel: ${URL}  ${USING_STAGE ? "(STAGING ✓)" : "⚠️ (PRODUKCJA — brak *_STAGE)"}`);
 
 const service = createClient(URL, SERVICE_KEY, { auth: { persistSession: false } });
 const anon    = createClient(URL, ANON_KEY, { auth: { persistSession: false } });

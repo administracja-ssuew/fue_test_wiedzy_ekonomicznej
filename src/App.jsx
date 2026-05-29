@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion } from "./lib/supabase.js";
+import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
 import { calcPts, getModule } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
@@ -399,7 +399,14 @@ export default function App() {
     }
 
     setCityQuestions(dbQs);
-    setMyPts(0); setAllAnswers([]);
+
+    // Rebuild local score from DB so a refresh mid-quiz doesn't reset the displayed
+    // total (answers are persisted server-side). A genuinely fresh start returns [] → 0.
+    const priorAnswers = session?.id && participant?.code
+      ? await getParticipantAnswers(session.id, participant.code)
+      : [];
+    setAllAnswers(priorAnswers);
+    setMyPts(priorAnswers.reduce((sum, a) => sum + (a.pts || 0), 0));
 
     // Show countdown when q_started_at is in the future — only happens on fresh start
     // because start_quiz_session sets q_started_at = clock_timestamp() + 4s.

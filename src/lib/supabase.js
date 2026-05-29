@@ -368,6 +368,24 @@ export async function saveAnswer({ sessionId, participantCode, participantName, 
   return { error: error?.message || null };
 }
 
+// Returns one participant's own answers for a session — used to rebuild local
+// score/breakdown after a page refresh. SECURITY DEFINER RPC scopes rows to the
+// given code only (participants are anon and can't SELECT the answers table).
+export async function getParticipantAnswers(sessionId, participantCode) {
+  if (DEMO) {
+    return JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId && a.participantCode === participantCode)
+      .map((a) => ({ qId: a.questionId, module: a.module, picked: a.chosen, correct: a.isCorrect, pts: a.points }));
+  }
+  const { data, error } = await supabase.rpc("get_participant_answers", {
+    p_session_id: sessionId, p_code: participantCode,
+  });
+  if (error || !data) return [];
+  return data.map((a) => ({
+    qId: a.question_id, module: a.module, picked: a.chosen, correct: a.is_correct, pts: a.points,
+  }));
+}
+
 export async function getSessionResults(sessionId) {
   if (DEMO) {
     const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]")
@@ -572,5 +590,43 @@ export async function getViolationsForSession(sessionId) {
   }
   const { data } = await supabase.from("violations")
     .select("*").eq("session_id", sessionId).order("created_at", { ascending: false });
+  return data || [];
+}
+
+// ─── TELEMETRY / EVENT LOG ──────────────────────────────────────────────────────
+// Lightweight, best-effort logging for a one-shot live event. Every call swallows
+// its own errors so logging can never break the quiz, and is a no-op until the
+// event_log table exists (see SUPABASE_FIXES.sql section 16).
+
+// Generic structured event (quiz lifecycle, admin actions, etc.).
+export async function logEvent({ type, sessionId = null, city = null, actor = null, detail = null }) {
+  if (DEMO) {
+    const log = JSON.parse(localStorage.getItem("fue_event_log") || "[]");
+    log.push({ type, sessionId, city, actor, detail, at: new Date().toISOString() });
+    localStorage.setItem("fue_event_log", JSON.stringify(log.slice(-500)));
+    return;
+  }
+  try {
+    await supabase.rpc("log_event", {
+      p_type: type, p_session_id: sessionId, p_city: city,
+      p_actor: actor, p_detail: detail ? JSON.stringify(detail) : null,
+    });
+  } catch (_) { /* logging must never throw */ }
+}
+
+// Client-side runtime/render error (from ErrorBoundary or catch blocks).
+export async function recordClientError({ where, message, stack }) {
+  return logEvent({ type: "client_error", detail: { where, message, stack } });
+}
+
+export async function getEventLog(sessionId) {
+  if (DEMO) {
+    return JSON.parse(localStorage.getItem("fue_event_log") || "[]")
+      .filter((e) => !sessionId || e.sessionId === sessionId);
+  }
+  const { data } = await supabase.from("event_log")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
   return data || [];
 }

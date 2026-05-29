@@ -319,6 +319,32 @@ CREATE POLICY "backgrounds_auth_delete" ON storage.objects
   FOR DELETE TO authenticated
   USING (bucket_id = 'backgrounds');
 
+-- ─── 16. get_participant_answers RPC ────────────────────────────
+-- Lets a participant (anon) rebuild their own score after a page refresh.
+-- Scoped strictly to the given code — no other participant's data is exposed.
+-- SECURITY DEFINER bypasses answers_admin_select (anon can't SELECT answers).
+
+DROP FUNCTION IF EXISTS public.get_participant_answers(UUID, TEXT);
+CREATE OR REPLACE FUNCTION public.get_participant_answers(p_session_id UUID, p_code TEXT)
+RETURNS TABLE (
+  question_id UUID,
+  module      INT,
+  chosen      INT,
+  is_correct  BOOLEAN,
+  points      INT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT question_id, module, chosen, is_correct, points
+  FROM public.answers
+  WHERE session_id = p_session_id AND participant_code = p_code;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_participant_answers(UUID, TEXT) TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

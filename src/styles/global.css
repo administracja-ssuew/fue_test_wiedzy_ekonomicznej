@@ -14,6 +14,7 @@ button { cursor: pointer; }
 @keyframes glow { 0%,100%{box-shadow:0 0 20px rgba(245,197,24,.3)} 50%{box-shadow:0 0 50px rgba(245,197,24,.7)} }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes cbslide { from{transform:translateY(-100%)} to{transform:translateY(0)} }
 @keyframes ticker { from{transform:translateX(0)} to{transform:translateX(-33.333%)} }
 @keyframes float1 { 0%,100%{transform:translate(0,0) rotate(12deg)} 50%{transform:translate(20px,-30px) rotate(14deg)} }
 @keyframes float2 { 0%,100%{transform:translate(0,0) rotate(-15deg)} 50%{transform:translate(-25px,20px) rotate(-13deg)} }

@@ -225,6 +225,13 @@ export default function App() {
           setPicked(null); setAnswered(false);
           return;
         }
+        // Admin "Następne pytanie": q_started_at back-dated past the full time → end
+        // the question NOW. Next timer tick computes remaining=0 → handleTimeout →
+        // reveal → normal auto-advance. Synced with LiveView/admin (same timestamp).
+        if (elapsed >= (modTimePerQRef.current || 60)) {
+          qStartedAtRef.current = s.q_started_at;
+          return;
+        }
       }
 
       if (s.current_question_idx > myGlobalIdx) {

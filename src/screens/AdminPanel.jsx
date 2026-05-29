@@ -315,6 +315,7 @@ function KodyTab({ city, adminId }) {
 // ─── Tab: Sesja ───────────────────────────────────────────────────────────────
 
 function SesjaTab({ city, adminId, onPodium }) {
+  const MODULES = useModules();
   const [session, setSession]           = useState(null);
   const [participants, setParticipants] = useState([]);
   const [results, setResults]           = useState([]);
@@ -525,6 +526,23 @@ function SesjaTab({ city, adminId, onPodium }) {
   const curQ   = (session?.current_question_idx ?? 0) + 1;
   const openLive = () => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank");
 
+  // "Wszyscy odpowiedzieli" — gdy liczba odpowiedzi na bieżące pytanie osiągnie
+  // liczbę uczestników w sesji. Odblokowuje przycisk wcześniejszego przejścia dalej.
+  const allAnswered = st === "running" && participants.length > 0 && (liveStats?.total ?? 0) >= participants.length;
+  // Czas bieżącego pytania (do "force-end" — back-date q_started_at o tyle sekund).
+  const curQuestionTimePerQ = (() => {
+    const q = cityQuestions[session?.current_question_idx ?? 0];
+    return MODULES.find((m) => m.id === q?.module)?.timePerQ || 60;
+  })();
+  // Wymusza koniec czasu bieżącego pytania u WSZYSTKICH (uczestnik, LiveView, panel)
+  // przez cofnięcie q_started_at o pełen czas pytania → remaining=0 wszędzie → reveal
+  // → normalny auto-advance. Reużywa istniejącego, zsynchronizowanego mechanizmu.
+  const goToNextQuestion = () => {
+    const backdated = new Date(Date.now() - curQuestionTimePerQ * 1000).toISOString();
+    upd({ status: "running", q_started_at: backdated });
+    logEvent({ type: "question_skipped", sessionId: session?.id, city, actor: adminId, detail: { idx: session?.current_question_idx } });
+  };
+
   return (
     <div>
       {/* ── Violation toast ─────────────────────────────────────────── */}
@@ -645,6 +663,13 @@ function SesjaTab({ city, adminId, onPodium }) {
               upd({ status: "running", q_started_at: startedAt, pause_elapsed_s: null });
               logEvent({ type: "question_repeated", sessionId: session.id, city, actor: adminId, detail: { idx: sessionRef.current?.current_question_idx } });
             }}>🔁 Powtórz</button>
+            <button
+              disabled={!allAnswered}
+              title={allAnswered ? "Wszyscy odpowiedzieli — przejdź dalej bez czekania" : "Aktywne, gdy wszyscy uczestnicy odpowiedzą"}
+              style={{ ...C.btn(allAnswered ? "success" : "ghost"), opacity: allAnswered ? 1 : .45, cursor: allAnswered ? "pointer" : "not-allowed" }}
+              onClick={() => { if (allAnswered) goToNextQuestion(); }}>
+              ⏭ Następne ({liveStats?.total ?? 0}/{participants.length})
+            </button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
           {st === "paused" && <>

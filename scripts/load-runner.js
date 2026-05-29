@@ -52,6 +52,7 @@ const state = { cities: [] }; // [{ city, sessionId, codes:[{id,code}], question
 const participants = [];      // [{ client, channel, code, city, sessionId }]
 const latencies = [];         // ms, advance→receive across all participants/rounds
 let connected = 0, connectFail = 0, answerOk = 0, answerErr = 0, dupAnswers = 0;
+let measuring = true;          // false after the drive phase → ignore the exactly-once churn
 const sendAt = new Map();      // key `${sessionId}:${idx}` → Date.now() when driver wrote it
 
 function log(...a) { console.log(...a); }
@@ -142,6 +143,7 @@ async function spawn() {
 
 // Reakcja uczestnika na zmianę pytania (mierzy latencję + odpowiada)
 function onAdvance(p, s) {
+  if (!measuring) return; // drive phase over — don't pollute metrics with exactly-once churn
   if (!s || s.status !== "running" || s.q_started_at == null) return;
   const idx = s.current_question_idx;
   const key = `${p.sessionId}:${idx}`;
@@ -188,6 +190,8 @@ async function drive() {
   for (const c of state.cities) {
     await service.from("quiz_sessions").update({ status: "ended" }).eq("id", c.sessionId);
   }
+  await sleep(500);       // let any in-flight answers land
+  measuring = false;      // stop recording — the exactly-once phase churns sessions
 }
 
 // ─── EXACTLY-ONCE ADVANCE (optimistic lock) ──────────────────────────────────

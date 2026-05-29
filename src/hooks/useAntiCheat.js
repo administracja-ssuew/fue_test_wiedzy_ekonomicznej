@@ -34,13 +34,28 @@ export default function useAntiCheat({ active, participantCode, sessionId }) {
         e.preventDefault();
         trigger("screenshot_attempt");
       }
+      // Deterrent only (no violation logged): block print / save / copy shortcuts.
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && ["p", "s", "c", "u"].includes(k)) {
+        e.preventDefault();
+      }
     };
+
+    // Deterrents — silently block right-click menu, copy and text selection.
+    // These are friction, not violations (would be far too noisy to record).
+    const block = (e) => e.preventDefault();
 
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("keydown", onKey);
+    document.addEventListener("contextmenu", block);
+    document.addEventListener("copy", block);
+    document.addEventListener("cut", block);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("contextmenu", block);
+      document.removeEventListener("copy", block);
+      document.removeEventListener("cut", block);
     };
   }, [active, participantCode, sessionId]);
 

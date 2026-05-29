@@ -190,6 +190,22 @@ export default function App() {
       const questions = cityQuestionsRef.current;
       if (!questions.length) return;
       const myGlobalIdx = questions.filter((q) => q.module < currentModRef.current).length + qIdxRef.current;
+
+      // Admin "repeat question": same index but a NEW, fresh q_started_at → reset the
+      // timer and answer state on the current question. Distinguishable from a normal
+      // advance (index changes) and from resume (back-dated timestamp; handled above on
+      // the admin_pause screen). "Fresh" = started ≤2s ago, so resume never matches here.
+      if (cur === "quiz" && s.current_question_idx === myGlobalIdx && s.q_started_at &&
+          qStartedAtRef.current && s.q_started_at !== qStartedAtRef.current) {
+        const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
+        if (elapsed <= 2) {
+          qStartedAtRef.current = s.q_started_at;
+          setTimer(modTimePerQRef.current || 60);
+          setPicked(null); setAnswered(false);
+          return;
+        }
+      }
+
       if (s.current_question_idx > myGlobalIdx) {
         const state = getQuestionState(s.current_question_idx, questions);
         if (state) {

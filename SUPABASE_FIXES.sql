@@ -369,6 +369,95 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID) TO authenticated, anon;
 
+-- ─── 18. EVENT LOG (telemetria) ─────────────────────────────────
+-- Best-effort log of quiz lifecycle, admin actions and client errors.
+-- Insert goes through a SECURITY DEFINER RPC (works for anon participants);
+-- only admins can read the log.
+
+CREATE TABLE IF NOT EXISTS public.event_log (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type        TEXT NOT NULL,
+  session_id  UUID,
+  city        TEXT,
+  actor       TEXT,
+  detail      JSONB,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.event_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "event_log_admin_select" ON public.event_log;
+CREATE POLICY "event_log_admin_select" ON public.event_log FOR SELECT
+  USING (get_my_role() IN ('city_admin', 'superadmin'));
+
+CREATE INDEX IF NOT EXISTS idx_event_log_session ON public.event_log(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_event_log_type    ON public.event_log(type, created_at DESC);
+
+DROP FUNCTION IF EXISTS public.log_event(TEXT, UUID, TEXT, TEXT, TEXT);
+CREATE OR REPLACE FUNCTION public.log_event(
+  p_type TEXT, p_session_id UUID, p_city TEXT, p_actor TEXT, p_detail TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.event_log (type, session_id, city, actor, detail)
+  VALUES (p_type, p_session_id, p_city, p_actor,
+          CASE WHEN p_detail IS NULL THEN NULL ELSE p_detail::JSONB END);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.log_event(TEXT, UUID, TEXT, TEXT, TEXT) TO anon, authenticated;
+
+-- ─── 19. SECURITY: restrict get_session_results to admins ───────
+-- Only the admin panel calls this; revoking anon prevents a participant from
+-- pulling the full ranking (names + points) mid-quiz with just a session_id.
+
+REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM anon;
+
+-- ─── 20. SECURITY: city ownership check in session update ───────
+-- A city_admin may only modify sessions for their own city; superadmin = all.
+-- IMPORTANT: the check is best-effort. If get_my_role() can't resolve the caller
+-- (auth.uid() edge cases inside SECURITY DEFINER) we DO NOT block — we fall back
+-- to the previous permissive behaviour so pause/end can never silently break.
+-- We only ever reject when we positively know it's a city_admin acting on another
+-- city. Access to the RPC is still gated by GRANT ... TO authenticated (no anon).
+
+CREATE OR REPLACE FUNCTION public.update_quiz_session_admin(p_session_id UUID, p_data JSONB)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_role TEXT := get_my_role();
+  v_city TEXT := get_my_city();
+  v_session_city TEXT;
+BEGIN
+  IF v_role = 'city_admin' THEN
+    SELECT city INTO v_session_city FROM public.quiz_sessions WHERE id = p_session_id;
+    IF v_session_city IS DISTINCT FROM v_city THEN
+      RAISE EXCEPTION 'Not authorized for this city';
+    END IF;
+  END IF;
+  -- v_role NULL or 'superadmin' → proceed (NULL = permissive fallback, no breakage).
+  UPDATE public.quiz_sessions SET
+    status               = CASE WHEN p_data ? 'status'
+                             THEN p_data->>'status'                              ELSE status               END,
+    q_started_at         = CASE WHEN p_data ? 'q_started_at'
+                             THEN (p_data->>'q_started_at')::TIMESTAMPTZ         ELSE q_started_at         END,
+    pause_elapsed_s      = CASE WHEN p_data ? 'pause_elapsed_s'
+                             THEN (p_data->>'pause_elapsed_s')::INT              ELSE pause_elapsed_s      END,
+    current_question_idx = CASE WHEN p_data ? 'current_question_idx'
+                             THEN (p_data->>'current_question_idx')::INT         ELSE current_question_idx END
+  WHERE id = p_session_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

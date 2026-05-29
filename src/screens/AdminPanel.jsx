@@ -7,6 +7,7 @@ import {
   getLiveQuestionStats, getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
+  logEvent,
 } from "../lib/supabase.js";
 import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
@@ -446,10 +447,32 @@ function SesjaTab({ city, adminId, onPodium }) {
     if (!DEMO && supabase && quizBcChRef.current && updates.status) {
       quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: nextSession });
     }
+    if (updates.status) {
+      logEvent({ type: `session_${updates.status}`, sessionId: session.id, city, actor: adminId, detail: { idx: nextSession.current_question_idx } });
+    }
     if (updates.status === "ended" || updates.status === "results") {
       setResults(await getSessionResults(session.id));
       setLiveStats(null);
     }
+  };
+
+  // Export final ranking as CSV (semicolon-separated + UTF-8 BOM → opens cleanly in Excel PL).
+  const exportResultsCsv = () => {
+    const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Punkty", "Śr. czas (s)"];
+    const esc = (v) => {
+      const s = String(v ?? "");
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.points, r.avgResponseTime ?? ""])];
+    const csv = "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `wyniki_${city}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    logEvent({ type: "results_exported", sessionId: session?.id, city, actor: adminId, detail: { count: results.length } });
   };
 
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
@@ -495,6 +518,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             : "Zresetować i przygotować nową sesję quizu?";
           if (!confirm(msg)) return;
           setLoading(true);
+          logEvent({ type: "session_reset", sessionId: session?.id, city, actor: adminId, detail: { prevStatus: st } });
           await endAndResetSession(city, adminId, isPractice);
           await load(isPractice);
         }} style={C.btn(
@@ -561,6 +585,7 @@ function SesjaTab({ city, adminId, onPodium }) {
               if (!DEMO && supabase && quizBcChRef.current) {
                 quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: startedSession });
               }
+              logEvent({ type: "session_started", sessionId: session.id, city, actor: adminId, detail: { isPractice } });
             }}>▶ Start quizu</button>
           )}
           {st === "running" && <>
@@ -570,6 +595,13 @@ function SesjaTab({ city, adminId, onPodium }) {
                 : 0;
               upd({ status: "paused", pause_elapsed_s: elapsed });
             }}>⏸ Pauza</button>
+            <button style={C.btn("ghost")} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={() => {
+              if (!confirm("Powtórzyć bieżące pytanie? Czas zostanie zresetowany dla wszystkich uczestników (na tym samym pytaniu).")) return;
+              const startedAt = new Date().toISOString();
+              // Same question index, fresh q_started_at → participants restart the timer.
+              upd({ status: "running", q_started_at: startedAt, pause_elapsed_s: null });
+              logEvent({ type: "question_repeated", sessionId: session.id, city, actor: adminId, detail: { idx: sessionRef.current?.current_question_idx } });
+            }}>🔁 Powtórz</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
           {st === "paused" && <>
@@ -714,11 +746,16 @@ function SesjaTab({ city, adminId, onPodium }) {
                   <p style={{ fontSize: 11, color: "#F5C518", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Wyniki końcowe</p>
                   <p style={{ fontSize: 11, color: "rgba(155,137,204,.5)", marginTop: 2 }}>Przy równej liczbie pkt decyduje krótszy średni czas.</p>
                 </div>
-                {onPodium && (
-                  <button style={C.btn("gold", { fontSize: 13, padding: "8px 16px" })} onClick={() => onPodium(results)}>
-                    🏆 Podium
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={C.btn("ghost", { fontSize: 13, padding: "8px 16px" })} onClick={exportResultsCsv}>
+                    📥 Eksport CSV
                   </button>
-                )}
+                  {onPodium && (
+                    <button style={C.btn("gold", { fontSize: 13, padding: "8px 16px" })} onClick={() => onPodium(results)}>
+                      🏆 Podium
+                    </button>
+                  )}
+                </div>
               </div>
               {results.map((r, i) => (
                 <div key={r.code} style={{ ...C.card({ padding: "11px 16px", marginBottom: 7 }), display: "flex", alignItems: "center", gap: 12,

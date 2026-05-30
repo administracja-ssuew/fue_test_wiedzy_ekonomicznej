@@ -12,3 +12,6 @@ dist
 test-results/
 playwright-report/
 e2e/.e2e-state.json
+
+# Raport generowany (npm run report)
+report/

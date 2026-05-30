@@ -25,6 +25,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import fs from "fs";
 
 // Preferuj klucze STAGING — aplikacja używa produkcyjnych, testy obciążeniowe
 // celują w osobny projekt, więc nigdy nie obciążamy produkcji przez pomyłkę.
@@ -257,6 +258,23 @@ function report(once, rec) {
   log(`${"═".repeat(56)}\n`);
 }
 
+// Zapisz metryki do JSON, by report.js mógł narysować wykresy.
+function writeMetrics(once, rec) {
+  try { fs.mkdirSync("report", { recursive: true }); } catch (_) {}
+  const data = {
+    target: USING_STAGE ? "staging" : "production",
+    timestamp: new Date().toISOString(),
+    participants: TOTAL, cities: CITIES.length, rounds: ROUNDS,
+    connected, connectFail,
+    latencyMs: { p50: pct(latencies, 50), p95: pct(latencies, 95), p99: pct(latencies, 99), max: Math.max(0, ...latencies), n: latencies.length },
+    samples: latencies,
+    answers: { ok: answerOk, dup: dupAnswers, err: answerErr, inDb: rec.totalDb },
+    exactlyOnce: once,
+  };
+  fs.writeFileSync(`report/load-${String(TOTAL).padStart(3, "0")}.json`, JSON.stringify(data, null, 2));
+  log(`  📊 metryki zapisane → report/load-${String(TOTAL).padStart(3, "0")}.json`);
+}
+
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 async function main() {
   preflight();
@@ -268,6 +286,7 @@ async function main() {
     once = await exactlyOnceAdvance();
     rec = await reconcile();
     report(once, rec);
+    writeMetrics(once, rec);
   } finally {
     await cleanup();
   }

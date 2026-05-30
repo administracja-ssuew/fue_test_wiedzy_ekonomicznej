@@ -16,7 +16,8 @@
     "verify-prod": "vite-node scripts/verify-prod.js",
     "verify-mark": "vite-node scripts/verify-mark.js",
     "verify-realtime": "vite-node scripts/verify-realtime.js",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "report": "node scripts/report.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

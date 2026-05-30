@@ -55,6 +55,17 @@ const loads = fs.readdirSync(DIR).filter((f) => /^load-\d+\.json$/.test(f))
   .sort((a, b) => a.participants - b.participants);
 
 const biggest = loads[loads.length - 1];
+const msToS = (ms) => (ms / 1000).toFixed(2).replace(".", ",");
+
+// Zrzuty ekranu z Playwright (jeśli istnieją po npm run e2e)
+const SHOTS_DIR = `${DIR}/shots`;
+const shots = fs.existsSync(SHOTS_DIR)
+  ? [
+      ["uczestnik-pytanie.png", "Uczestnik — ekran pytania (po dołączeniu kodem)"],
+      ["liveview.png", "Live View — to samo pytanie (synchronizacja)"],
+      ["uczestnik-odpowiedz.png", "Uczestnik — odpowiedź wybrana (lock-in)"],
+    ].filter(([f]) => fs.existsSync(`${SHOTS_DIR}/${f}`))
+  : [];
 // histogram latencji największego biegu
 const buckets = [0, 200, 400, 600, 800, 1000, 1500, 3000];
 const histLabels = [], histData = [];
@@ -108,6 +119,10 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8">
  .card{background:var(--card);border:1px solid #ffffff14;border-radius:14px;padding:16px;margin-top:12px}
  canvas{max-height:300px} .note{color:var(--mut);font-size:12px;margin-top:8px}
  .foot{color:#ffffff55;font-size:11px;margin-top:40px;text-align:center}
+ .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+ .shots figure{margin:0;background:var(--card);border:1px solid #ffffff14;border-radius:12px;overflow:hidden}
+ .shots img{width:100%;display:block;border-bottom:1px solid #ffffff14}
+ .shots figcaption{padding:8px 12px;font-size:12px;color:var(--mut)}
 </style></head><body><div class="wrap">
  <h1>FUE Quiz — Raport jakości i wydajności</h1>
  <p class="sub">Test Wiedzy Ekonomicznej · wygenerowano ${today} · środowisko testowe: staging, weryfikacja bazy: produkcja</p>
@@ -115,7 +130,7 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8">
  <div class="grid">
   <div class="kpi"><b>${totPass}/${totAll}</b><span>asercji testów zaliczonych</span></div>
   <div class="kpi"><b>${biggest ? biggest.connected : "—"}</b><span>jednoczesnych połączeń Realtime (bez błędów)</span></div>
-  <div class="kpi"><b>${biggest ? biggest.latencyMs.p95 : "—"} ms</b><span>latencja p95 (advance → uczestnik)</span></div>
+  <div class="kpi"><b>${biggest ? msToS(biggest.latencyMs.p95) : "—"} s</b><span>latencja p95 (advance → uczestnik) ≈ ${biggest ? biggest.latencyMs.p95 : "—"} ms</span></div>
   <div class="kpi"><b>0</b><span>błędów zapisu odpowiedzi pod obciążeniem</span></div>
  </div>
 
@@ -125,6 +140,7 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8">
 
  <h2>2. Wydajność Realtime — skalowanie latencji</h2>
  <table><thead><tr><th>Uczestnicy</th><th>Połączenia</th><th>p50 [ms]</th><th>p95 [ms]</th><th>p99 [ms]</th><th>Odp. OK</th><th>Błędy</th><th>Exactly-once</th></tr></thead><tbody>${loadRows}</tbody></table>
+ <p class="note">Wartości w milisekundach (ms) — 1000 ms = 1 s. Latencja = czas dostarczenia nowego pytania do uczestnika przez Realtime (nie czas reakcji na odpowiedź).</p>
  <div class="card"><canvas id="latChart"></canvas><p class="note">Latencja pozostaje płaska wraz ze wzrostem liczby uczestników — system skaluje się stabilnie.</p></div>
  <div class="card"><canvas id="histChart"></canvas><p class="note">Rozkład latencji przy ${biggest ? biggest.participants : 0} uczestnikach (próbek: ${biggest ? biggest.latencyMs.n : 0}).</p></div>
 
@@ -135,7 +151,24 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8">
  <h2>4. Macierz funkcjonalności</h2>
  <table><thead><tr><th>Funkcja</th><th>Pokryta przez</th><th>Status</th></tr></thead><tbody>${featRows}</tbody></table>
 
- <h2>5. Werdykt</h2>
+ ${shots.length ? `<h2>5. Dowód wizualny (zrzuty z realnej przeglądarki)</h2>
+ <div class="shots">${shots.map(([f, cap]) => `<figure><img src="shots/${f}" alt="${cap}"><figcaption>${cap}</figcaption></figure>`).join("")}</div>
+ <p class="note">Zrzuty wykonane automatycznie przez Playwright (Chromium) na działającej sesji — uczestnik i Live View pokazują to samo pytanie.</p>` : ""}
+
+ <h2>${shots.length ? 6 : 5}. Metodologia i definicje metryk</h2>
+ <div class="card">
+  <ul style="line-height:1.7;margin:0;padding-left:18px">
+   <li><b>Latencja advance→odbiór</b> — czas od momentu, gdy system przechodzi do nowego pytania (zapis do bazy), do chwili, gdy urządzenie uczestnika <b>otrzyma</b> ten sygnał przez Realtime i może je wyświetlić. Mierzy „czy wszyscy widzą pytanie w tym samym momencie" — <b>nie</b> jest to czas reakcji na odpowiedź uczestnika.</li>
+   <li><b>Jednostka: milisekundy (ms).</b> 1000 ms = 1 sekunda → np. 624 ms = 0,62 s.</li>
+   <li><b>p50 / p95 / p99</b> — percentyle. p95 = 95% pomiarów było szybszych niż ta wartość (tylko 5% wolniejszych). p95 = 624 ms ⇒ 95% uczestników dostaje pytanie w 0,62 s.</li>
+   <li><b>Połączenia Realtime</b> — liczba jednoczesnych WebSocketów (1 na uczestnika, jak osobny telefon).</li>
+   <li><b>Exactly-once advance</b> — przy wielu jednoczesnych próbach przejścia dalej dokładnie jedna „wygrywa" (brak podwójnego przeskoku pytania).</li>
+   <li><b>Zapis odpowiedzi</b> następuje natychmiast przy kliknięciu uczestnika — niezależnie od powyższej latencji propagacji pytania.</li>
+   <li><b>Środowisko</b>: testy obciążeniowe i E2E na osobnym projekcie Supabase (staging, identyczny schemat); weryfikacja funkcji bazy — na produkcji. Projekcja 300/500 osób to <b>model obliczeniowy</b>, nie pomiar (pomiar: do 100 jednoczesnych).</li>
+  </ul>
+ </div>
+
+ <h2>${shots.length ? 7 : 6}. Werdykt</h2>
  <div class="card">
   <p>Wszystkie automatyzowalne warstwy — logika, bezpieczeństwo, pełny przepływ quizu, realny render w przeglądarce, instant-push i obciążenie 100 jednoczesnych połączeń — przechodzą bez błędów. Baza produkcyjna zweryfikowana (sekcje 16–24 + Realtime).</p>
   <p style="color:var(--mut)">Pozostałe bramki operacyjne (poza zakresem testów automatycznych): skala 500 osób = plan Pro + podniesiony limit połączeń + test rozproszony; oraz próba na żywo na urządzeniach (telefony + projektor) przed wydarzeniem.</p>
@@ -193,6 +226,14 @@ Wąskim gardłem są **połączenia** (Free 200 / Pro 500), nie liczba wiadomoś
 | Funkcja | Pokryta przez | Status |
 |---|---|---|
 ${FEATURES.map(([f, t, s]) => `| ${f} | \`${t}\` | ${s} |`).join("\n")}
+${shots.length ? `\n## Dowód wizualny (Playwright / Chromium)\n${shots.map(([f, cap]) => `- ${cap}: \`report/shots/${f}\``).join("\n")}\n` : ""}
+## Metodologia i definicje metryk
+- **Latencja advance→odbiór** — czas od przejścia systemu do nowego pytania (zapis do bazy) do chwili, gdy urządzenie uczestnika **otrzyma** sygnał przez Realtime i może je wyświetlić. To **nie** jest czas reakcji na odpowiedź uczestnika.
+- **Jednostka: milisekundy (ms).** 1000 ms = 1 s → 624 ms = 0,62 s.
+- **p50/p95/p99** — percentyle; p95 = 95% pomiarów szybszych niż dana wartość. p95 624 ms ⇒ 95% uczestników widzi pytanie w 0,62 s.
+- **Połączenia Realtime** — jednoczesne WebSockety (1 na uczestnika).
+- **Zapis odpowiedzi** — natychmiast przy kliknięciu, niezależnie od latencji propagacji pytania.
+- **Środowisko** — obciążenie/E2E: staging; weryfikacja funkcji bazy: produkcja. Projekcja 300/500 to model, nie pomiar (pomiar do 100 jednoczesnych).
 
 ## Werdykt
 Wszystkie automatyzowalne warstwy przechodzą bez błędów; baza produkcyjna zweryfikowana. Pozostałe bramki operacyjne: skala 500 (Pro + limit połączeń + test rozproszony) oraz próba na żywo na urządzeniach przed wydarzeniem.

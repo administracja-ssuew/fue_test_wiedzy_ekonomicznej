@@ -12,14 +12,18 @@ async function joinAsParticipant(page) {
   await page.getByRole("button", { name: /Dołącz do quizu/ }).click();
 }
 
+const SHOTS = "report/shots";
+
 test("uczestnik: kod → dołączenie → widzi bieżące pytanie", async ({ page }) => {
   await joinAsParticipant(page);
   await expect(page.getByText(Q1_TEXT)).toBeVisible({ timeout: 25000 });
+  await page.screenshot({ path: `${SHOTS}/uczestnik-pytanie.png`, fullPage: true });
 });
 
 test("LiveView: pokazuje to samo bieżące pytanie (sync)", async ({ page }) => {
   await page.goto(`/?live=1&city=${encodeURIComponent(CITY)}`);
   await expect(page.getByText(Q1_TEXT)).toBeVisible({ timeout: 25000 });
+  await page.screenshot({ path: `${SHOTS}/liveview.png`, fullPage: true });
 });
 
 test("uczestnik: może wybrać odpowiedź (lock-in działa)", async ({ page }) => {
@@ -27,4 +31,5 @@ test("uczestnik: może wybrać odpowiedź (lock-in działa)", async ({ page }) =
   await expect(page.getByText(Q1_TEXT)).toBeVisible({ timeout: 25000 });
   await page.getByText(OPTS[0]).click();                 // wybierz "Odpowiedź Alfa"
   await expect(page.getByText(/wybrano/)).toBeVisible(); // Quiz pokazuje "✔ wybrano"
+  await page.screenshot({ path: `${SHOTS}/uczestnik-odpowiedz.png`, fullPage: true });
 });

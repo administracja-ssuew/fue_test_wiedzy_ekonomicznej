@@ -80,7 +80,7 @@ if (biggest) {
 // Połączenia ≈ uczestnicy + ~ (admin+LiveView na miasto). Wiadomości/quiz ≈
 // M pytań × (advance→N uczestników  +  N odpowiedzi push do adminów miast).
 const M_QUESTIONS = 32, CITIES = 5;
-const projN = [100, 300, 500];
+const projN = [100, 200, 300, 400, 500];
 const proj = projN.map((N) => {
   const conn = N + CITIES * 2;                 // +panel +LiveView na miasto
   const msgQuiz = M_QUESTIONS * (N + N);       // advance fanout + push odpowiedzi

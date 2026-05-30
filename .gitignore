@@ -7,3 +7,8 @@ dist
 .vercel
 
 .claude/worktrees/
+
+# Playwright / E2E
+test-results/
+playwright-report/
+e2e/.e2e-state.json

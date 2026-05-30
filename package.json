@@ -13,7 +13,8 @@
     "load": "vite-node scripts/load-runner.js",
     "rls": "vite-node scripts/rls-check.js",
     "seed-admin": "vite-node scripts/seed-admin.js",
-    "verify-prod": "vite-node scripts/verify-prod.js"
+    "verify-prod": "vite-node scripts/verify-prod.js",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -21,6 +22,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.1",

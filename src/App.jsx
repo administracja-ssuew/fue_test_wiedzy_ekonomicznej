@@ -42,9 +42,9 @@ export default function App() {
   const [podiumResults, setPodiumResults] = useState([]);
   const [countdownNum, setCountdownNum] = useState(null); // 3/2/1/0="START!"/null=hidden
 
-  // Auto-break only after module 2 (between mod 2 and 3)
+  // Auto-break after module 2 and after module 4 (przerwy między blokami).
   // After module 5 → waiting_results (admin reveals ranking manually)
-  const BREAK_AFTER = [2];
+  const BREAK_AFTER = [2, 4];
 
   const MODULES        = useModules(); // dynamic from DB (or hardcoded fallback)
   const timerRef       = useRef(null);

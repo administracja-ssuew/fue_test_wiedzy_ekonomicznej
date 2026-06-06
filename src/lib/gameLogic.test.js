@@ -100,7 +100,7 @@ describe("projectLiveState", () => {
   it("reveal countdown runs REVEAL_SECONDS→0 after the question ends", () => {
     expect(project({ q_started_at: startedAgo(30) }).autoSec).toBe(REVEAL_SECONDS);     // just ended
     expect(project({ q_started_at: startedAgo(32) }).autoSec).toBe(REVEAL_SECONDS - 2); // 2s into reveal
-    expect(project({ q_started_at: startedAgo(35) }).autoSec).toBe(0);                  // window over
+    expect(project({ q_started_at: startedAgo(30 + REVEAL_SECONDS) }).autoSec).toBe(0); // window over (tpq + REVEAL_SECONDS)
     expect(project({ q_started_at: startedAgo(99) }).autoSec).toBe(0);                  // clamped, no negative
   });
 

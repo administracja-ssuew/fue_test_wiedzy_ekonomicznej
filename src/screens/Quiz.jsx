@@ -62,6 +62,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
   const tColor = timer > mod.timePerQ * 0.5 ? "#10D9A0" : timer > mod.timePerQ * 0.25 ? "#FF9A3C" : "#E8376B";
   const total = totalQuestions?.length || qs.length * MODULES.length;
   const qNumGlobal = (totalQuestions || []).filter((q) => q.module < currentMod).length + qIdx + 1;
+  const correctCount = (allAnswers || []).filter((a) => a.correct).length; // bez punktów — liczymy poprawne
 
   // Plain JSX value (not a nested component) — rendering <QuizContent /> created a
   // brand-new component type every render, remounting the whole subtree on each
@@ -132,8 +133,15 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
         })}
       </div>
 
-      <div style={{ padding: "0 14px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <p style={{ fontSize: 12, color: "#9B89CC" }}>Łączny wynik: <strong style={{ color: "#F5C518" }}>{myPts} pkt</strong></p>
+      <div style={{ padding: "0 14px 10px" }}>
+        {picked !== null && !answered ? (
+          <div style={{ background: "rgba(16,217,160,.12)", border: "1px solid rgba(16,217,160,.4)", borderRadius: 12, padding: "11px 14px", textAlign: "center" }}>
+            <p style={{ fontSize: 14, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {currentQ.opts[picked]}</p>
+            <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 3 }}>Odpowiedź jest <strong style={{ color: "#EDE9FE" }}>ostateczna</strong> — nie można jej zmienić.</p>
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: "#9B89CC", textAlign: "center" }}>Poprawne odpowiedzi: <strong style={{ color: "#10D9A0" }}>{correctCount}</strong> / {total}</p>
+        )}
       </div>
     </div>
   );

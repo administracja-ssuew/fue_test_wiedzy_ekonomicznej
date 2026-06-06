@@ -6,7 +6,9 @@ export const ANSWER_LABELS = ["A", "B", "C", "D"];
 // Seconds the correct answer is shown after the timer hits 0, before advancing.
 // Single source of truth so participant, LiveView and the admin ghost view all
 // count down for exactly the same window and stay in sync.
-export const REVEAL_SECONDS = 5;
+// 6 s reveal + 4 s pre-question countdown (advance_session_question) = 10 s
+// total przerwy między pytaniami.
+export const REVEAL_SECONDS = 6;
 
 export const cityInfo = (n) => CITIES.find((c) => c.name === n) || { abbr: "?", color: "#888" };
 export const calcPts = (timeLeft, maxTime, correct) =>

@@ -35,6 +35,9 @@ const W = {
 
 export default function Ended({ participant, myPts, allAnswers, isPractice, onGoHome }) {
   const MODULES = useModules();
+  // Wynik = liczba poprawnych odpowiedzi (bez punktów).
+  const totalQ   = allAnswers.length;
+  const correctN = allAnswers.filter((a) => a.correct).length;
   return (
     <div style={W.wrap}>
       <div className="fue-page" style={{ justifyContent: "center", alignItems: "center", padding: "36px 28px", textAlign: "center" }}>
@@ -52,27 +55,29 @@ export default function Ended({ participant, myPts, allAnswers, isPractice, onGo
           {isPractice ? "To był próbny test — wyniki nie są oficjalne." : "Dziękujemy za udział,"}<br />
           <strong style={{ color: "#EDE9FE" }}>{participant?.name} {participant?.surname}</strong>!
         </p>
-        <div className="su" style={{ ...W.card({ padding: "24px", marginTop: 24, borderColor: "rgba(245,197,24,.25)", background: "rgba(245,197,24,.06)" }), animationDelay: ".18s", width: "100%" }}>
-          <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 6 }}>Twój wynik</p>
-          <p style={{ fontFamily: '"Bebas Neue"', fontSize: 56, color: "#F5C518", lineHeight: 1 }}>{myPts}</p>
-          <p style={{ fontSize: 13, color: "#9B89CC" }}>punktów</p>
+        <div className="su" style={{ ...W.card({ padding: "24px", marginTop: 24, borderColor: "rgba(16,217,160,.3)", background: "rgba(16,217,160,.06)" }), animationDelay: ".18s", width: "100%" }}>
+          <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 6 }}>Poprawne odpowiedzi</p>
+          <p style={{ fontFamily: '"Bebas Neue"', fontSize: 56, color: "#10D9A0", lineHeight: 1 }}>{correctN} / {totalQ}</p>
+          <p style={{ fontSize: 13, color: "#9B89CC" }}>poprawnych odpowiedzi</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 16 }}>
             {MODULES.map((m) => {
-              const pts = allAnswers.filter((a) => a.module === m.id).reduce((s, a) => s + a.pts, 0);
+              const inMod = allAnswers.filter((a) => a.module === m.id);
+              if (!inMod.length) return null;
+              const okMod = inMod.filter((a) => a.correct).length;
               return (
                 <div key={m.id} style={{ textAlign: "center" }}>
-                  <p style={{ fontSize: 16 }}>{m.icon}</p>
-                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 18, color: m.color }}>{pts}</p>
+                  <p style={{ fontSize: 16 }}>{m.icon || "•"}</p>
+                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 18, color: m.color }}>{okMod}/{inMod.length}</p>
                   <p style={{ fontSize: 9, color: "#9B89CC" }}>{m.name.split(" ")[0]}</p>
                 </div>
               );
             })}
           </div>
         </div>
-        <div className="su" style={{ ...W.card({ padding: "16px", marginTop: 12 }), animationDelay: ".24s", width: "100%" }}>
+        <div className="su" style={{ ...W.card({ padding: "16px", marginTop: 12, borderColor: "rgba(245,197,24,.3)", background: "rgba(245,197,24,.06)" }), animationDelay: ".24s", width: "100%" }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "#F5C518", marginBottom: 4 }}>⏳ Poczekaj na ogłoszenie organizatora</p>
           <p style={{ fontSize: 13, color: "#9B89CC", lineHeight: 1.6 }}>
-            Wyniki zostaną ogłoszone przez organizatorów.<br />
-            Top 5 z Twojego miasta przechodzi do <strong style={{ color: "#EDE9FE" }}>etapu ogólnopolskiego</strong>.
+            Oficjalne wyniki ogłosi organizator. Nie zamykaj sali — wyniki zostaną podane na miejscu.
           </p>
         </div>
         <button className="su" style={{ ...W.btn("ghost", { marginTop: 20 }), animationDelay: ".3s" }}

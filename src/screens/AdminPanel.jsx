@@ -1149,7 +1149,7 @@ function LiveTab({ city }) {
 
 // ─── Tab: Moduły ─────────────────────────────────────────────────────────────
 
-const EMPTY_MOD = { id: "", name: "", icon: "📚", color: "#6B21E8", timePerQ: 60, desc: "" };
+const EMPTY_MOD = { id: "", name: "", icon: "", color: "#6B21E8", timePerQ: 60, desc: "" };
 
 function ModulyTab() {
   const ctxModules = useModules();
@@ -1203,9 +1203,9 @@ function ModulyTab() {
                 style={C.input()} placeholder="5" disabled={!!editId} min="1" />
             </div>
             <div>
-              <span style={C.lbl}>Ikona (emoji)</span>
+              <span style={C.lbl}>Ikona / emoji (opcjonalne)</span>
               <input value={form.icon} onChange={(e) => setForm((p) => ({ ...p, icon: e.target.value }))}
-                style={C.input()} placeholder="📚" />
+                style={C.input()} placeholder="np. 🧮 — można zostawić puste" />
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <span style={C.lbl}>Nazwa modułu</span>

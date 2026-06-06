@@ -274,7 +274,7 @@ async function phaseQuiz(bots) {
 
   await updateSession(state.sessionId, { status: "running", q_started_at: new Date().toISOString() });
 
-  // Per-bot expected points tracker
+  // Per-bot expected CORRECT-answer count (ranking bez punktów)
   const botExpected = {};
   for (const bot of bots) botExpected[bot.code] = 0;
 
@@ -303,7 +303,7 @@ async function phaseQuiz(bots) {
         const chosen = correct ? q.ans : (q.ans + 1) % 4;
         const timeLeft = Math.max(1, modInfo.timePerQ - 1);
         const pts = calcPts(timeLeft, modInfo.timePerQ, correct);
-        botExpected[bot.code] += pts;
+        botExpected[bot.code] += correct ? 1 : 0;
 
         const { error } = await saveAnswer({
           sessionId: state.sessionId,
@@ -348,10 +348,10 @@ async function phaseResults(bots, botExpected) {
 
   assert("results.length === BOT_COUNT", results.length === BOT_COUNT, `${results.length} wyników`);
 
-  // Check descending sort
+  // Check descending sort (wg liczby poprawnych)
   let sortedOk = true;
   for (let i = 1; i < results.length; i++) {
-    if (results[i].points > results[i - 1].points) { sortedOk = false; break; }
+    if (results[i].correct > results[i - 1].correct) { sortedOk = false; break; }
   }
   assert("Ranking posortowany malejąco", sortedOk);
 
@@ -359,21 +359,20 @@ async function phaseResults(bots, botExpected) {
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
     const exp = botExpected[r.code];
-    const match = exp !== undefined ? r.points === exp : true;
+    const match = exp !== undefined ? r.correct === exp : true;
     const badge = match ? "✅" : `❌ (oczekiwano ${exp})`;
-    console.log(`  #${i + 1} ${String(r.name || r.code).padEnd(10)} ${String(r.points).padStart(6)} pkt  ${badge}`);
+    console.log(`  #${i + 1} ${String(r.name || r.code).padEnd(10)} ${String(r.correct).padStart(3)}/${r.total} popr.  ${badge}`);
     if (!match) failed++; else passed++;
   }
 
-  // Sanity: bot with most correct answers has highest points
-  // (only meaningful if more than 1 bot)
+  // Sanity: bot z największą liczbą poprawnych jest #1
   if (bots.length > 1) {
     const sortedExpected = Object.entries(botExpected).sort((a, b) => b[1] - a[1]);
     const topExpectedCode = sortedExpected[0][0];
     assert(
       "Top bot ma najwyższy wynik",
-      results[0].code === topExpectedCode || results[0].points >= (botExpected[topExpectedCode] || 0),
-      `wynik #1: ${results[0].points} pkt`
+      results[0].code === topExpectedCode || results[0].correct >= (botExpected[topExpectedCode] || 0),
+      `wynik #1: ${results[0].correct}/${results[0].total} popr.`
     );
   }
 }

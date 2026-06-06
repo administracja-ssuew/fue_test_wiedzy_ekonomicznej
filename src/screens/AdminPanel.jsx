@@ -531,12 +531,12 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   // Export final ranking as CSV (semicolon-separated + UTF-8 BOM → opens cleanly in Excel PL).
   const exportResultsCsv = () => {
-    const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Punkty", "Śr. czas (s)"];
+    const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Śr. czas (s)"];
     const esc = (v) => {
       const s = String(v ?? "");
       return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.points, r.avgResponseTime ?? ""])];
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime ?? ""])];
     const csv = "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -865,8 +865,8 @@ function SesjaTab({ city, adminId, onPodium }) {
                   <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center", flexShrink: 0 }}>{i + 1}</span>
                   <p style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{r.name}</p>
                   <div style={{ textAlign: "right" }}>
-                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#F5C518", lineHeight: 1 }}>{r.points} pkt</p>
-                    <p style={{ fontSize: 10, color: "#9B89CC" }}>⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}</p>
+                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#10D9A0", lineHeight: 1 }}>{r.correct}<span style={{ fontSize: 13, color: "#9B89CC" }}>/{r.total}</span></p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}</p>
                   </div>
                 </div>
               ))}
@@ -1128,7 +1128,7 @@ function LiveTab({ city }) {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 400, overflowY: "auto" }}>
-            {revealData.sort((a, b) => b.points - a.points).map((a, i) => (
+            {revealData.slice().sort((a, b) => (b.isCorrect - a.isCorrect) || ((a.responseTime ?? 1e9) - (b.responseTime ?? 1e9))).map((a) => (
               <div key={a.code} style={{ ...C.card({ padding: "8px 14px" }), display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 14 }}>{a.isCorrect ? "✅" : "❌"}</span>
                 <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1, minWidth: 80 }}>{a.code}</span>
@@ -1136,7 +1136,7 @@ function LiveTab({ city }) {
                 {a.responseTime != null && (
                   <span style={{ fontSize: 11, color: "#9B89CC", minWidth: 32, textAlign: "right" }}>{a.responseTime}s</span>
                 )}
-                <span style={{ fontFamily: '"Bebas Neue"', fontSize: 16, color: a.isCorrect ? "#F5C518" : "#E8376B" }}>{a.points} pkt</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: a.isCorrect ? "#10D9A0" : "#E8376B", minWidth: 64, textAlign: "right" }}>{a.isCorrect ? "poprawna" : "błędna"}</span>
               </div>
             ))}
             {revealData.length === 0 && <p style={{ color: "#9B89CC", textAlign: "center", padding: 16 }}>Brak odpowiedzi zarejestrowanych w bazie.</p>}

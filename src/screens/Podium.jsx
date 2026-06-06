@@ -10,7 +10,7 @@ function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
         ))}
 
         <div style={{ textAlign: "center" }}>
-          <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>🐐 Test Wiedzy Ekonomicznej · FUE {new Date().getFullYear()}</p>
+          <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Test Wiedzy Ekonomicznej · FUE {new Date().getFullYear()}</p>
           <h1 style={{ fontFamily: '"Bebas Neue"', fontSize: 60, letterSpacing: 3, color: podStep >= 3 ? "#F5C518" : "#EDE9FE", transition: "color .5s", lineHeight: 1 }}>
             {podStep === 0 ? "CEREMONIA" : podStep >= 3 ? "PODIUM!" : "I OTO…"}
           </h1>
@@ -34,7 +34,7 @@ function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
                     </div>
                     <p style={{ fontSize: rank === 0 ? 12 : 11, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#EDE9FE" }}>{p.name.split(" ")[0]}</p>
                     <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city}</p>
-                    <p style={{ fontSize: rank === 0 ? 14 : 12, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#9B89CC", marginTop: 2 }}>{p.points} pkt</p>
+                    <p style={{ fontSize: rank === 0 ? 14 : 12, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#9B89CC", marginTop: 2 }}>{p.correct}/{p.total} popr.</p>
                   </div>
                 )}
                 <div style={{ width: "100%", height: heights[rank], background: colors[rank], borderRadius: "10px 10px 0 0", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 ${rank === 0 ? 40 : 20}px ${glows[rank]}` }}>

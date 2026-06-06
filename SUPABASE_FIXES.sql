@@ -554,6 +554,38 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.mark_code_used(TEXT, UUID) TO anon, authenticated;
 
+-- ─── 25. get_session_results — ranking wg POPRAWNYCH odpowiedzi ──
+-- Bez punktów: kolejność wg liczby poprawnych odpowiedzi, remis → krótszy
+-- średni czas. Zmienia typ zwracany, więc DROP + CREATE; grant tylko authenticated
+-- (jak w sekcji 23 — anon nie widzi pełnego rankingu).
+
+DROP FUNCTION IF EXISTS public.get_session_results(UUID);
+CREATE OR REPLACE FUNCTION public.get_session_results(p_session_id UUID)
+RETURNS TABLE (
+  participant_code    TEXT,
+  participant_name    TEXT,
+  city                TEXT,
+  correct_count       BIGINT,
+  total_count         BIGINT,
+  avg_response_time_s INT
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT
+    participant_code,
+    participant_name,
+    city,
+    COUNT(*) FILTER (WHERE is_correct = true)::BIGINT AS correct_count,
+    COUNT(*)::BIGINT AS total_count,
+    ROUND(AVG(response_time_s))::INT AS avg_response_time_s
+  FROM public.answers
+  WHERE session_id = p_session_id
+  GROUP BY participant_code, participant_name, city
+  ORDER BY correct_count DESC, avg_response_time_s ASC NULLS LAST;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

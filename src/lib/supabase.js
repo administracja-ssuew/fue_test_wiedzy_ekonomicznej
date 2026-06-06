@@ -393,21 +393,24 @@ export async function getSessionResults(sessionId) {
       .filter((a) => a.sessionId === sessionId);
     const grouped = {};
     for (const a of answers) {
-      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: a.participantName, city: a.city || "", points: 0, answers: 0, totalTime: 0, timedAnswers: 0 };
-      grouped[a.participantCode].points += a.points;
-      grouped[a.participantCode].answers += 1;
+      if (!grouped[a.participantCode]) grouped[a.participantCode] = { code: a.participantCode, name: a.participantName, city: a.city || "", correct: 0, total: 0, totalTime: 0, timedAnswers: 0 };
+      grouped[a.participantCode].total += 1;
+      if (a.isCorrect) grouped[a.participantCode].correct += 1;
       if (a.responseTimeS != null) { grouped[a.participantCode].totalTime += a.responseTimeS; grouped[a.participantCode].timedAnswers += 1; }
     }
-    return Object.values(grouped).sort((a, b) => b.points - a.points).map((g) => ({
-      code: g.code, name: g.name, city: g.city, points: g.points,
-      avgResponseTime: g.timedAnswers ? Math.round(g.totalTime / g.timedAnswers) : null,
-    }));
+    return Object.values(grouped)
+      .sort((a, b) => (b.correct - a.correct) || ((a.timedAnswers ? a.totalTime / a.timedAnswers : 1e9) - (b.timedAnswers ? b.totalTime / b.timedAnswers : 1e9)))
+      .map((g) => ({
+        code: g.code, name: g.name, city: g.city, correct: g.correct, total: g.total,
+        avgResponseTime: g.timedAnswers ? Math.round(g.totalTime / g.timedAnswers) : null,
+      }));
   }
   // Use RPC to aggregate on DB side — avoids PostgREST 1000-row default limit
-  // which would truncate results for 500 participants × 32 questions = 16 000 rows
+  // which would truncate results for 500 participants × 32 questions = 16 000 rows.
+  // Ranking wg liczby poprawnych odpowiedzi (bez punktów); remis → krótszy średni czas.
   const { data } = await supabase.rpc("get_session_results", { p_session_id: sessionId });
   if (!data) return [];
-  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, points: Number(r.total_points), avgResponseTime: r.avg_response_time_s ?? null }));
+  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count), total: Number(r.total_count), avgResponseTime: r.avg_response_time_s ?? null }));
 }
 
 // Live stats for current question (admin panel).

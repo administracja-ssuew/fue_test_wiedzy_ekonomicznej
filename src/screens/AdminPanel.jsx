@@ -36,6 +36,35 @@ const CITY_COLORS  = Object.fromEntries(CITIES.map((c) => [c.name, c.color]));
 const STATUS_LABEL = { waiting: "Oczekiwanie", running: "Trwa quiz", paused: "☕ Przerwa", ended: "Zakończona" };
 const STATUS_COLOR = { waiting: "#9B89CC", running: "#10D9A0", paused: "#F5C518", ended: "#E8376B" };
 
+// Parser CSV z obsługą cudzysłowów (pytania/odpowiedzi mają przecinki).
+// Wykrywa separator (; lub ,) z pierwszej linii. Zwraca tablicę wierszy (tablic pól).
+const parseCsv = (raw) => {
+  const text = String(raw).replace(/^﻿/, "");
+  const firstLine = text.split(/\r?\n/)[0] || "";
+  const sep = (firstLine.split(";").length > firstLine.split(",").length) ? ";" : ",";
+  const rows = []; let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else if (c === '"') inQ = true;
+    else if (c === sep) { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (c !== "\r") field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.map((r) => r.map((f) => f.trim())).filter((r) => r.some((f) => f));
+};
+
+// Pobranie pliku tekstowego (CSV) z BOM — Excel poprawnie czyta polskie znaki.
+const downloadCsv = (filename, content) => {
+  const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+};
+
 // ─── City picker ──────────────────────────────────────────────────────────────
 
 function CityPicker({ city, setCity }) {
@@ -54,6 +83,7 @@ function CityPicker({ city, setCity }) {
 // ─── Tab: Pytania ─────────────────────────────────────────────────────────────
 
 const EMPTY = { module: 1, q: "", opts: ["", "", "", ""], ans: 0, exp: "" };
+const ANS_LETTERS = { A: 0, B: 1, C: 2, D: 3 };
 
 function PytaniaTab({ city }) {
   const MODULES = useModules();
@@ -63,6 +93,49 @@ function PytaniaTab({ city }) {
   const [form, setForm] = useState(null);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const qCsvRef = useRef(null);
+  const [qCsvPreview, setQCsvPreview]     = useState(null);
+  const [qCsvErr, setQCsvErr]             = useState("");
+  const [qCsvImporting, setQCsvImporting] = useState(false);
+  const [qCsvProgress, setQCsvProgress]   = useState(0);
+
+  const handleQuestionsCsv = (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rows = parseCsv(ev.target.result);
+      const parsed = []; let skipped = 0;
+      rows.forEach((r, idx) => {
+        const first = (r[0] || "").toLowerCase();
+        if (idx === 0 && (first.includes("modu") || (r[1] || "").toLowerCase().includes("pytanie"))) return; // nagłówek
+        if (r.length < 7) { if (r.length) skipped++; return; }
+        const moduleId = parseInt(r[0], 10);
+        const q = r[1];
+        const opts = [r[2], r[3], r[4], r[5]];
+        let ans = ANS_LETTERS[(r[6] || "").toUpperCase()];
+        if (ans === undefined) { const n = parseInt(r[6], 10); if (n >= 1 && n <= 4) ans = n - 1; }
+        const exp = r[7] || "";
+        if (!q || opts.some((o) => !o) || ans === undefined || !(moduleId >= 1)) { skipped++; return; }
+        parsed.push({ module: moduleId, q, opts, ans, exp });
+      });
+      setQCsvPreview(parsed.length ? parsed : null);
+      setQCsvErr(parsed.length
+        ? (skipped ? `Pominięto ${skipped} niepoprawnych wierszy.` : "")
+        : "Brak poprawnych pytań. Format: Moduł;Pytanie;A;B;C;D;Poprawna(A-D);Wyjaśnienie.");
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  };
+
+  const importQuestionsCsv = async () => {
+    if (!qCsvPreview?.length) return;
+    setQCsvImporting(true); setQCsvProgress(0);
+    for (let i = 0; i < qCsvPreview.length; i++) {
+      await addQuestion({ ...qCsvPreview[i], city, createdBy: null, isPractice });
+      setQCsvProgress(i + 1);
+    }
+    setQCsvImporting(false); setQCsvPreview(null); reload();
+  };
 
   const loadQs = (practice = isPractice) => practice ? getPracticeQuestions(city) : getQuestions(city);
   useEffect(() => { loadQs().then(setQuestions); }, [city, isPractice]);
@@ -96,6 +169,47 @@ function PytaniaTab({ city }) {
           </button>
         ))}
         <button onClick={openAdd} style={{ ...C.btn("primary"), marginLeft: "auto" }}>+ Dodaj pytanie</button>
+      </div>
+
+      {/* Import pytań z CSV / Excel */}
+      <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 20, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+          <p style={{ fontWeight: 700, color: "#10D9A0", fontSize: 13 }}>📥 Import pytań z CSV / Excel {isPractice ? "(próbne)" : "(główne)"}</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => downloadCsv("przyklad_pytania.csv",
+              "Moduł;Pytanie;Odp A;Odp B;Odp C;Odp D;Poprawna (A-D);Wyjaśnienie\n" +
+              "1;Ile to 2 + 2?;3;4;5;6;B;Podstawy matematyki\n" +
+              "2;Stolica Polski?;Kraków;Warszawa;Łódź;Gdańsk;B;\n")}
+              style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>📄 Pobierz przykład</button>
+            <button onClick={() => qCsvRef.current?.click()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>Wybierz plik CSV</button>
+          </div>
+          <input ref={qCsvRef} type="file" accept=".csv,.txt" onChange={handleQuestionsCsv} style={{ display: "none" }} />
+        </div>
+        <p style={{ fontSize: 11, color: "rgba(155,137,204,.7)" }}>
+          Kolumny: <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>Moduł;Pytanie;A;B;C;D;Poprawna(A-D);Wyjaśnienie</span>. Poprawna = litera A/B/C/D. Wyjaśnienie opcjonalne. Importuje do {isPractice ? "puli próbnej" : "puli głównej"} miasta {city}.
+        </p>
+        {qCsvErr && <p style={{ color: qCsvPreview ? "#F5C518" : "#E8376B", fontSize: 12, marginTop: 6 }}>{qCsvErr}</p>}
+        {qCsvPreview && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 8 }}>Znaleziono <strong style={{ color: "#10D9A0" }}>{qCsvPreview.length}</strong> pytań — podgląd (max 5):</p>
+            {qCsvPreview.slice(0, 5).map((p, i) => (
+              <div key={i} style={{ fontSize: 12, padding: "3px 8px", background: "rgba(16,217,160,.08)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 6, marginBottom: 4, color: "#EDE9FE" }}>
+                <span style={{ color: "#9B89CC" }}>M{p.module} · </span>{p.q} <span style={{ color: "#10D9A0" }}>→ {["A","B","C","D"][p.ans]}: {p.opts[p.ans]}</span>
+              </div>
+            ))}
+            {qCsvPreview.length > 5 && <p style={{ fontSize: 11, color: "#9B89CC" }}>… i {qCsvPreview.length - 5} więcej</p>}
+            <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+              {qCsvImporting ? (
+                <p style={{ fontSize: 13, color: "#10D9A0" }}>Importuję {qCsvProgress}/{qCsvPreview.length}…</p>
+              ) : (
+                <>
+                  <button onClick={importQuestionsCsv} style={{ ...C.btn("success", { fontSize: 12, padding: "8px 18px" }) }}>✅ Importuj wszystkie</button>
+                  <button onClick={() => setQCsvPreview(null)} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>Anuluj</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {form && (
@@ -189,7 +303,7 @@ function KodyTab({ city, adminId }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target.result;
+      const text = String(ev.target.result).replace(/^﻿/, ""); // strip BOM (Excel)
       const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       const parsed = [];
       for (const row of rows) {
@@ -246,13 +360,18 @@ function KodyTab({ city, adminId }) {
       <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 20, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <p style={{ fontWeight: 700, color: "#10D9A0", fontSize: 13 }}>📥 Import z CSV / Excel</p>
-          <button onClick={() => csvFileRef.current?.click()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
-            Wybierz plik CSV
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => downloadCsv("przyklad_uczestnicy.csv", "Imię;Nazwisko\nJan;Kowalski\nAnna;Nowak\nPiotr;Wiśniewski\n")} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
+              📄 Pobierz przykład
+            </button>
+            <button onClick={() => csvFileRef.current?.click()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
+              Wybierz plik CSV
+            </button>
+          </div>
           <input ref={csvFileRef} type="file" accept=".csv,.txt" onChange={handleCsvFile} style={{ display: "none" }} />
         </div>
         <p style={{ fontSize: 11, color: "rgba(155,137,204,.7)" }}>
-          Format pliku: każdy wiersz = <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>Imię,Nazwisko</span> (separator: przecinek lub średnik). Zapisz Excel jako CSV (UTF-8).
+          Format pliku: nagłówek <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>Imię;Nazwisko</span>, potem każdy wiersz = jeden uczestnik (separator: przecinek lub średnik). Najłatwiej: pobierz przykład, uzupełnij w Excelu, zapisz jako CSV i wgraj.
         </p>
         {csvErr && <p style={{ color: "#E8376B", fontSize: 12, marginTop: 6 }}>{csvErr}</p>}
 
@@ -887,6 +1006,32 @@ function BgUploader({ city, isMobile, preview, onPreviewChange }) {
   const label   = isMobile ? "Mobile (telefon)" : "Desktop (projektor)";
   const icon    = isMobile ? "📱" : "🖥️";
 
+  // Generuje i pobiera gotowy szablon tła w poprawnych wymiarach (z polem
+  // bezpiecznym), żeby grafik miał od czego zacząć w Canvie/Photoshopie.
+  const downloadTemplate = () => {
+    const w = isMobile ? 1080 : 1920, h = isMobile ? 1920 : 1080;
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const ctx = cv.getContext("2d");
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, "#070215"); g.addColorStop(.5, "#0E0435"); g.addColorStop(1, "#070215");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    const m = Math.round(w * 0.06);
+    ctx.strokeStyle = "rgba(245,197,24,.55)"; ctx.lineWidth = 4; ctx.setLineDash([22, 16]);
+    ctx.strokeRect(m, m, w - 2 * m, h - 2 * m);
+    ctx.setLineDash([]); ctx.textAlign = "center";
+    ctx.fillStyle = "#F5C518"; ctx.font = `bold ${Math.round(w * 0.045)}px sans-serif`;
+    ctx.fillText(`${w} × ${h}`, w / 2, h / 2 - Math.round(w * 0.01));
+    ctx.fillStyle = "#9B89CC"; ctx.font = `${Math.round(w * 0.022)}px sans-serif`;
+    ctx.fillText(isMobile ? "Tło MOBILE (telefon)" : "Tło DESKTOP (projektor)", w / 2, h / 2 + Math.round(w * 0.04));
+    ctx.fillText("Tekst quizu jest przyciemniany — środek trzymaj czytelny", w / 2, h / 2 + Math.round(w * 0.075));
+    cv.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url;
+      a.download = isMobile ? "szablon_tlo_mobile_1080x1920.png" : "szablon_tlo_desktop_1920x1080.png";
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }, "image/png");
+  };
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -929,10 +1074,14 @@ function BgUploader({ city, isMobile, preview, onPreviewChange }) {
         <span style={{ fontSize: 18 }}>{icon}</span>
         <p style={{ fontWeight: 700, fontSize: 13, color: "#EDE9FE" }}>{label}</p>
         {isMobile && !preview && (
-          <span style={{ fontSize: 10, color: "#9B89CC", marginLeft: "auto", fontStyle: "italic" }}>
+          <span style={{ fontSize: 10, color: "#9B89CC", fontStyle: "italic" }}>
             (fallback → desktop)
           </span>
         )}
+        <button onClick={downloadTemplate} title="Pobierz pusty szablon w poprawnych wymiarach"
+          style={{ ...C.btn("ghost", { fontSize: 11, padding: "4px 10px", width: "auto", marginLeft: "auto" }) }}>
+          ⬇ Szablon
+        </button>
       </div>
 
       {/* Preview */}

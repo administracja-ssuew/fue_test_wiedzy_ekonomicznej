@@ -1174,7 +1174,7 @@ function LiveTab({ city }) {
   // Pure projection of DB state — same hook as the standalone LiveView, so the
   // admin embed stays perfectly in sync with participants (incl. pause/resume,
   // live module times and the 5s reveal countdown). No local quiz state machine.
-  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount } =
+  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount, participantsTotal } =
     useLiveProjection(city, { detailed: true });
 
   // During the pre-question countdown show 3→2→1→START instead of revealing the
@@ -1222,7 +1222,7 @@ function LiveTab({ city }) {
           {mod?.icon} {mod?.name} · Pytanie {gIdx + 1}/{questions.length}
         </span>
         <span style={{ marginLeft: "auto", fontSize: 12, color: "#9B89CC" }}>
-          {liveCount} odpowiedzi live
+          {liveCount}/{participantsTotal} odpowiedzi
         </span>
       </div>
 

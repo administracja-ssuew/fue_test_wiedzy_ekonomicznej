@@ -8,7 +8,7 @@ const ANS_LABELS = ["A", "B", "C", "D"];
 // shared DB-state projection — stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
   // Public projector — anon, so no per-participant data; aggregate counts only.
-  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, liveCount, bg } =
+  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, liveCount, participantsTotal, bg } =
     useLiveProjection(city);
 
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
@@ -32,7 +32,7 @@ export default function LiveView({ city }) {
         <span style={{ fontFamily: '"Bebas Neue"', fontSize: 20, letterSpacing: 1 }}>{city}</span>
         {(phase === "quiz" || phase === "reveal") && (
           <span style={{ fontSize: 13, color: "#9B89CC", marginLeft: "auto" }}>
-            {mod?.icon} {mod?.name} · {gIdx + 1}/{questions.length} · {liveCount} odp.
+            {mod?.icon} {mod?.name} · {gIdx + 1}/{questions.length} · {liveCount}/{participantsTotal} odp.
           </span>
         )}
       </div>

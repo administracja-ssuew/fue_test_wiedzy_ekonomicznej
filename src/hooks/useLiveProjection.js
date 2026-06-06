@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
   getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerSummary, getLiveAnswerCount, getQuestions,
+  getParticipantsInSession,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import { REVEAL_SECONDS, projectLiveState } from "../lib/gameLogic.js";
@@ -31,6 +32,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const [autoSec, setAutoSec]     = useState(REVEAL_SECONDS);
   const [bg, setBg]               = useState(DEFAULT_BG);
   const [liveCount, setLiveCount] = useState(0);
+  const [participantsTotal, setParticipantsTotal] = useState(0);
   const [cdNum, setCdNum]         = useState(null);
   const [questions, setQuestions] = useState([]);
 
@@ -141,9 +143,22 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     return () => clearInterval(liveRef.current);
   }, []);
 
+  // Liczba uczestników w sesji (do licznika "X/N" na Live View). Wolno się zmienia
+  // → odpyt co 5 s. Anon może czytać participant_codes (codes_public_read).
+  useEffect(() => {
+    if (!city) return;
+    const fetchTotal = () => {
+      const sid = sessionRef.current?.id;
+      if (sid) getParticipantsInSession(city, sid).then((p) => setParticipantsTotal(p.length));
+    };
+    fetchTotal();
+    const iv = setInterval(fetchTotal, 5000);
+    return () => clearInterval(iv);
+  }, [city]);
+
   const currentQ = questions[gIdx];
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
   const timePerQ = mod?.timePerQ || 60;
 
-  return { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, liveCount, bg };
+  return { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, liveCount, participantsTotal, bg };
 }

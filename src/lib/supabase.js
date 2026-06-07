@@ -410,7 +410,9 @@ export async function getSessionResults(sessionId) {
   // Ranking wg liczby poprawnych odpowiedzi (bez punktów); remis → krótszy średni czas.
   const { data } = await supabase.rpc("get_session_results", { p_session_id: sessionId });
   if (!data) return [];
-  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count), total: Number(r.total_count), avgResponseTime: r.avg_response_time_s ?? null }));
+  // Number(...) || 0 — chroni przed NaN, gdyby na bazie była jeszcze STARA wersja
+  // funkcji (sekcja 25 nie wgrana → brak correct_count/total_count).
+  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count) || 0, total: Number(r.total_count) || 0, avgResponseTime: r.avg_response_time_s ?? null }));
 }
 
 // Live stats for current question (admin panel).

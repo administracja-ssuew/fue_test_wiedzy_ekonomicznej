@@ -58,7 +58,17 @@ export default function App() {
   const currentModRef      = useRef(currentMod); // always-current module (avoids stale closures in Realtime)
   const qIdxRef            = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
   const cityQuestionsRef   = useRef([]);          // always-current questions for session event handler
+  const quizChRef          = useRef(null);        // kanał broadcast sesji (instant push przejścia pytania)
   const isDesktop = useWindowWidth() >= 900;
+
+  // Natychmiastowy push nowego stanu sesji na szybkiej ścieżce (broadcast ~50ms),
+  // gdy to UCZESTNIK przesuwa pytanie. Bez tego Live View i pozostali uczestnicy
+  // czekali na wolny postgres_changes (~0.6s)/polling → reveal „wisiał" dłużej.
+  const broadcastSession = (overrides) => {
+    if (DEMO || !supabase || !quizChRef.current || !quizSession?.id) return;
+    const payload = { ...quizSession, id: quizSession.id, city: participant?.city, status: "running", ...overrides };
+    quizChRef.current.send({ type: "broadcast", event: "quiz_event", payload });
+  };
 
   // Standalone live view — opened via ?live=1&city=X
   const liveParams = useMemo(() => {
@@ -287,12 +297,13 @@ export default function App() {
         filter: `id=eq.${quizSession.id}`,
       }, ({ new: s }) => handleUpdate(s))
       .subscribe();
+    quizChRef.current = ch;
     const poll = setInterval(async () => {
       const s = await getSessionById(quizSession.id);
       if (s) handleUpdate(s);
     }, 10000); // pure safety-net — broadcast + Realtime are the fast path. Longer
                // interval keeps DB load low at 500 concurrent participants.
-    return () => { supabase.removeChannel(ch); clearInterval(poll); };
+    return () => { supabase.removeChannel(ch); quizChRef.current = null; clearInterval(poll); };
   }, [quizSession?.id, participant?.code]);
 
   // ── Quiz logic ───────────────────────────────────────────────────
@@ -352,6 +363,9 @@ export default function App() {
         const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
         if (startedAt) {
           qStartedAtRef.current = startedAt;
+          // Wygrany advance → natychmiast rozgłoś nowy stan (Live View + reszta uczestników
+          // dostają w ~50ms zamiast czekać na postgres_changes), żeby reveal kończył się równo.
+          broadcastSession({ current_question_idx: nextGlobalIdx, q_started_at: startedAt });
         } else {
           qStartedAtRef.current = null;
           // Safety-net: if Realtime hasn't corrected us in 1s, fetch directly from DB
@@ -594,6 +608,8 @@ export default function App() {
         // Pierwsze pytanie modułu → lead = 30 s (ekran zapowiedzi modułu).
         const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx, MODULE_INTRO_SECONDS);
         qStartedAtRef.current = startedAt || null;
+        // Wygrany start modułu → rozgłoś od razu (Live View pokaże zapowiedź modułu równo).
+        if (startedAt) broadcastSession({ current_question_idx: globalIdx, q_started_at: startedAt });
         const ms = startedAt ? new Date(startedAt).getTime() : null;
         if (ms && ms > serverNow()) setCountdownNum(Math.max(0, Math.ceil((ms - serverNow()) / 1000) - 1));
         if (!startedAt) {

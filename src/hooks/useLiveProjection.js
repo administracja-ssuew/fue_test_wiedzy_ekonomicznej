@@ -37,6 +37,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const [cdNum, setCdNum]         = useState(null);
   const [firstOfModule, setFirstOfModule] = useState(false);
   const [questions, setQuestions] = useState([]);
+  const [sessionId, setSessionId] = useState(null); // do subskrypcji szybkiego kanału sesji
 
   const sessionRef       = useRef(null);
   const questionsRef     = useRef([]);
@@ -58,14 +59,14 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         const bgVal = bgData?.bg || bgData?.bgMobile;
         if (bgVal) setBg(bgVal);
         if (qs?.length) { setQuestions(qs); questionsRef.current = qs; }
-        if (sess) sessionRef.current = sess;
+        if (sess) { sessionRef.current = sess; setSessionId(sess.id); }
       });
   }, [city]); // eslint-disable-line
 
   // Realtime + poll → keep sessionRef fresh
   useEffect(() => {
     if (!city) return;
-    const apply = (s) => { if (s) sessionRef.current = s; };
+    const apply = (s) => { if (s) { sessionRef.current = s; if (s.id) setSessionId(s.id); } };
     if (!DEMO && supabase) {
       const ch = supabase.channel(`live-proj-${city}`)
         .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
@@ -83,6 +84,19 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     const poll = setInterval(() => getSessionForCity(city).then(apply), 3000);
     return () => clearInterval(poll);
   }, [city]); // eslint-disable-line
+
+  // Szybki kanał broadcast sesji (quiz-${id}) — łapie INSTANT push przejścia pytania
+  // rozgłaszany przez uczestnika (advanceQuestion) oraz admina, bez czekania na wolny
+  // postgres_changes/polling. Dzięki temu reveal kończy się równo z uczestnikiem.
+  useEffect(() => {
+    if (!sessionId || DEMO || !supabase) return;
+    const ch = supabase.channel(`quiz-${sessionId}`)
+      .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
+        if (payload?.id) sessionRef.current = payload;
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [sessionId]);
 
   // Projection ticker
   useEffect(() => {

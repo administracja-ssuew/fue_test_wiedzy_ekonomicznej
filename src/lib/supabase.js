@@ -55,6 +55,17 @@ export async function validateParticipantCode(rawCode) {
     if (!entry) return { error: "Nie znaleziono kodu." };
     return { data: entry, error: null };
   }
+  // SECURITY DEFINER RPC — zwraca tylko wpisany wiersz (anon NIE czyta całej tabeli).
+  // Soft-fallback do bezpośredniego SELECT, gdy sekcja 27 SQL nie jest jeszcze wgrana.
+  const { data: rpcData, error: rpcErr } = await supabase
+    .rpc("validate_participant_code", { p_code: code });
+  if (!rpcErr) {
+    const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    if (!row) return { error: "Nie znaleziono kodu." };
+    return { data: row, error: null };
+  }
+  const missingFn = rpcErr.code === "PGRST202" || /Could not find the function/i.test(rpcErr.message || "");
+  if (!missingFn) return { error: "Nie znaleziono kodu." };
   const { data, error } = await supabase
     .from("participant_codes").select("*").eq("code", code).single();
   if (error || !data) return { error: "Nie znaleziono kodu." };
@@ -356,6 +367,19 @@ export async function getParticipantsInSession(city, sessionId) {
   if (sessionId) q = q.eq("session_id", sessionId);
   const { data } = await q;
   return data || [];
+}
+
+// Tylko LICZBA uczestników w sesji — dla anonimowego Live View (licznik X/N).
+// SECURITY DEFINER RPC nie ujawnia kodów/nazwisk. Soft-fallback do listy, gdy
+// sekcja 27 SQL nie jest jeszcze wgrana (anon ma wtedy jeszcze SELECT).
+export async function getParticipantCount(city, sessionId) {
+  if (DEMO) return (await getParticipantsInSession(city, sessionId)).length;
+  const { data, error } = await supabase
+    .rpc("count_participants_in_session", { p_city: city, p_session_id: sessionId || null });
+  if (!error && typeof data === "number") return data;
+  const missingFn = error?.code === "PGRST202" || /Could not find the function/i.test(error?.message || "");
+  if (missingFn) return (await getParticipantsInSession(city, sessionId)).length;
+  return 0;
 }
 
 // ─── ANSWERS ──────────────────────────────────────────────────────────────────

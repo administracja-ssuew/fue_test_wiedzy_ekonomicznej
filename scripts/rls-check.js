@@ -51,7 +51,7 @@ async function setup() {
   st.qId = q.id;
   st.code = `RLS-${Date.now() % 100000}`;
   const { data: c } = await service.from("participant_codes")
-    .insert({ code: st.code, name: "Rls", surname: "Check", city: CITY }).select().single();
+    .insert({ code: st.code, name: "Rls", surname: "Check", city: CITY, used: true, session_id: st.sessionId }).select().single();
   st.codeId = c.id;
   // jedna odpowiedź, by było co (nie)czytać
   await service.from("answers").insert({
@@ -109,6 +109,36 @@ async function checks() {
     const { data: q } = await anon.from("questions").select("id").eq("id", st.qId);
     expect("anon czyta quiz_sessions + questions", (s?.length === 1) && (q?.length === 1));
   }
+
+  // ── HARDENING sekcja 27: anon NIE enumeruje kodów/nazwisk ──
+  // 9) anon NIE czyta tabeli participant_codes (REVOKE SELECT + polityka authenticated)
+  {
+    const { data, error } = await anon.from("participant_codes").select("*").eq("city", CITY);
+    expect("anon NIE czyta participant_codes", (!data || data.length === 0) || !!error,
+      error ? "(zablokowane)" : `zwrócono ${data?.length ?? 0} — uruchom sekcję 27`);
+  }
+  // 10) validate_participant_code zwraca TYLKO wpisany wiersz (nie całą tabelę)
+  {
+    const { data, error } = await anon.rpc("validate_participant_code", { p_code: st.code });
+    const rows = Array.isArray(data) ? data : (data ? [data] : []);
+    expect("validate_participant_code zwraca własny kod", !error && rows.length === 1 && rows[0].code === st.code,
+      error ? error.message : `wierszy=${rows.length}`);
+    const { data: none } = await anon.rpc("validate_participant_code", { p_code: "NIEISTNIEJE-0000" });
+    const noneRows = Array.isArray(none) ? none : (none ? [none] : []);
+    expect("validate_participant_code nie zwraca nieznanego", noneRows.length === 0, `wierszy=${noneRows.length}`);
+  }
+  // 11) count_participants_in_session zwraca tylko LICZBĘ (Live View X/N)
+  {
+    const { data, error } = await anon.rpc("count_participants_in_session", { p_city: CITY, p_session_id: st.sessionId });
+    expect("count_participants_in_session zwraca liczbę", !error && typeof data === "number" && data >= 1,
+      error ? error.message : `count=${data}`);
+  }
+  // 12) code_exists: true dla znanego, false dla nieznanego (helper polityki INSERT)
+  {
+    const { data: yes } = await anon.rpc("code_exists", { p_code: st.code });
+    const { data: no }  = await anon.rpc("code_exists", { p_code: "NIEISTNIEJE-0000" });
+    expect("code_exists rozróżnia znany/nieznany kod", yes === true && no === false, `znany=${yes} nieznany=${no}`);
+  }
 }
 
 async function cleanup() {
@@ -128,7 +158,7 @@ async function main() {
   }
   const total = passed + failed;
   console.log(`\n${"─".repeat(56)}`);
-  console.log(failed === 0 ? `✅ WSZYSTKIE GRANICE OK (${total}/${total})` : `❌ ${failed}/${total} NARUSZEŃ — sprawdź sekcje SQL 16–23`);
+  console.log(failed === 0 ? `✅ WSZYSTKIE GRANICE OK (${total}/${total})` : `❌ ${failed}/${total} NARUSZEŃ — sprawdź sekcje SQL 16–27`);
   process.exit(failed === 0 ? 0 : 1);
 }
 

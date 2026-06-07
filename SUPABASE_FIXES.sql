@@ -635,6 +635,65 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
 
+-- ─── 27. HARDENING — anon NIE czyta całej tabeli participant_codes ──
+-- Problem (luka): "codes_public_read USING(true)" + GRANT SELECT ... TO anon
+-- pozwala anonimowi pobrać WSZYSTKIE kody i nazwiska wszystkich uczestników.
+-- Zamykamy to bez psucia dołączania do quizu:
+--   27.1 walidacja kodu      → RPC (definer) zwraca tylko WŁASNY wiersz
+--   27.2 code_exists()       → helper (definer) dla polityki INSERT violations,
+--                              bo "IN (SELECT code FROM participant_codes)" przestaje
+--                              działać dla anon po odebraniu SELECT
+--   27.3 licznik uczestników → RPC (definer) zwraca tylko LICZBĘ (Live View X/N)
+--   27.4 REVOKE anon SELECT + polityka read tylko dla authenticated (admin)
+-- UWAGA: answers_public_insert ma WITH CHECK (true) — NIE zależy od kodów,
+-- więc zapis odpowiedzi działa bez zmian.
+
+-- 27.1 — walidacja pojedynczego kodu (anon wpisuje własny kod)
+DROP FUNCTION IF EXISTS public.validate_participant_code(TEXT);
+CREATE OR REPLACE FUNCTION public.validate_participant_code(p_code TEXT)
+RETURNS TABLE (id UUID, code TEXT, name TEXT, surname TEXT, city TEXT, used BOOLEAN, session_id UUID)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT id, code, name, surname, city, used, session_id
+  FROM public.participant_codes
+  WHERE code = upper(btrim(p_code))
+  LIMIT 1;
+$$;
+REVOKE EXECUTE ON FUNCTION public.validate_participant_code(TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.validate_participant_code(TEXT) TO anon, authenticated;
+
+-- 27.2 — helper istnienia kodu (definer) dla polityk INSERT
+DROP FUNCTION IF EXISTS public.code_exists(TEXT);
+CREATE OR REPLACE FUNCTION public.code_exists(p_code TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM public.participant_codes WHERE code = p_code);
+$$;
+REVOKE EXECUTE ON FUNCTION public.code_exists(TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.code_exists(TEXT) TO anon, authenticated;
+
+-- przepnij politykę INSERT violations na helper (nie zależy już od SELECT na tabeli)
+DROP POLICY IF EXISTS "violations_anon_insert" ON public.violations;
+CREATE POLICY "violations_anon_insert" ON public.violations FOR INSERT
+  WITH CHECK (public.code_exists(participant_code));
+
+-- 27.3 — licznik uczestników w sesji (anon Live View) → tylko liczba
+DROP FUNCTION IF EXISTS public.count_participants_in_session(TEXT, UUID);
+CREATE OR REPLACE FUNCTION public.count_participants_in_session(p_city TEXT, p_session_id UUID)
+RETURNS INT
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT COUNT(*)::INT FROM public.participant_codes
+  WHERE city = p_city AND used = true
+    AND (p_session_id IS NULL OR session_id = p_session_id);
+$$;
+REVOKE EXECUTE ON FUNCTION public.count_participants_in_session(TEXT, UUID) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.count_participants_in_session(TEXT, UUID) TO anon, authenticated;
+
+-- 27.4 — odbierz anon bezpośredni SELECT i zawęź odczyt do authenticated (admin)
+REVOKE SELECT ON public.participant_codes FROM anon;
+DROP POLICY IF EXISTS "codes_public_read" ON public.participant_codes;
+CREATE POLICY "codes_authenticated_read" ON public.participant_codes FOR SELECT
+  TO authenticated USING (true);
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

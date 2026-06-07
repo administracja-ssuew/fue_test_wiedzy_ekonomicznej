@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
   getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerSummary, getLiveAnswerCount, getQuestions,
-  getParticipantsInSession,
+  getParticipantCount,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import { REVEAL_SECONDS, projectLiveState } from "../lib/gameLogic.js";
@@ -146,12 +146,13 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   }, []);
 
   // Liczba uczestników w sesji (do licznika "X/N" na Live View). Wolno się zmienia
-  // → odpyt co 5 s. Anon może czytać participant_codes (codes_public_read).
+  // → odpyt co 5 s. Tylko liczba przez SECURITY DEFINER RPC — anon nie czyta
+  // kodów/nazwisk (hardening, sekcja 27).
   useEffect(() => {
     if (!city) return;
     const fetchTotal = () => {
       const sid = sessionRef.current?.id;
-      if (sid) getParticipantsInSession(city, sid).then((p) => setParticipantsTotal(p.length));
+      if (sid) getParticipantCount(city, sid).then(setParticipantsTotal);
     };
     fetchTotal();
     const iv = setInterval(fetchTotal, 5000);

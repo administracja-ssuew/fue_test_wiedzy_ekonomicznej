@@ -270,12 +270,20 @@ export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx, le
     }
     return { startedAt: null, error: null };
   }
-  const { data, error } = await supabase.rpc("advance_session_question", {
+  let { data, error } = await supabase.rpc("advance_session_question", {
     p_session_id:   sessionId,
     p_expected_idx: expectedIdx,
     p_next_idx:     nextIdx,
     p_lead_seconds: leadSeconds,
   });
+  // Miękki fallback: jeśli na bazie nie ma jeszcze 4-arg wersji (sekcja 26 nie
+  // wgrana), nie zawieszaj quizu — wywołaj starą 3-arg (stały lead 4 s, bez
+  // ekranu zapowiedzi modułu).
+  if (error && (error.code === "PGRST202" || /Could not find the function/i.test(error.message || ""))) {
+    ({ data, error } = await supabase.rpc("advance_session_question", {
+      p_session_id: sessionId, p_expected_idx: expectedIdx, p_next_idx: nextIdx,
+    }));
+  }
   if (error) return { startedAt: null, error: error.message };
   // data is the returned TIMESTAMPTZ string, or null if this client lost the race
   return { startedAt: data || null, error: null };
@@ -411,7 +419,8 @@ export async function getSessionResults(sessionId) {
   // Ranking wg liczby poprawnych odpowiedzi (bez punktów); remis → krótszy średni czas.
   const { data } = await supabase.rpc("get_session_results", { p_session_id: sessionId });
   if (!data) return [];
-  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count), total: Number(r.total_count), avgResponseTime: r.avg_response_time_s ?? null }));
+  // Number(...)||0 — chroni przed NaN gdy sekcja 25 nie wgrana (stary total_points).
+  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count) || 0, total: Number(r.total_count) || 0, avgResponseTime: r.avg_response_time_s ?? null }));
 }
 
 // Live stats for current question (admin panel).

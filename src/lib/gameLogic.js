@@ -60,7 +60,7 @@ export function projectLiveState({ session: s, questions: qs, modules, now = Dat
   if (elapsed < 0) {
     // cdNum: liczba do startu (sekundy). Dla zwykłego pytania mapuje się na 3-2-1-START;
     // dla pierwszego pytania modułu trwa do MODULE_INTRO_SECONDS (ekran zapowiedzi).
-    return { phase: "quiz", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: Math.max(0, Math.ceil(-elapsed) - 1), secsToStart: Math.ceil(-elapsed), firstOfModule };
+    return { phase: "quiz", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: Math.max(0, Math.ceil(-elapsed) - 1), firstOfModule };
   }
   if (elapsed < tpq) {
     return { phase: "quiz", idx, timer: remainingSeconds(tpq, startedMs, now), autoSec: REVEAL_SECONDS, cdNum: null, firstOfModule };

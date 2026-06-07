@@ -460,9 +460,14 @@ export default function App() {
     setAllAnswers(priorAnswers);
     setMyPts(priorAnswers.reduce((sum, a) => sum + (a.pts || 0), 0));
 
-    // Show countdown when q_started_at is in the future — only happens on fresh start
-    // because start_quiz_session sets q_started_at = clock_timestamp() + 4s.
-    // Reconnects/refreshes have a past q_started_at so they skip straight to quiz.
+    // Ustal moduł/pytanie z sesji ZANIM pokażemy ekran odliczania — dzięki temu
+    // zapowiedź modułu (qIdx===0) pokazuje właściwy moduł, także przy reconnekcie
+    // w trakcie późniejszego modułu (a nie zawsze "Moduł 1").
+    const synced = !!(session?.q_started_at && syncToSession(session, dbQs));
+
+    // Ekran odliczania, gdy q_started_at jest w przyszłości. Start modułu ma lead
+    // 30 s (ekran zapowiedzi modułu); zwykłe pytanie 4 s (3-2-1). Reconnect/refresh
+    // ma q_started_at w przeszłości → od razu pytanie.
     const qStartedAtMs = session?.q_started_at ? new Date(session.q_started_at).getTime() : null;
     if (qStartedAtMs && qStartedAtMs > Date.now()) {
       setScreen("countdown");
@@ -480,11 +485,7 @@ export default function App() {
       });
     }
 
-    // Admin ustawił q_started_at → idź od razu do pytania (bez kliku uczestnika)
-    if (session?.q_started_at && syncToSession(session, dbQs)) {
-      setScreen("quiz");
-      return;
-    }
+    if (synced) { setScreen("quiz"); return; }
 
     // Fallback — sesja bez q_started_at (edge case: admin nie kliknął start)
     setCurrentMod(1); setQIdx(0);

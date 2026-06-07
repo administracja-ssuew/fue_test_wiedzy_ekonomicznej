@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
 import { calcPts, getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
+import { serverNow, startServerClock } from "./lib/serverClock.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -65,6 +66,10 @@ export default function App() {
     return p.get("live") === "1" ? { city: p.get("city") || "" } : null;
   }, []);
 
+  // Zegar serwera — zmierz offset raz na starcie i odświeżaj okresowo, by wszystkie
+  // ekrany liczyły timery z tego samego "teraz" (sync co do sekundy).
+  useEffect(() => startServerClock(), []);
+
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
   useEffect(() => { qIdxRef.current = qIdx; }, [qIdx]);
@@ -115,7 +120,7 @@ export default function App() {
     const globalIdx = Math.min(session.current_question_idx || 0, questions.length - 1);
     const state = getQuestionState(globalIdx, questions);
     if (!state) return false;
-    const elapsed    = Math.max(0, Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000));
+    const elapsed    = Math.max(0, Math.floor((serverNow() - new Date(session.q_started_at).getTime()) / 1000));
     const remaining  = Math.max(1, state.mod.timePerQ - elapsed);
     qStartedAtRef.current  = session.q_started_at;
     modTimePerQRef.current = state.mod.timePerQ;
@@ -140,11 +145,13 @@ export default function App() {
         });
         return;
       }
-      // Same canonical formula as the spectator projection → identical second on every screen.
-      const remaining  = remainingSeconds(modTimePerQRef.current, new Date(startedAt).getTime());
+      // Same canonical formula AND same clock (serverNow) as the spectator projection
+      // → identyczna sekunda na każdym ekranie, niezależnie od zegara urządzenia.
+      // Tick 250 ms (jak Live View), by przeskok sekundy następował w tej samej chwili.
+      const remaining  = remainingSeconds(modTimePerQRef.current, new Date(startedAt).getTime(), serverNow());
       setTimer(remaining);
       if (remaining <= 0) { clearInterval(timerRef.current); handleTimeout(); }
-    }, 1000);
+    }, 250);
     return () => clearInterval(timerRef.current);
   }, [screen, currentMod, qIdx]);
 
@@ -158,8 +165,9 @@ export default function App() {
     if (screen !== "quiz") return;
     const tick = () => {
       const startedAt = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
-      if (startedAt && startedAt > Date.now()) {
-        setCountdownNum(Math.max(0, Math.ceil((startedAt - Date.now()) / 1000) - 1));
+      const now = serverNow();
+      if (startedAt && startedAt > now) {
+        setCountdownNum(Math.max(0, Math.ceil((startedAt - now) / 1000) - 1));
       } else {
         setCountdownNum((n) => (n === null ? n : null));
       }
@@ -189,7 +197,7 @@ export default function App() {
       if (s.status === "running" && cur === "admin_pause") {
         if (s.q_started_at) {
           qStartedAtRef.current = s.q_started_at;
-          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
+          const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
           setTimer(Math.max(1, modTimePerQRef.current - elapsed));
         } else {
           qStartedAtRef.current = null;
@@ -219,7 +227,7 @@ export default function App() {
       // the admin_pause screen). "Fresh" = started ≤2s ago, so resume never matches here.
       if (cur === "quiz" && s.current_question_idx === myGlobalIdx && s.q_started_at &&
           qStartedAtRef.current && s.q_started_at !== qStartedAtRef.current) {
-        const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
+        const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
         if (elapsed <= 2) {
           qStartedAtRef.current = s.q_started_at;
           setTimer(modTimePerQRef.current || 60);
@@ -238,7 +246,7 @@ export default function App() {
       if (s.current_question_idx > myGlobalIdx) {
         const state = getQuestionState(s.current_question_idx, questions);
         if (state) {
-          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
+          const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
           const remaining = Math.max(1, state.mod.timePerQ - elapsed);
           qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
           // Do NOT clearInterval here — the timer effect handles its own lifecycle when
@@ -250,7 +258,7 @@ export default function App() {
       } else if (s.current_question_idx === myGlobalIdx && !qStartedAtRef.current && s.q_started_at) {
         const state = getQuestionState(myGlobalIdx, questions);
         if (state) {
-          const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
+          const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
           const remaining = Math.max(1, state.mod.timePerQ - elapsed);
           qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
           setTimer(remaining);
@@ -371,7 +379,7 @@ export default function App() {
       // (winner gets the server timestamp; losers pick it up via the countdown effect
       // once Realtime delivers it). Avoids a 1-frame flash of the question.
       const startedMs = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
-      setCountdownNum(startedMs && startedMs > Date.now() ? Math.max(0, Math.ceil((startedMs - Date.now()) / 1000) - 1) : null);
+      setCountdownNum(startedMs && startedMs > serverNow() ? Math.max(0, Math.ceil((startedMs - serverNow()) / 1000) - 1) : null);
 
       setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
     } else {
@@ -469,16 +477,16 @@ export default function App() {
     // 30 s (ekran zapowiedzi modułu); zwykłe pytanie 4 s (3-2-1). Reconnect/refresh
     // ma q_started_at w przeszłości → od razu pytanie.
     const qStartedAtMs = session?.q_started_at ? new Date(session.q_started_at).getTime() : null;
-    if (qStartedAtMs && qStartedAtMs > Date.now()) {
+    if (qStartedAtMs && qStartedAtMs > serverNow()) {
       setScreen("countdown");
       await new Promise((resolve) => {
         const tick = () => {
-          const msLeft = qStartedAtMs - Date.now();
+          const msLeft = qStartedAtMs - serverNow();
           if (msLeft > 0) setCountdownNum(Math.max(0, Math.ceil(msLeft / 1000) - 1));
         };
         tick();
         const iv = setInterval(() => {
-          const msLeft = qStartedAtMs - Date.now();
+          const msLeft = qStartedAtMs - serverNow();
           if (msLeft <= 0) { clearInterval(iv); setCountdownNum(null); resolve(); }
           else tick();
         }, 100);
@@ -531,7 +539,7 @@ export default function App() {
     return <Break participant={participant} nextModule={currentMod} isAdminPause sessionId={quizSession?.id} onResume={(s) => {
       if (s?.q_started_at) {
         qStartedAtRef.current = s.q_started_at;
-        const elapsed = Math.max(0, Math.floor((Date.now() - new Date(s.q_started_at).getTime()) / 1000));
+        const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
         setTimer(Math.max(1, modTimePerQRef.current - elapsed));
       } else {
         qStartedAtRef.current = null;
@@ -587,7 +595,7 @@ export default function App() {
         const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx, MODULE_INTRO_SECONDS);
         qStartedAtRef.current = startedAt || null;
         const ms = startedAt ? new Date(startedAt).getTime() : null;
-        if (ms && ms > Date.now()) setCountdownNum(Math.max(0, Math.ceil((ms - Date.now()) / 1000) - 1));
+        if (ms && ms > serverNow()) setCountdownNum(Math.max(0, Math.ceil((ms - serverNow()) / 1000) - 1));
         if (!startedAt) {
           const capturedCity = participant?.city;
           setTimeout(async () => {

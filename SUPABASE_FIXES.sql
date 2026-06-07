@@ -694,6 +694,22 @@ DROP POLICY IF EXISTS "codes_public_read" ON public.participant_codes;
 CREATE POLICY "codes_authenticated_read" ON public.participant_codes FOR SELECT
   TO authenticated USING (true);
 
+-- ─── 28. server_now() — wspólny zegar serwera (sync co do sekundy) ──
+-- Każdy klient (uczestnik, Live View, admin) liczy pozostały czas z
+-- q_started_at MINUS "teraz". Problem: "teraz" to lokalny zegar urządzenia,
+-- a telefony bywają rozjechane o kilka sekund → różne timery na ekranach.
+-- Rozwiązanie: klient mierzy offset (serwer − lokalny) względem tej funkcji
+-- i używa serverNow() = Date.now() + offset wszędzie. Zwraca epoch w ms.
+-- VOLATILE + clock_timestamp() = faktyczny czas wywołania (nie start transakcji).
+
+CREATE OR REPLACE FUNCTION public.server_now()
+RETURNS BIGINT
+LANGUAGE sql VOLATILE SET search_path = public AS $$
+  SELECT (extract(epoch FROM clock_timestamp()) * 1000)::BIGINT;
+$$;
+REVOKE EXECUTE ON FUNCTION public.server_now() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.server_now() TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

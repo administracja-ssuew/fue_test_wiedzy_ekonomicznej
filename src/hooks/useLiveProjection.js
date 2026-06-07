@@ -6,6 +6,7 @@ import {
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import { REVEAL_SECONDS, projectLiveState } from "../lib/gameLogic.js";
+import { serverNow } from "../lib/serverClock.js";
 
 const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";
 
@@ -108,6 +109,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         session: sessionRef.current,
         questions: questionsRef.current,
         modules: modulesRef.current,
+        now: serverNow(), // wspólny zegar — ta sama sekunda co u uczestnika
       });
 
       if (idx !== lastIdxRef.current) {

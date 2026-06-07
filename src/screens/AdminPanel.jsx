@@ -12,6 +12,7 @@ import {
 import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
+import { serverNow } from "../lib/serverClock.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -690,7 +691,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   // przez cofnięcie q_started_at o pełen czas pytania → remaining=0 wszędzie → reveal
   // → normalny auto-advance. Reużywa istniejącego, zsynchronizowanego mechanizmu.
   const goToNextQuestion = () => {
-    const backdated = new Date(Date.now() - curQuestionTimePerQ * 1000).toISOString();
+    const backdated = new Date(serverNow() - curQuestionTimePerQ * 1000).toISOString();
     upd({ status: "running", q_started_at: backdated });
     logEvent({ type: "question_skipped", sessionId: session?.id, city, actor: adminId, detail: { idx: session?.current_question_idx } });
   };
@@ -804,13 +805,13 @@ function SesjaTab({ city, adminId, onPodium }) {
           {st === "running" && <>
             <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => {
               const elapsed = session?.q_started_at
-                ? Math.floor((Date.now() - new Date(session.q_started_at).getTime()) / 1000)
+                ? Math.floor((serverNow() - new Date(session.q_started_at).getTime()) / 1000)
                 : 0;
               upd({ status: "paused", pause_elapsed_s: elapsed });
             }}>⏸ Pauza</button>
             <button style={C.btn("ghost")} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={() => {
               if (!confirm("Powtórzyć bieżące pytanie? Czas zostanie zresetowany dla wszystkich uczestników (na tym samym pytaniu).")) return;
-              const startedAt = new Date().toISOString();
+              const startedAt = new Date(serverNow()).toISOString();
               // Same question index, fresh q_started_at → participants restart the timer.
               upd({ status: "running", q_started_at: startedAt, pause_elapsed_s: null });
               logEvent({ type: "question_repeated", sessionId: session.id, city, actor: adminId, detail: { idx: sessionRef.current?.current_question_idx } });
@@ -827,7 +828,7 @@ function SesjaTab({ city, adminId, onPodium }) {
           {st === "paused" && <>
             <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={() => {
               const pe = sessionRef.current?.pause_elapsed_s ?? 0;
-              const newStartedAt = new Date(Date.now() - pe * 1000).toISOString();
+              const newStartedAt = new Date(serverNow() - pe * 1000).toISOString();
               upd({ status: "running", q_started_at: newStartedAt, pause_elapsed_s: null });
             }}>▶ Wznów quiz</button>
             <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>

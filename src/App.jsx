@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
-import { calcPts, getModule, REVEAL_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
+import { calcPts, getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
@@ -19,6 +19,7 @@ import AdminPanel  from "./screens/AdminPanel.jsx";
 import Podium      from "./screens/Podium.jsx";
 import LiveView    from "./screens/LiveView.jsx";
 import Countdown   from "./screens/Countdown.jsx";
+import ModuleIntroFS from "./screens/ModuleIntroFS.jsx";
 
 export default function App() {
   const [screen, setScreen] = useState("welcome");
@@ -459,9 +460,14 @@ export default function App() {
     setAllAnswers(priorAnswers);
     setMyPts(priorAnswers.reduce((sum, a) => sum + (a.pts || 0), 0));
 
-    // Show countdown when q_started_at is in the future — only happens on fresh start
-    // because start_quiz_session sets q_started_at = clock_timestamp() + 4s.
-    // Reconnects/refreshes have a past q_started_at so they skip straight to quiz.
+    // Ustal moduł/pytanie z sesji ZANIM pokażemy ekran odliczania — dzięki temu
+    // zapowiedź modułu (qIdx===0) pokazuje właściwy moduł, także przy reconnekcie
+    // w trakcie późniejszego modułu (a nie zawsze "Moduł 1").
+    const synced = !!(session?.q_started_at && syncToSession(session, dbQs));
+
+    // Ekran odliczania, gdy q_started_at jest w przyszłości. Start modułu ma lead
+    // 30 s (ekran zapowiedzi modułu); zwykłe pytanie 4 s (3-2-1). Reconnect/refresh
+    // ma q_started_at w przeszłości → od razu pytanie.
     const qStartedAtMs = session?.q_started_at ? new Date(session.q_started_at).getTime() : null;
     if (qStartedAtMs && qStartedAtMs > Date.now()) {
       setScreen("countdown");
@@ -479,11 +485,7 @@ export default function App() {
       });
     }
 
-    // Admin ustawił q_started_at → idź od razu do pytania (bez kliku uczestnika)
-    if (session?.q_started_at && syncToSession(session, dbQs)) {
-      setScreen("quiz");
-      return;
-    }
+    if (synced) { setScreen("quiz"); return; }
 
     // Fallback — sesja bez q_started_at (edge case: admin nie kliknął start)
     setCurrentMod(1); setQIdx(0);
@@ -561,7 +563,9 @@ export default function App() {
   );
 
   if (screen === "countdown")
-    return <Countdown num={countdownNum} />;
+    return qIdx === 0
+      ? <ModuleIntroFS mod={mod} secondsLeft={countdownNum} />
+      : <Countdown num={countdownNum} />;
 
   if (screen === "lobby")
     return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
@@ -579,7 +583,8 @@ export default function App() {
         // we pass globalIdx - 1 as expected so any client at idx-1 can advance to globalIdx.
         // For module 1, the admin wrote q_started_at via "Start quizu" — no race here.
         // For subsequent modules, previous question was globalIdx-1.
-        const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx);
+        // Pierwsze pytanie modułu → lead = 30 s (ekran zapowiedzi modułu).
+        const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx, MODULE_INTRO_SECONDS);
         qStartedAtRef.current = startedAt || null;
         const ms = startedAt ? new Date(startedAt).getTime() : null;
         if (ms && ms > Date.now()) setCountdownNum(Math.max(0, Math.ceil((ms - Date.now()) / 1000) - 1));
@@ -598,10 +603,12 @@ export default function App() {
       }
     }} />;
 
-  // Pre-question countdown overlay (between questions): question start is still in
-  // the future → show 3→2→1→START instead of the question, synced via q_started_at.
+  // Pre-question overlay: start jest w przyszłości. Dla pierwszego pytania modułu
+  // (qIdx===0, lead 30 s) pokazujemy zapowiedź modułu; w innym wypadku 3→2→1→START.
   if (screen === "quiz" && countdownNum !== null)
-    return <Countdown num={countdownNum} />;
+    return qIdx === 0
+      ? <ModuleIntroFS mod={mod} secondsLeft={countdownNum} />
+      : <Countdown num={countdownNum} />;
 
   if (screen === "quiz" && currentQ && mod)
     return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;

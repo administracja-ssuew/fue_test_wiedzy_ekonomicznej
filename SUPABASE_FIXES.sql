@@ -586,6 +586,55 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
 
+-- ─── 26. Zapowiedź modułu 30s (lead konfigurowalny) ─────────────
+-- advance_session_question dostaje p_lead_seconds (domyślnie 4 = zwykłe
+-- odliczanie 3-2-1). Dla PIERWSZEGO pytania modułu klient podaje 30 → wszyscy
+-- (uczestnik + Live View) widzą 30s zapowiedź modułu liczoną z q_started_at.
+-- start_quiz_session też używa 30s (zapowiedź modułu 1).
+
+DROP FUNCTION IF EXISTS public.advance_session_question(UUID, INT, INT);
+DROP FUNCTION IF EXISTS public.advance_session_question(UUID, INT, INT, INT);
+CREATE OR REPLACE FUNCTION public.advance_session_question(
+  p_session_id   UUID,
+  p_expected_idx INT,
+  p_next_idx     INT,
+  p_lead_seconds INT DEFAULT 4
+)
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_start TIMESTAMPTZ := clock_timestamp() + (GREATEST(p_lead_seconds, 0) || ' seconds')::interval;
+BEGIN
+  UPDATE public.quiz_sessions
+  SET current_question_idx = p_next_idx, q_started_at = v_start, status = 'running'
+  WHERE id = p_session_id
+    AND current_question_idx = p_expected_idx
+    AND status = 'running';
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT, INT) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_start TIMESTAMPTZ := clock_timestamp() + interval '30 seconds';  -- zapowiedź modułu 1
+BEGIN
+  UPDATE public.quiz_sessions
+  SET status = 'running', q_started_at = v_start, current_question_idx = 0
+  WHERE id = p_session_id AND status = 'waiting';
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

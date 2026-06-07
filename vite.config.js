@@ -58,6 +58,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.js"],
     // Exclude git worktrees (created by tooling under .claude) so tests don't run twice.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**"],
+    // e2e/ uses Playwright's own runner (npm run e2e) — exclude from vitest.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**", "**/e2e/**"],
   },
 })

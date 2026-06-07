@@ -34,6 +34,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const [liveCount, setLiveCount] = useState(0);
   const [participantsTotal, setParticipantsTotal] = useState(0);
   const [cdNum, setCdNum]         = useState(null);
+  const [firstOfModule, setFirstOfModule] = useState(false);
   const [questions, setQuestions] = useState([]);
 
   const sessionRef       = useRef(null);
@@ -103,7 +104,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     };
 
     const tick = () => {
-      const { phase: p, idx, timer: t, autoSec: a, cdNum: cd } = projectLiveState({
+      const { phase: p, idx, timer: t, autoSec: a, cdNum: cd, firstOfModule: fom } = projectLiveState({
         session: sessionRef.current,
         questions: questionsRef.current,
         modules: modulesRef.current,
@@ -117,6 +118,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       setGIdx(idx);
       setPhase(p);
       setCdNum(cd);
+      setFirstOfModule(!!fom);
       if (p === "quiz") setTimer(t);
       if (p === "reveal") {
         setAutoSec(a);
@@ -160,5 +162,5 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
   const timePerQ = mod?.timePerQ || 60;
 
-  return { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, liveCount, participantsTotal, bg };
+  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, liveCount, participantsTotal, bg };
 }

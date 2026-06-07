@@ -1174,11 +1174,18 @@ function LiveTab({ city }) {
   // Pure projection of DB state — same hook as the standalone LiveView, so the
   // admin embed stays perfectly in sync with participants (incl. pause/resume,
   // live module times and the 5s reveal countdown). No local quiz state machine.
-  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, reveal, liveCount, participantsTotal } =
+  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, liveCount, participantsTotal } =
     useLiveProjection(city, { detailed: true });
 
-  // During the pre-question countdown show 3→2→1→START instead of revealing the
-  // next question early — keeps the embed in step with participants/LiveView.
+  // Odliczanie: dla pierwszego pytania modułu zapowiedź modułu (30 s), w innym
+  // wypadku zwykłe 3→2→1→START. Zsynchronizowane z uczestnikami / Live View.
+  if (cdNum !== null && firstOfModule) return (
+    <div style={{ textAlign: "center", padding: "40px 0" }}>
+      <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 2, textTransform: "uppercase" }}>Następny moduł{cdNum > 0 ? ` · start za ${cdNum}s` : ""}</p>
+      <p style={{ fontSize: 30, marginTop: 8 }}>{mod?.icon}</p>
+      <p style={{ fontFamily: '"Bebas Neue"', fontSize: 40, color: mod?.color || "#F5C518", lineHeight: 1.1 }}>{mod?.name}</p>
+    </div>
+  );
   if (cdNum !== null) return (
     <div style={{ textAlign: "center", padding: "48px 0" }}>
       <p style={{ fontSize: 12, color: "#9B89CC", textTransform: "uppercase", letterSpacing: 1 }}>Następne pytanie za</p>

@@ -10,6 +10,11 @@ export const ANSWER_LABELS = ["A", "B", "C", "D"];
 // total przerwy między pytaniami.
 export const REVEAL_SECONDS = 6;
 
+// Długość zapowiedzi modułu (ekran "Moduł X" przed pierwszym pytaniem modułu).
+// Realizowana jako wydłużony lead q_started_at dla pierwszego pytania modułu,
+// więc jest zsynchronizowana między uczestnikiem a Live View.
+export const MODULE_INTRO_SECONDS = 30;
+
 export const cityInfo = (n) => CITIES.find((c) => c.name === n) || { abbr: "?", color: "#888" };
 export const calcPts = (timeLeft, maxTime, correct) =>
   correct ? Math.round(500 + (timeLeft / maxTime) * 500) : 0;
@@ -44,17 +49,21 @@ export function projectLiveState({ session: s, questions: qs, modules, now = Dat
   const q   = qs[idx];
   const m   = (modules || []).find((mm) => mm.id === q?.module);
   const tpq = m?.timePerQ || 60;
+  // Czy to pierwsze pytanie swojego modułu → podczas odliczania pokazujemy zapowiedź modułu.
+  const firstOfModule = qs.filter((x) => x.module === q?.module).findIndex((x) => x.id === q?.id) === 0;
 
-  if (s.status === "paused")  return { phase: "paused", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: null };
-  if (!s.q_started_at)        return { phase: "quiz",   idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: null };
+  if (s.status === "paused")  return { phase: "paused", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: null, firstOfModule };
+  if (!s.q_started_at)        return { phase: "quiz",   idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: null, firstOfModule };
 
   const startedMs = new Date(s.q_started_at).getTime();
   const elapsed = (now - startedMs) / 1000;
   if (elapsed < 0) {
-    return { phase: "quiz", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: Math.max(0, Math.ceil(-elapsed) - 1) };
+    // cdNum: liczba do startu (sekundy). Dla zwykłego pytania mapuje się na 3-2-1-START;
+    // dla pierwszego pytania modułu trwa do MODULE_INTRO_SECONDS (ekran zapowiedzi).
+    return { phase: "quiz", idx, timer: tpq, autoSec: REVEAL_SECONDS, cdNum: Math.max(0, Math.ceil(-elapsed) - 1), secsToStart: Math.ceil(-elapsed), firstOfModule };
   }
   if (elapsed < tpq) {
-    return { phase: "quiz", idx, timer: remainingSeconds(tpq, startedMs, now), autoSec: REVEAL_SECONDS, cdNum: null };
+    return { phase: "quiz", idx, timer: remainingSeconds(tpq, startedMs, now), autoSec: REVEAL_SECONDS, cdNum: null, firstOfModule };
   }
-  return { phase: "reveal", idx, timer: 0, autoSec: Math.max(0, Math.ceil(tpq + REVEAL_SECONDS - elapsed)), cdNum: null };
+  return { phase: "reveal", idx, timer: 0, autoSec: Math.max(0, Math.ceil(tpq + REVEAL_SECONDS - elapsed)), cdNum: null, firstOfModule };
 }

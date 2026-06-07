@@ -1,5 +1,6 @@
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import Countdown from "./Countdown.jsx";
+import ModuleIntroFS from "./ModuleIntroFS.jsx";
 
 const ANS_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const ANS_LABELS = ["A", "B", "C", "D"];
@@ -8,13 +9,15 @@ const ANS_LABELS = ["A", "B", "C", "D"];
 // shared DB-state projection — stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
   // Public projector — anon, so no per-participant data; aggregate counts only.
-  const { phase, gIdx, timer, autoSec, cdNum, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, liveCount, participantsTotal, bg } =
+  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, liveCount, participantsTotal, bg } =
     useLiveProjection(city);
 
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
-  if (cdNum !== null) return <Countdown num={cdNum} />;
+  if (cdNum !== null) return firstOfModule
+    ? <ModuleIntroFS mod={mod} secondsLeft={cdNum} />
+    : <Countdown num={cdNum} />;
 
   return (
     <div style={{

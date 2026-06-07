@@ -250,7 +250,7 @@ export async function updateSession(sessionId, updates) {
 // Uses optimistic locking so only the first of N concurrent callers wins.
 // Returns { startedAt: string|null } — null means another client already advanced;
 // the caller should wait for the Realtime event instead of setting a local timestamp.
-export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx) {
+export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx, leadSeconds = 4) {
   if (DEMO) {
     // In demo mode simulate the RPC: only advance if current index still matches
     const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
@@ -262,7 +262,7 @@ export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx) {
           if (s.current_question_idx !== expectedIdx || s.status !== "running") {
             return { startedAt: null, error: null }; // lost the race
           }
-          const startedAt = new Date().toISOString();
+          const startedAt = new Date(Date.now() + Math.max(0, leadSeconds) * 1000).toISOString();
           localStorage.setItem(key, JSON.stringify({ ...s, current_question_idx: nextIdx, q_started_at: startedAt }));
           return { startedAt, error: null };
         }
@@ -274,6 +274,7 @@ export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx) {
     p_session_id:   sessionId,
     p_expected_idx: expectedIdx,
     p_next_idx:     nextIdx,
+    p_lead_seconds: leadSeconds,
   });
   if (error) return { startedAt: null, error: error.message };
   // data is the returned TIMESTAMPTZ string, or null if this client lost the race

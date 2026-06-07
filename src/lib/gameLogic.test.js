@@ -108,6 +108,14 @@ describe("projectLiveState", () => {
     const r = projectLiveState({ session: sess({ current_question_idx: 99, q_started_at: startedAgo(5) }), questions, modules, now: NOW });
     expect(r.idx).toBe(questions.length - 1);
   });
+
+  it("firstOfModule: true tylko dla pierwszego pytania modułu", () => {
+    // questions: q1,q2 = moduł 1; q3 = moduł 2
+    const at = (idx) => projectLiveState({ session: sess({ current_question_idx: idx, q_started_at: startedAgo(5) }), questions, modules, now: NOW }).firstOfModule;
+    expect(at(0)).toBe(true);   // pierwsze w module 1
+    expect(at(1)).toBe(false);  // drugie w module 1
+    expect(at(2)).toBe(true);   // pierwsze w module 2
+  });
 });
 
 describe("remainingSeconds — timing precision", () => {

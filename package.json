@@ -16,6 +16,7 @@
     "verify-prod": "vite-node scripts/verify-prod.js",
     "verify-mark": "vite-node scripts/verify-mark.js",
     "verify-realtime": "vite-node scripts/verify-realtime.js",
+    "verify-clock": "vite-node scripts/verify-clock.js",
     "e2e": "playwright test",
     "report": "node scripts/report.js"
   },

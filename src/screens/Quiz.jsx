@@ -135,9 +135,9 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
 
       <div style={{ padding: "0 14px 10px" }}>
         {picked !== null && !answered ? (
-          <div style={{ background: "rgba(16,217,160,.12)", border: "1px solid rgba(16,217,160,.4)", borderRadius: 12, padding: "11px 14px", textAlign: "center" }}>
-            <p style={{ fontSize: 14, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {currentQ.opts[picked]}</p>
-            <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 3 }}>Odpowiedź jest <strong style={{ color: "#EDE9FE" }}>ostateczna</strong> — nie można jej zmienić.</p>
+          <div style={{ background: "rgba(16,217,160,.18)", border: "2px solid rgba(16,217,160,.6)", borderRadius: 14, padding: "16px 16px", textAlign: "center" }}>
+            <p style={{ fontSize: 17, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {currentQ.opts[picked]}</p>
+            <p style={{ fontSize: 14, color: "#EDE9FE", marginTop: 6, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> — nie można jej zmienić.</p>
           </div>
         ) : (
           <p style={{ fontSize: 12, color: "#9B89CC", textAlign: "center" }}>Poprawne odpowiedzi: <strong style={{ color: "#10D9A0" }}>{correctCount}</strong> / {total}</p>

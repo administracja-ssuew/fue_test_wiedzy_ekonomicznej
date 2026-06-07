@@ -48,11 +48,11 @@ function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
         <div>
           {podStep < 3 ? (
             <button style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "16px", fontSize: 15, fontWeight: 700, width: "100%", cursor: "pointer" }} onClick={() => setPodStep((s) => s + 1)}>
-              {podStep === 0 ? "🎯 Pokaż 3. miejsce" : podStep === 1 ? "🥈 Pokaż 2. miejsce" : "🥇 Pierwsze miejsce!"}
+              {podStep === 0 ? "Pokaż 3. miejsce" : podStep === 1 ? "🥈 Pokaż 2. miejsce" : "🥇 Pierwsze miejsce!"}
             </button>
           ) : (
             <div style={{ textAlign: "center" }}>
-              <p style={{ color: "#9B89CC", fontSize: 13, marginBottom: 14 }}>Gratulacje dla wszystkich uczestników! 🎉</p>
+              <p style={{ color: "#9B89CC", fontSize: 13, marginBottom: 14 }}>Gratulacje dla wszystkich uczestników!</p>
               <button style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "13px 32px", color: "#C4B5FD", fontSize: 14, cursor: "pointer" }} onClick={onBack}>
                 Wróć do panelu
               </button>

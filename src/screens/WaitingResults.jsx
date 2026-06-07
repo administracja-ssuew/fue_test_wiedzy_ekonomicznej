@@ -54,7 +54,7 @@ export default function WaitingResults({ participant, onReveal }) {
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#F5C518", animation: "pulse 1.5s infinite" }} />
           <span style={{ fontSize: 13, color: "#9B89CC" }}>Oczekiwanie na ogłoszenie{dots}</span>
         </div>
-        <p style={{ fontSize: 11, color: "rgba(155,137,204,.3)", marginTop: 28 }}>🐐 Forum Uczelni Ekonomicznych</p>
+        <p style={{ fontSize: 11, color: "rgba(155,137,204,.3)", marginTop: 28 }}>Forum Uczelni Ekonomicznych</p>
       </div>
     </div>
   );

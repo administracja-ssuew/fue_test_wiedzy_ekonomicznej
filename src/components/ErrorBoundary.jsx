@@ -33,7 +33,7 @@ export default class ErrorBoundary extends Component {
         fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", padding: 28, textAlign: "center",
       }}>
         <div style={{ maxWidth: 380, width: "100%" }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>😵‍💫</div>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>⚠️</div>
           <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 38, letterSpacing: 1, color: "#F5C518", marginBottom: 12 }}>
             Coś poszło nie tak
           </h2>

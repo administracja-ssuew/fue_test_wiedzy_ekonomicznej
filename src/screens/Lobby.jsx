@@ -6,7 +6,6 @@ import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
 // Broadcast presence so the admin lobby counter shows real-time waiting count
 import { useModules } from "../context/ModulesContext.jsx";
 
-const CITY_ICONS = { Kraków: "🏰", Warszawa: "🏛️", Poznań: "🐐", Wrocław: "🦌", Katowice: "⚙️" };
 
 export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz, onPractice }) {
   const MODULES = useModules();
@@ -123,7 +122,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
             <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: isDesktop ? 48 : 34, letterSpacing: 1 }}>Test Wiedzy Ekonomicznej</h2>
           </div>
           <div style={{ background: `${color}20`, border: `1px solid ${color}40`, borderRadius: 14, padding: "10px 16px", textAlign: "center" }}>
-            <p style={{ fontSize: 20 }}>{CITY_ICONS[city] || "🎓"}</p>
+            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, fontWeight: 700, color, letterSpacing: 1 }}>{cityInfo(city).abbr}</p>
             <p style={{ fontSize: 12, fontWeight: 700, color, marginTop: 4 }}>{city}</p>
           </div>
         </div>

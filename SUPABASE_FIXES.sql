@@ -710,6 +710,159 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.server_now() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.server_now() TO anon, authenticated;
 
+-- ─── 29. PEŁNA WALIDACJA SERWEROWA (integralność wyników + ukrycie ans) ──
+-- Zamyka ustalenia audytu:
+--   M-1: anon mógł wstawiać dowolne answers (WITH CHECK true) → manipulacja rankingu
+--   M-2: poprawna odpowiedź (ans) szła do klienta → dało się zawsze odpowiadać dobrze
+--   H-1: każdy 'authenticated' mógł wołać RPC admina (tylko auth.uid(), bez roli)
+-- Po wgraniu zapis odpowiedzi idzie WYŁĄCZNIE przez submit_answer (liczy is_correct
+-- serwerowo), a anon nie dostaje ans przy pobieraniu pytań.
+
+-- 29.1 — get_quiz_questions: pytania do gry; ans TYLKO dla admina (anon → NULL)
+DROP FUNCTION IF EXISTS public.get_quiz_questions(TEXT);
+CREATE OR REPLACE FUNCTION public.get_quiz_questions(p_city TEXT)
+RETURNS TABLE (id UUID, city TEXT, module INT, q TEXT, opts TEXT[], ans INT, exp TEXT, is_practice BOOLEAN, sort_order INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT id, city, module, q, opts,
+         CASE WHEN public.get_my_role() IN ('city_admin','superadmin') THEN ans ELSE NULL END,
+         exp, is_practice, sort_order
+  FROM public.questions
+  WHERE city = p_city AND is_practice = false
+  ORDER BY module, sort_order;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_quiz_questions(TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_quiz_questions(TEXT) TO anon, authenticated;
+
+-- 29.1b — get_practice_questions: tryb próbny (osobisty, bez rywalizacji) → ans OK.
+DROP FUNCTION IF EXISTS public.get_practice_questions(TEXT);
+CREATE OR REPLACE FUNCTION public.get_practice_questions(p_city TEXT)
+RETURNS TABLE (id UUID, city TEXT, module INT, q TEXT, opts TEXT[], ans INT, exp TEXT, is_practice BOOLEAN, sort_order INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT id, city, module, q, opts, ans, exp, is_practice, sort_order
+  FROM public.questions
+  WHERE city = p_city AND is_practice = true
+  ORDER BY module, sort_order;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_practice_questions(TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_practice_questions(TEXT) TO anon, authenticated;
+
+-- 29.1c — odbierz anon bezpośredni SELECT na questions (czytałby ans z pominięciem RPC).
+-- Gra i praktyka idą teraz przez powyższe RPC (SECURITY DEFINER). Admin (authenticated)
+-- ma nadal pełny dostęp z sekcji 6 (GRANT ALL ... TO authenticated).
+REVOKE SELECT ON public.questions FROM anon;
+
+-- 29.2 — submit_answer: poprawność liczona SERWEROWO; zwraca correct_ans
+-- (bezpiecznie — wiersz jest 'ostateczny' przez ON CONFLICT DO NOTHING, więc znajomość
+--  correct_ans po zapisie nie pozwala zmienić odpowiedzi).
+DROP FUNCTION IF EXISTS public.submit_answer(UUID, TEXT, TEXT, UUID, INT);
+CREATE OR REPLACE FUNCTION public.submit_answer(
+  p_session_id UUID, p_code TEXT, p_name TEXT, p_question_id UUID, p_chosen INT
+) RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_ans INT; v_module INT; v_city TEXT; v_started TIMESTAMPTZ; v_is_correct BOOLEAN; v_rt INT;
+BEGIN
+  IF NOT public.code_exists(p_code) THEN RAISE EXCEPTION 'invalid code'; END IF;
+  SELECT ans, module, city INTO v_ans, v_module, v_city FROM public.questions WHERE id = p_question_id;
+  IF v_ans IS NULL THEN RAISE EXCEPTION 'invalid question'; END IF;
+  SELECT q_started_at INTO v_started FROM public.quiz_sessions WHERE id = p_session_id;
+  v_rt := CASE WHEN v_started IS NOT NULL
+            THEN GREATEST(0, FLOOR(EXTRACT(epoch FROM (clock_timestamp() - v_started))))::INT
+            ELSE NULL END;
+  v_is_correct := (p_chosen IS NOT NULL AND p_chosen = v_ans);
+  INSERT INTO public.answers (session_id, participant_code, participant_name, city, question_id, module, chosen, is_correct, points, response_time_s)
+  VALUES (p_session_id, p_code, p_name, v_city, p_question_id, v_module, p_chosen, v_is_correct, 0, v_rt)
+  ON CONFLICT (session_id, participant_code, question_id) DO NOTHING;
+  RETURN json_build_object('is_correct', v_is_correct, 'correct_ans', v_ans);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) TO anon, authenticated;
+
+-- 29.3 — odbierz anon bezpośredni INSERT na answers (zapis tylko przez submit_answer)
+REVOKE INSERT ON public.answers FROM anon;
+DROP POLICY IF EXISTS "answers_public_insert" ON public.answers;
+
+-- 29.4 — get_admin_answer_summary: dodaj ans BRAMKOWANE (publiczny LiveView reveal).
+-- ans zwracane tylko gdy pytanie 'odsłonięte': minął jego czas (modules.time_per_q)
+-- jako bieżące pytanie, albo już je minęliśmy, albo sesja ended/results.
+DROP FUNCTION IF EXISTS public.get_admin_answer_summary(UUID, UUID);
+CREATE OR REPLACE FUNCTION public.get_admin_answer_summary(p_session_id UUID, p_question_id UUID)
+RETURNS JSON LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH s AS (
+    SELECT status, q_started_at, current_question_idx, city
+    FROM public.quiz_sessions WHERE id = p_session_id
+  ),
+  o AS (
+    SELECT q.id, q.ans, COALESCE(m.time_per_q, 60) AS tpq,
+           row_number() OVER (ORDER BY q.module, q.sort_order) - 1 AS gidx
+    FROM public.questions q
+    LEFT JOIN public.modules m ON m.id = q.module
+    WHERE q.is_practice = false AND q.city = (SELECT city FROM s)
+  )
+  SELECT json_build_object(
+    'total',   (SELECT COUNT(*)::INT FROM public.answers WHERE session_id = p_session_id AND question_id = p_question_id),
+    'correct', (SELECT COUNT(*) FILTER (WHERE is_correct = true)::INT FROM public.answers WHERE session_id = p_session_id AND question_id = p_question_id),
+    'ans', (
+      SELECT CASE WHEN
+           (SELECT status FROM s) IN ('ended','results')
+        OR o.gidx <  (SELECT current_question_idx FROM s)
+        OR ( o.gidx = (SELECT current_question_idx FROM s)
+             AND (SELECT q_started_at FROM s) IS NOT NULL
+             AND clock_timestamp() >= (SELECT q_started_at FROM s) + (o.tpq || ' seconds')::interval )
+      THEN o.ans ELSE NULL END
+      FROM o WHERE o.id = p_question_id
+    )
+  );
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID) TO anon, authenticated;
+
+-- 29.5 — H-1: kontrola ROLI w RPC admina (nie wystarczy 'authenticated').
+-- Admini mają poprawne auth.uid()+rolę, więc to bezpieczne (gotcha z auth.uid()=NULL
+-- dotyczy funkcji wołanych przez ANON, nie tych admina). [[supabase-auth-uid-null-gotcha]]
+
+CREATE OR REPLACE FUNCTION public.update_quiz_session_admin(p_session_id UUID, p_data JSONB)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  UPDATE public.quiz_sessions SET
+    status               = CASE WHEN p_data ? 'status'               THEN p_data->>'status'                      ELSE status               END,
+    q_started_at         = CASE WHEN p_data ? 'q_started_at'         THEN (p_data->>'q_started_at')::TIMESTAMPTZ  ELSE q_started_at         END,
+    pause_elapsed_s      = CASE WHEN p_data ? 'pause_elapsed_s'      THEN (p_data->>'pause_elapsed_s')::INT       ELSE pause_elapsed_s      END,
+    current_question_idx = CASE WHEN p_data ? 'current_question_idx' THEN (p_data->>'current_question_idx')::INT  ELSE current_question_idx END
+  WHERE id = p_session_id;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
+RETURNS TIMESTAMPTZ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_start TIMESTAMPTZ := clock_timestamp() + interval '30 seconds';
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  UPDATE public.quiz_sessions
+    SET status = 'running', q_started_at = v_start, current_question_idx = 0
+    WHERE id = p_session_id AND status = 'waiting';
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
+-- get_session_results: ranking widoczny tylko dla admina (filtr roli w WHERE → brak roli = 0 wierszy)
+DROP FUNCTION IF EXISTS public.get_session_results(UUID);
+CREATE OR REPLACE FUNCTION public.get_session_results(p_session_id UUID)
+RETURNS TABLE (participant_code TEXT, participant_name TEXT, city TEXT, correct_count BIGINT, total_count BIGINT, avg_response_time_s INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT participant_code, participant_name, city,
+    COUNT(*) FILTER (WHERE is_correct = true)::BIGINT,
+    COUNT(*)::BIGINT,
+    ROUND(AVG(response_time_s))::INT
+  FROM public.answers
+  WHERE session_id = p_session_id
+    AND public.get_my_role() IN ('city_admin','superadmin')
+  GROUP BY participant_code, participant_name, city
+  ORDER BY COUNT(*) FILTER (WHERE is_correct = true) DESC, ROUND(AVG(response_time_s)) ASC NULLS LAST;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

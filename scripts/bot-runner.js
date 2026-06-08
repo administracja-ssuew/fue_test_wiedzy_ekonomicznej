@@ -19,7 +19,7 @@ import {
   getModules, updateModule,
   getOrCreateSession, updateSession, endAndResetSession,
   validateParticipantCode, markCodeUsed,
-  saveAnswer, getSessionResults,
+  submitAnswer, getSessionResults,
 } from "../src/lib/supabase.js";
 
 // Service role client — bypasses RLS, no auth needed
@@ -305,7 +305,8 @@ async function phaseQuiz(bots) {
         const pts = calcPts(timeLeft, modInfo.timePerQ, correct);
         botExpected[bot.code] += correct ? 1 : 0;
 
-        const { error } = await saveAnswer({
+        // Zapis przez submit_answer (serwer liczy is_correct). clientCorrect = fallback.
+        const { error } = await submitAnswer({
           sessionId: state.sessionId,
           participantCode: bot.code,
           participantName: bot.name,
@@ -313,10 +314,10 @@ async function phaseQuiz(bots) {
           questionId: q.id,
           module: modId,
           chosen,
-          isCorrect: correct,
-          points: pts,
+          clientCorrect: correct,
+          responseTimeS: modInfo.timePerQ - timeLeft,
         });
-        if (error) throw new Error(`saveAnswer ${bot.code} q${q.id}: ${error}`);
+        if (error) throw new Error(`submitAnswer ${bot.code} q${q.id}: ${error}`);
       }));
 
       process.stdout.write(`  [MOD ${modId} — ${modInfo.name}] Pytanie ${qi + 1}/${modQs.length} ─── ${BOT_COUNT}/${BOT_COUNT} odpowiedzi\n`);

@@ -9,8 +9,11 @@ const ANS_LABELS = ["A", "B", "C", "D"];
 // shared DB-state projection — stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
   // Public projector — anon, so no per-participant data; aggregate counts only.
-  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, liveCount, participantsTotal, bg } =
+  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg } =
     useLiveProjection(city);
+  // Poprawny indeks w reveal: bramkowany z serwera (revealAns) lub fallback ans
+  // (pre-migracja, gdy ans jest jeszcze w pytaniach).
+  const correctIdx = revealAns != null ? revealAns : currentQ?.ans;
 
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
@@ -111,17 +114,17 @@ export default function LiveView({ city }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
               {currentQ.opts.map((opt, i) => (
                 <div key={i} style={{
-                  background: i === currentQ.ans ? "rgba(16,217,160,.25)" : "rgba(255,255,255,.06)",
-                  border: `2px solid ${i === currentQ.ans ? "#10D9A0" : "rgba(255,255,255,.08)"}`,
+                  background: i === correctIdx ? "rgba(16,217,160,.25)" : "rgba(255,255,255,.06)",
+                  border: `2px solid ${i === correctIdx ? "#10D9A0" : "rgba(255,255,255,.08)"}`,
                   borderRadius: 12, padding: "14px 18px",
                   display: "flex", alignItems: "center", gap: 10,
-                  opacity: i === currentQ.ans ? 1 : 0.6,
+                  opacity: i === correctIdx ? 1 : 0.6,
                 }}>
-                  <span style={{ width: 30, height: 30, borderRadius: 8, background: i === currentQ.ans ? "#10D9A0" : "rgba(255,255,255,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: i === currentQ.ans ? "#070215" : "#fff", flexShrink: 0 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: i === correctIdx ? "#10D9A0" : "rgba(255,255,255,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: i === correctIdx ? "#070215" : "#fff", flexShrink: 0 }}>
                     {ANS_LABELS[i]}
                   </span>
-                  <span style={{ fontSize: 15, color: i === currentQ.ans ? "#10D9A0" : "#EDE9FE", fontWeight: i === currentQ.ans ? 700 : 400 }}>{opt}</span>
-                  {i === currentQ.ans && <span style={{ marginLeft: "auto", fontSize: 18 }}>✅</span>}
+                  <span style={{ fontSize: 15, color: i === correctIdx ? "#10D9A0" : "#EDE9FE", fontWeight: i === correctIdx ? 700 : 400 }}>{opt}</span>
+                  {i === correctIdx && <span style={{ marginLeft: "auto", fontSize: 18 }}>✅</span>}
                 </div>
               ))}
             </div>

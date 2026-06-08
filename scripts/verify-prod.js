@@ -99,6 +99,21 @@ async function main() {
     else note("participant_codes — niejednoznaczne", er.message);
   }
 
+  console.log("\n🛡️  SEKCJA 29 (walidacja serwerowa + ukrycie poprawnej odp.):\n");
+  {
+    const { error: eq } = await callRpc("get_quiz_questions", { p_city: "Kraków" });
+    if (isMissing(eq)) bad("get_quiz_questions — BRAK", "→ uruchom sekcję 29");
+    else ok("get_quiz_questions — istnieje", "sekcja 29 (ans ukryte dla anon)");
+    const { error: es } = await callRpc("submit_answer", { p_session_id: DUMMY, p_code: "PROBE-0000", p_name: "x", p_question_id: DUMMY, p_chosen: 0 });
+    // PROBE: kod nie istnieje → RPC rzuci 'invalid code' (P0001), ale to znaczy że ISTNIEJE
+    if (isMissing(es)) bad("submit_answer — BRAK", "→ uruchom sekcję 29");
+    else ok("submit_answer — istnieje", "sekcja 29 (serwerowe is_correct)");
+    const { data: qrows, error: eqr } = await anon.from("questions").select("ans").limit(1);
+    if (isDenied(eqr)) ok("anon NIE czyta questions bezpośrednio", "sekcja 29 — ans niedostępne");
+    else if (!eqr) note("anon WCIĄŻ czyta questions (ans!)", "→ sekcja 29 NIE wgrana");
+    else note("questions — niejednoznaczne", eqr.message);
+  }
+
   console.log("\n" + "─".repeat(56));
   if (fail === 0) console.log(`✅ PRODUKCJA GOTOWA pod kątem SQL (${pass} OK${warn ? `, ${warn} uwag` : ""})`);
   else console.log(`❌ ${fail} PROBLEM(ÓW) — uzupełnij wskazane sekcje SQL na produkcji`);

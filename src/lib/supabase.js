@@ -138,18 +138,31 @@ export async function getQuestions(city) {
   if (DEMO) {
     return JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
   }
-  const { data } = await supabase.from("questions").select("*")
+  // get_quiz_questions (sekcja 29): anon NIE dostaje 'ans' (M-2 — antycheat).
+  // Admin (rola) dostaje ans. Soft-fallback do bezpośredniego selecta, gdy
+  // sekcja 29 nie jest jeszcze wgrana (wtedy ans jest obecne — jak dawniej).
+  const { data, error } = await supabase.rpc("get_quiz_questions", { p_city: city });
+  if (!error) return data || [];
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) return [];
+  const { data: raw } = await supabase.from("questions").select("*")
     .eq("city", city).neq("is_practice", true).order("module").order("sort_order");
-  return data || [];
+  return raw || [];
 }
 
 export async function getPracticeQuestions(city) {
   if (DEMO) {
     return JSON.parse(localStorage.getItem(`fue_practice_${city}`) || "[]");
   }
-  const { data } = await supabase.from("questions").select("*")
+  // RPC (sekcja 29) — anon stracił bezpośredni SELECT na questions. Praktyka ma ans
+  // (tryb osobisty). Soft-fallback do selecta, gdy sekcja 29 nie wgrana.
+  const { data, error } = await supabase.rpc("get_practice_questions", { p_city: city });
+  if (!error) return data || [];
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) return [];
+  const { data: raw } = await supabase.from("questions").select("*")
     .eq("city", city).eq("is_practice", true).order("module").order("sort_order");
-  return data || [];
+  return raw || [];
 }
 
 export async function addQuestion({ city, module, q, opts, ans, exp, createdBy, isPractice = false }) {
@@ -402,6 +415,27 @@ export async function saveAnswer({ sessionId, participantCode, participantName, 
   return { error: error?.message || null };
 }
 
+// Zapis odpowiedzi z SERWEROWĄ walidacją poprawności (sekcja 29): submit_answer
+// liczy is_correct z questions.ans i zwraca correct_ans (do reveala). Anon NIE ma
+// już bezpośredniego INSERT na answers. Soft-fallback do saveAnswer (klientowe
+// isCorrect) gdy sekcja 29 nie wgrana. Zwraca { isCorrect, correctAns, error }.
+export async function submitAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, clientCorrect, responseTimeS }) {
+  if (DEMO) {
+    await saveAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect: !!clientCorrect, points: 0, responseTimeS });
+    return { isCorrect: !!clientCorrect, correctAns: null, error: null };
+  }
+  const { data, error } = await supabase.rpc("submit_answer", {
+    p_session_id: sessionId, p_code: participantCode, p_name: participantName,
+    p_question_id: questionId, p_chosen: chosen,
+  });
+  if (!error) return { isCorrect: !!data?.is_correct, correctAns: data?.correct_ans ?? null, error: null };
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) return { isCorrect: !!clientCorrect, correctAns: null, error: error.message };
+  // Fallback (sekcja 29 nie wgrana): stary bezpośredni zapis, klientowe isCorrect.
+  const { error: e2 } = await saveAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect: !!clientCorrect, points: 0, responseTimeS });
+  return { isCorrect: !!clientCorrect, correctAns: null, error: e2 || null };
+}
+
 // Returns one participant's own answers for a session — used to rebuild local
 // score/breakdown after a page refresh. SECURITY DEFINER RPC scopes rows to the
 // given code only (participants are anon and can't SELECT the answers table).
@@ -482,12 +516,14 @@ export async function getLiveAnswerSummary(sessionId, questionId) {
   if (DEMO) {
     const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
       .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
-    return { total: raw.length, correct: raw.filter((a) => a.isCorrect).length };
+    return { total: raw.length, correct: raw.filter((a) => a.isCorrect).length, ans: null };
   }
+  // ans: poprawna odpowiedź BRAMKOWANA serwerowo (tylko po końcu czasu pytania) —
+  // do podświetlenia w reveal na publicznym LiveView, bez wycieku przed czasem.
   const { data } = await supabase.rpc("get_admin_answer_summary", {
     p_session_id: sessionId, p_question_id: questionId,
   });
-  return { total: data?.total || 0, correct: data?.correct || 0 };
+  return { total: data?.total || 0, correct: data?.correct || 0, ans: data?.ans ?? null };
 }
 
 // Lightweight count-only query for LiveView (anon-safe via SECURITY DEFINER RPC).

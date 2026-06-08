@@ -49,6 +49,11 @@ async function setup() {
     .insert({ city: CITY, module: 1, q: "[RLS] test", opts: ["A","B","C","D"], ans: 0, is_practice: true, sort_order: 0 })
     .select().single();
   st.qId = q.id;
+  // Drugie pytanie KONKURSOWE (is_practice=false) — do testu submit_answer / ukrycia ans.
+  const { data: q2 } = await service.from("questions")
+    .insert({ city: CITY, module: 1, q: "[RLS] test2", opts: ["A","B","C","D"], ans: 0, is_practice: false, sort_order: 1 })
+    .select().single();
+  st.qId2 = q2.id;
   st.code = `RLS-${Date.now() % 100000}`;
   const { data: c } = await service.from("participant_codes")
     .insert({ code: st.code, name: "Rls", surname: "Check", city: CITY, used: true, session_id: st.sessionId }).select().single();
@@ -95,19 +100,19 @@ async function checks() {
     const { data: after } = await service.from("quiz_sessions").select("status").eq("id", st.sessionId).single();
     expect("anon NIE wywoła update_quiz_session_admin", after.status !== "ended", error ? "(odmowa)" : `status=${after.status}`);
   }
-  // 7) anon MOŻE wstawić odpowiedź (poprawna ścieżka uczestnika) + dedupe 23505
+  // 7) sekcja 29: anon NIE wstawia answers bezpośrednio (forge is_correct niemożliwy)
   {
     const row = { session_id: st.sessionId, participant_code: st.code, participant_name: "Rls Check",
-      city: CITY, question_id: st.qId, module: 1, chosen: 1, is_correct: false, points: 0, response_time_s: 5 };
-    const { error: e1 } = await anon.from("answers").insert(row);
-    // pierwszy insert: konflikt z już istniejącym (setup) → 23505 oczekiwany
-    expect("anon insert answers respektuje unikat (dedupe)", e1?.code === "23505" || !e1, e1 ? e1.code : "wstawiono");
+      city: CITY, question_id: st.qId2, module: 1, chosen: 0, is_correct: true, points: 999, response_time_s: 0 };
+    const { error } = await anon.from("answers").insert(row);
+    expect("anon NIE wstawia answers bezpośrednio", !!error, error ? "(odmowa)" : "WSTAWIONO — sekcja 29 nie wgrana!");
   }
-  // 8) anon MOŻE czytać quiz_sessions i questions (potrzebne do gry)
+  // 8) anon MOŻE czytać quiz_sessions; questions już TYLKO przez RPC (nie bezpośrednio)
   {
     const { data: s } = await anon.from("quiz_sessions").select("status").eq("id", st.sessionId);
-    const { data: q } = await anon.from("questions").select("id").eq("id", st.qId);
-    expect("anon czyta quiz_sessions + questions", (s?.length === 1) && (q?.length === 1));
+    const { data: qd, error: qe } = await anon.from("questions").select("ans").eq("id", st.qId2);
+    expect("anon czyta quiz_sessions", s?.length === 1);
+    expect("anon NIE czyta questions bezpośrednio", (!qd || qd.length === 0) || !!qe, qe ? "(odmowa)" : `zwrócono ${qd?.length ?? 0}`);
   }
 
   // ── HARDENING sekcja 27: anon NIE enumeruje kodów/nazwisk ──
@@ -139,12 +144,33 @@ async function checks() {
     const { data: no }  = await anon.rpc("code_exists", { p_code: "NIEISTNIEJE-0000" });
     expect("code_exists rozróżnia znany/nieznany kod", yes === true && no === false, `znany=${yes} nieznany=${no}`);
   }
+
+  // ── SEKCJA 29: walidacja serwerowa + ukrycie poprawnej odpowiedzi ──
+  // 13) get_quiz_questions: anon dostaje pytanie konkursowe, ale ans = NULL (M-2)
+  {
+    const { data, error } = await anon.rpc("get_quiz_questions", { p_city: CITY });
+    const row = (data || []).find((q) => q.id === st.qId2);
+    expect("get_quiz_questions zwraca pytania konkursowe", !error && !!row, error ? error.message : `znaleziono=${!!row}`);
+    expect("anon NIE dostaje ans (ukryte)", row ? row.ans === null : false, `ans=${row?.ans}`);
+  }
+  // 14) submit_answer liczy is_correct SERWEROWO — nie da się sfałszować poprawności
+  {
+    // zła odpowiedź (chosen=1, poprawna=0) → serwer MUSI zwrócić is_correct=false
+    const { data, error } = await anon.rpc("submit_answer", {
+      p_session_id: st.sessionId, p_code: st.code, p_name: "Rls Check", p_question_id: st.qId2, p_chosen: 1,
+    });
+    expect("submit_answer: zła odp. → is_correct=false (serwer)", !error && data?.is_correct === false, error ? error.message : JSON.stringify(data));
+    // potwierdź w bazie, że wiersz NIE jest 'poprawny' (mimo prób forge'a w teście 7)
+    const { data: dbRow } = await service.from("answers").select("is_correct").eq("session_id", st.sessionId).eq("participant_code", st.code).eq("question_id", st.qId2).maybeSingle();
+    expect("w bazie is_correct=false (brak forge)", dbRow?.is_correct === false, `is_correct=${dbRow?.is_correct}`);
+  }
 }
 
 async function cleanup() {
   try { await service.from("answers").delete().eq("session_id", st.sessionId); } catch (_) {}
   try { await service.from("participant_codes").delete().eq("id", st.codeId); } catch (_) {}
   try { await service.from("questions").delete().eq("id", st.qId); } catch (_) {}
+  try { if (st.qId2) await service.from("questions").delete().eq("id", st.qId2); } catch (_) {}
   try { await service.from("quiz_sessions").delete().eq("id", st.sessionId); } catch (_) {}
 }
 

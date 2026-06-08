@@ -36,7 +36,7 @@ const W = {
   ),
 };
 
-export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
+export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, correctAns, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
   // All hooks must run unconditionally (Rules of Hooks) — guard comes after.
   const MODULES = useModules();
   const { violations, showWarning, lastType, dismiss } = useAntiCheat({
@@ -56,6 +56,10 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
   }, [answered]);
 
   if (!currentQ || !mod) return null;
+
+  // Poprawny indeks: z serwera (correctAns, sekcja 29) lub fallback currentQ.ans
+  // (tryb próbny / przed migracją). Używany tylko w reveal (answered === true).
+  const correctIdx = correctAns != null ? correctAns : currentQ.ans;
 
   const timerPct = timer / mod.timePerQ;
   const r = 22, circ = 2 * Math.PI * r;
@@ -106,7 +110,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       {/* Answers */}
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 14px 20px", alignContent: "start" }}>
         {currentQ.opts.map((opt, i) => {
-          const sel = picked === i, ok = i === currentQ.ans;
+          const sel = picked === i, ok = i === correctIdx;
           let bg = ANSWER_BG[i], opacity = 1, border = "none";
           if (!answered && sel) {
             // Picked but timer still running — show as locked-in (bright outline, no color change)
@@ -163,7 +167,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
             <span style={{ fontSize: 22 }}>✅</span>
             <div>
               <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 2, textTransform: "uppercase", letterSpacing: 1 }}>Poprawna odpowiedź</p>
-              <p style={{ fontSize: 15, fontWeight: 700, color: "#10D9A0" }}>{currentQ?.opts[currentQ?.ans]}</p>
+              <p style={{ fontSize: 15, fontWeight: 700, color: "#10D9A0" }}>{currentQ?.opts[correctIdx]}</p>
             </div>
           </div>
           <div style={{ textAlign: "center" }}>

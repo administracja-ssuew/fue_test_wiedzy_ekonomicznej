@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { supabase, DEMO, logoutAdmin, saveAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
-import { calcPts, getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
+import { supabase, DEMO, logoutAdmin, submitAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
+import { getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
 import { serverNow, startServerClock } from "./lib/serverClock.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
@@ -43,6 +43,7 @@ export default function App() {
   const [podStep, setPodStep]           = useState(0);
   const [podiumResults, setPodiumResults] = useState([]);
   const [countdownNum, setCountdownNum] = useState(null); // 3/2/1/0="START!"/null=hidden
+  const [revealAns, setRevealAns]       = useState({});   // qId → poprawny indeks (z serwera, do reveal)
 
   // Auto-break after module 2 and after module 4 (przerwy między blokami).
   // After module 5 → waiting_results (admin reveals ranking manually)
@@ -308,28 +309,34 @@ export default function App() {
 
   // ── Quiz logic ───────────────────────────────────────────────────
 
+  // Zapis odpowiedzi z walidacją SERWEROWĄ (submit_answer liczy is_correct z ans).
+  // Jedno źródło: lokalna tablica wyników + poprawna odpowiedź do reveal — z wyniku
+  // serwera (a nie z currentQ.ans, którego anon już nie dostaje). Dedupe po qId.
+  const recordAnswer = async (chosen) => {
+    const q = currentQ;
+    if (!q || !participant || !quizSession) return;
+    // clientCorrect tylko jako fallback, gdy sekcja 29 nie wgrana (ans wtedy obecne).
+    const clientCorrect = q.ans != null ? (chosen !== null && chosen === q.ans) : null;
+    const responseTimeS = chosen !== null ? (mod.timePerQ - pickTime.current) : null;
+    const r = await submitAnswer({
+      sessionId: quizSession.id, participantCode: participant.code,
+      participantName: `${participant.name} ${participant.surname}`, city: participant.city,
+      questionId: q.id, module: currentMod, chosen, clientCorrect, responseTimeS,
+    });
+    const ca = r.correctAns ?? (q.ans ?? null);
+    if (ca != null) setRevealAns((m) => ({ ...m, [q.id]: ca }));
+    setAllAnswers((prev) => prev.some((a) => a.qId === q.id)
+      ? prev
+      : [...prev, { qId: q.id, module: currentMod, picked: chosen, correct: !!r.isCorrect, pts: 0 }]);
+  };
+
   // Called when timer hits 0 — reveals correct answer to participant
   const handleTimeout = () => {
     clearInterval(timerRef.current);
     if (answered) return;
-    // Use ref to avoid stale closure: picked state may have changed since this handler was captured
-    const userPicked     = pickedRef.current;
-    const timeWhenPicked = pickTime.current;
-
-    const correct = userPicked !== null && userPicked === currentQ?.ans;
-    const pts     = userPicked !== null ? calcPts(timeWhenPicked, mod.timePerQ, correct) : 0;
-
-    setMyPts((p) => p + pts);
-    setAllAnswers((prev) => currentQ
-      ? [...prev, { qId: currentQ.id, module: currentMod, picked: userPicked, correct, pts }]
-      : prev);
-
-    // Only save to DB when user did NOT pick — handlePick already saved picked answers
-    // (avoid overwriting the correct DB row with null/0 due to stale closure)
-    if (userPicked === null && currentQ && participant && quizSession) {
-      saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: null, isCorrect: false, points: 0, responseTimeS: null });
-    }
-
+    // Brak wyboru → zapisz pustą odpowiedź (serwer policzy is_correct=false) i pobierz
+    // poprawną odp. do reveal. Wybrane odpowiedzi zapisał już handlePick (recordAnswer).
+    if (pickedRef.current === null) recordAnswer(null);
     setAnswered(true); // reveal correct/wrong colors — wait before advancing
     setTimeout(advanceQuestion, REVEAL_SECONDS * 1000);
   };
@@ -339,15 +346,7 @@ export default function App() {
     if (picked !== null || answered) return; // already picked or revealed
     pickTime.current = timer;
     setPicked(i);
-
-    // Save to DB immediately so admin sees live responses
-    if (currentQ && participant && quizSession) {
-      const correct       = i === currentQ.ans;
-      const pts           = calcPts(timer, mod.timePerQ, correct);
-      const responseTimeS = mod.timePerQ - timer; // seconds elapsed since question start
-      saveAnswer({ sessionId: quizSession.id, participantCode: participant.code, participantName: `${participant.name} ${participant.surname}`, city: participant.city, questionId: currentQ.id, module: currentMod, chosen: i, isCorrect: correct, points: pts, responseTimeS });
-    }
-    // Timer keeps running — handleTimeout will reveal the answer
+    recordAnswer(i); // zapis serwerowy + poprawna odp. do reveal (odpowiedź ostateczna)
   };
 
   const advanceQuestion = async () => {
@@ -635,7 +634,7 @@ export default function App() {
       : <Countdown num={countdownNum} />;
 
   if (screen === "quiz" && currentQ && mod)
-    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;
+    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} correctAns={revealAns[currentQ?.id] ?? null} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;
 
   if (screen === "ended")
     return <Ended participant={participant} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onGoHome={resetApp} />;

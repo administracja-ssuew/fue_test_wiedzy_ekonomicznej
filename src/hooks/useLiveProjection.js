@@ -30,6 +30,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const [reveal, setReveal]       = useState([]);
   const [revealTotal, setRevealTotal]     = useState(0);
   const [revealCorrect, setRevealCorrect] = useState(0);
+  const [revealAns, setRevealAns]         = useState(null); // poprawny indeks (bramkowany z serwera)
   const [autoSec, setAutoSec]     = useState(REVEAL_SECONDS);
   const [bg, setBg]               = useState(DEFAULT_BG);
   const [liveCount, setLiveCount] = useState(0);
@@ -112,9 +113,11 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         setRevealCorrect(stats.correct || 0);
       } else {
         // Public projector (anon): aggregate counts only — no per-person data.
+        // ans jest bramkowane serwerowo (tylko po końcu czasu pytania).
         const s = await getLiveAnswerSummary(sid, q.id);
         setRevealTotal(s.total || 0);
         setRevealCorrect(s.correct || 0);
+        if (s.ans != null) setRevealAns(s.ans);
       }
     };
 
@@ -129,7 +132,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       if (idx !== lastIdxRef.current) {
         lastIdxRef.current = idx;
         revealFetchedRef.current = -1;
-        setReveal([]); setLiveCount(0); setRevealTotal(0); setRevealCorrect(0);
+        setReveal([]); setLiveCount(0); setRevealTotal(0); setRevealCorrect(0); setRevealAns(null);
       }
       setGIdx(idx);
       setPhase(p);
@@ -179,5 +182,5 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
   const timePerQ = mod?.timePerQ || 60;
 
-  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, liveCount, participantsTotal, bg };
+  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg };
 }

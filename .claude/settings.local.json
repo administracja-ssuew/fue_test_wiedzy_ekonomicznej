@@ -23,7 +23,11 @@
       "Skill(gsd:debug)",
       "Bash(BOT_COUNT=200 BOT_ANSWER_DELAY_MS=100 npm run:*)",
       "Bash(ls .planning/debug/*.md)",
-      "Bash(node __TRACKED_VAR__/.claude/get-shit-done/bin/gsd-tools.cjs resolve-model gsd-debugger --raw)"
+      "Bash(node __TRACKED_VAR__/.claude/get-shit-done/bin/gsd-tools.cjs resolve-model gsd-debugger --raw)",
+      "Bash(npm test *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(node --check scripts/bot-runner.js)",
+      "Read(//c/Users/Mikołaj/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/requesting-code-review/**)"
     ]
   }
 }

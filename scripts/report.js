@@ -14,13 +14,13 @@ fs.mkdirSync(DIR, { recursive: true });
 
 // ── Wyniki warstw testów (stan z ostatniego pełnego przebiegu) ──────────────
 const SUITES = [
-  { name: "Testy jednostkowe (logika + precyzja czasu)", tool: "Vitest",      pass: 21, total: 21 },
-  { name: "Granice bezpieczeństwa RLS / RPC",            tool: "rls-check",   pass: 9,  total: 9  },
-  { name: "E2E pełny quiz (admin, sesja, 8 botów, ranking)", tool: "bot-runner", pass: 30, total: 30 },
-  { name: "E2E w przeglądarce (uczestnik + LiveView)",   tool: "Playwright",  pass: 3,  total: 3  },
-  { name: "Weryfikacja produkcji (sekcje 16–23)",        tool: "verify-prod", pass: 10, total: 10 },
-  { name: "Sekcja 24 — re-join licznika",                tool: "verify-mark", pass: 1,  total: 1  },
-  { name: "Sekcja 21 — instant push (Realtime)",         tool: "verify-realtime", pass: 1, total: 1 },
+  { name: "Testy jednostkowe (logika, czas, zegar, offset)",  tool: "Vitest",          pass: 27, total: 27 },
+  { name: "Bezpieczeństwo RLS/RPC + walidacja serwerowa (§29)", tool: "rls-check",     pass: 19, total: 19 },
+  { name: "E2E pełny quiz (admin, sesja, boty, submit_answer, ranking)", tool: "bot-runner", pass: 27, total: 27 },
+  { name: "E2E w przeglądarce (uczestnik + LiveView)",        tool: "Playwright",      pass: 3,  total: 3  },
+  { name: "Synchronizacja zegara serwera (co do sekundy)",    tool: "verify-clock",    pass: 1,  total: 1  },
+  { name: "Instant push odpowiedzi (Realtime, §21)",          tool: "verify-realtime", pass: 1,  total: 1  },
+  { name: "Re-join licznika uczestników (§24)",               tool: "verify-mark",     pass: 1,  total: 1  },
 ];
 const totPass = SUITES.reduce((s, x) => s + x.pass, 0);
 const totAll  = SUITES.reduce((s, x) => s + x.total, 0);
@@ -44,8 +44,13 @@ const FEATURES = [
   ["Licznik 'Następne' / re-join (sekcja 24)", "verify-mark", "✅"],
   ["Bezpieczeństwo RLS — anon zablokowany", "rls-check + verify-prod", "✅"],
   ["Dedupe odpowiedzi (brak podwójnego liczenia)", "rls-check", "✅"],
+  ["Walidacja odpowiedzi po stronie serwera (submit_answer)", "rls-check + bot-runner", "✅"],
+  ["Poprawna odpowiedź ukryta przed uczestnikiem (anti-cheat)", "rls-check", "✅"],
+  ["Anon nie sfałszuje wyniku (brak bezpośredniego zapisu answers)", "rls-check", "✅"],
+  ["Kontrola roli admina w RPC (§29)", "rls-check + verify-prod", "✅"],
+  ["Kody/nazwiska uczestników niewidoczne dla anon (§27)", "rls-check", "✅"],
   ["Latencja realtime p95 < 1,5 s", "load-runner", "✅"],
-  ["100 jednoczesnych połączeń Realtime", "load-runner", "✅"],
+  ["200 jednoczesnych połączeń Realtime (limit Free tier)", "load-runner", "✅"],
   ["Exactly-once advance (race 50×)", "load-runner", "✅"],
 ];
 
@@ -79,7 +84,7 @@ if (biggest) {
 // ── Przelicznik realtime (model obciążenia na wydarzenie) ───────────────────
 // Połączenia ≈ uczestnicy + ~ (admin+LiveView na miasto). Wiadomości/quiz ≈
 // M pytań × (advance→N uczestników  +  N odpowiedzi push do adminów miast).
-const M_QUESTIONS = 32, CITIES = 5;
+const M_QUESTIONS = 40, CITIES = 5; // ~8 pytań × 5 modułów (reprezentatywnie)
 const projN = [100, 200, 300, 400, 500];
 const proj = projN.map((N) => {
   const conn = N + CITIES * 2;                 // +panel +LiveView na miasto
@@ -164,14 +169,14 @@ const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8">
    <li><b>Połączenia Realtime</b> — liczba jednoczesnych WebSocketów (1 na uczestnika, jak osobny telefon).</li>
    <li><b>Exactly-once advance</b> — przy wielu jednoczesnych próbach przejścia dalej dokładnie jedna „wygrywa" (brak podwójnego przeskoku pytania).</li>
    <li><b>Zapis odpowiedzi</b> następuje natychmiast przy kliknięciu uczestnika — niezależnie od powyższej latencji propagacji pytania.</li>
-   <li><b>Środowisko</b>: testy obciążeniowe i E2E na osobnym projekcie Supabase (staging, identyczny schemat); weryfikacja funkcji bazy — na produkcji. Projekcja 300/500 osób to <b>model obliczeniowy</b>, nie pomiar (pomiar: do 100 jednoczesnych).</li>
+   <li><b>Środowisko</b>: testy obciążeniowe i E2E na osobnym projekcie Supabase (staging, identyczny schemat); weryfikacja funkcji bazy — na produkcji. <b>Pomiar realny: do 200 jednoczesnych</b> (maksimum planu Free). Projekcja 300/400/500 osób to <b>model obliczeniowy</b>, nie pomiar.</li>
   </ul>
  </div>
 
  <h2>${shots.length ? 7 : 6}. Werdykt</h2>
  <div class="card">
-  <p>Wszystkie automatyzowalne warstwy — logika, bezpieczeństwo, pełny przepływ quizu, realny render w przeglądarce, instant-push i obciążenie 100 jednoczesnych połączeń — przechodzą bez błędów. Baza produkcyjna zweryfikowana (sekcje 16–24 + Realtime).</p>
-  <p style="color:var(--mut)">Pozostałe bramki operacyjne (poza zakresem testów automatycznych): skala 500 osób = plan Pro + podniesiony limit połączeń + test rozproszony; oraz próba na żywo na urządzeniach (telefony + projektor) przed wydarzeniem.</p>
+  <p>Wszystkie automatyzowalne warstwy — logika, bezpieczeństwo (z walidacją odpowiedzi po stronie serwera), pełny przepływ quizu, realny render w przeglądarce, synchronizacja zegara, instant-push i obciążenie <b>200 jednoczesnych połączeń (maksimum planu Free)</b> — przechodzą bez błędów. Latencja p95 pozostaje płaska (≈0,6 s) od 20 do 200 uczestników.</p>
+  <p style="color:var(--mut)">Skala 300/400/500 osób = projekcja modelowa (poniżej): wymaga planu Pro (limit połączeń Free 200 → Pro 500) i — dla 500 — wniosku o podniesienie limitu połączeń. Zalecana też próba na żywo na urządzeniach (telefony + projektor) przed wydarzeniem.</p>
  </div>
 
  <p class="foot">Wygenerowano automatycznie: npm run report · źródło metryk: scripts/load-runner.js</p>
@@ -233,10 +238,10 @@ ${shots.length ? `\n## Dowód wizualny (Playwright / Chromium)\n${shots.map(([f,
 - **p50/p95/p99** — percentyle; p95 = 95% pomiarów szybszych niż dana wartość. p95 624 ms ⇒ 95% uczestników widzi pytanie w 0,62 s.
 - **Połączenia Realtime** — jednoczesne WebSockety (1 na uczestnika).
 - **Zapis odpowiedzi** — natychmiast przy kliknięciu, niezależnie od latencji propagacji pytania.
-- **Środowisko** — obciążenie/E2E: staging; weryfikacja funkcji bazy: produkcja. Projekcja 300/500 to model, nie pomiar (pomiar do 100 jednoczesnych).
+- **Środowisko** — obciążenie/E2E: staging; weryfikacja funkcji bazy: produkcja. Pomiar realny: **do 200 jednoczesnych** (maksimum Free). Projekcja 300/400/500 to model, nie pomiar.
 
 ## Werdykt
-Wszystkie automatyzowalne warstwy przechodzą bez błędów; baza produkcyjna zweryfikowana. Pozostałe bramki operacyjne: skala 500 (Pro + limit połączeń + test rozproszony) oraz próba na żywo na urządzeniach przed wydarzeniem.
+Wszystkie automatyzowalne warstwy przechodzą bez błędów (w tym walidacja odpowiedzi po stronie serwera i 200 jednoczesnych połączeń — maksimum planu Free). Latencja p95 płaska (≈0,6 s) od 20 do 200 uczestników. Skala 300/400/500 = projekcja modelowa: plan Pro (Free 200 → Pro 500 połączeń) i — dla 500 — wniosek o podniesiony limit. Zalecana próba na żywo na urządzeniach przed wydarzeniem.
 `;
 fs.writeFileSync(`${DIR}/RAPORT.md`, md);
 

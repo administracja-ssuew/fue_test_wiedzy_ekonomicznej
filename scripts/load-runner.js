@@ -160,10 +160,11 @@ function onAdvance(p, s) {
     const correct = Math.random() > 0.3;
     const chosen = correct ? (idx % 4) : (idx + 1) % 4;
     const timeLeft = Math.max(1, TIME_PER_Q - Math.ceil(delay / 1000));
-    const { error } = await p.client.from("answers").insert({
-      session_id: p.sessionId, participant_code: p.code, participant_name: `Load ${p.city}`,
-      city: p.city, question_id: qId, module: 1, chosen, is_correct: correct,
-      points: calcPts(timeLeft, TIME_PER_Q, correct), response_time_s: Math.ceil(delay / 1000),
+    // Zapis przez submit_answer (sekcja 29 — anon nie ma już bezpośredniego INSERT).
+    // is_correct liczy serwer; dla load-testu liczy się sukces zapisu + latencja.
+    const { error } = await p.client.rpc("submit_answer", {
+      p_session_id: p.sessionId, p_code: p.code, p_name: `Load ${p.city}`,
+      p_question_id: qId, p_chosen: chosen,
     });
     if (!error) answerOk++;
     else if (error.code === "23505") dupAnswers++;

@@ -320,9 +320,9 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(107,33,232,.06) 0%, transparent 50%, rgba(245,197,24,.04) 100%)", pointerEvents: "none" }} />
 
       {/* Crossfading FUE / TWE watermark */}
-      <img src="/fue.png" alt="" aria-hidden="true"
+      <img src="/fue.png" alt="" aria-hidden="true" fetchpriority="low" decoding="async"
         style={{ position: "absolute", width: "min(520px, 75%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkA 14s ease-in-out infinite" }} />
-      <img src="/twe.png" alt="" aria-hidden="true"
+      <img src="/twe.png" alt="" aria-hidden="true" fetchpriority="low" decoding="async"
         style={{ position: "absolute", width: "min(1500px, 180%)", pointerEvents: "none", userSelect: "none", zIndex: 0, animation: "watermarkB 14s ease-in-out infinite" }} />
 
       {/* Animated elegant shapes */}

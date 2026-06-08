@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, lazy } from "react";
 import { supabase, DEMO, logoutAdmin, submitAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
 import { getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
 import { serverNow, startServerClock } from "./lib/serverClock.js";
@@ -11,15 +11,18 @@ import Break          from "./screens/Break.jsx";
 import WaitingResults from "./screens/WaitingResults.jsx";
 import CodeEntry   from "./screens/CodeEntry.jsx";
 import AdminLogin  from "./screens/AdminLogin.jsx";
-import Practice    from "./screens/Practice.jsx";
 import Lobby       from "./screens/Lobby.jsx";
 import ModuleIntro from "./screens/ModuleIntro.jsx";
 import Quiz        from "./screens/Quiz.jsx";
 import Ended       from "./screens/Ended.jsx";
-import AdminPanel  from "./screens/AdminPanel.jsx";
-import Podium      from "./screens/Podium.jsx";
-import LiveView    from "./screens/LiveView.jsx";
 import Countdown   from "./screens/Countdown.jsx";
+
+// Code-splitting: ekrany spoza ścieżki uczestnika ładowane leniwie → mniejszy bundle
+// początkowy i krótszy Total Blocking Time na telefonie. (Suspense jest w main.jsx.)
+const AdminPanel = lazy(() => import("./screens/AdminPanel.jsx"));
+const Practice   = lazy(() => import("./screens/Practice.jsx"));
+const Podium     = lazy(() => import("./screens/Podium.jsx"));
+const LiveView   = lazy(() => import("./screens/LiveView.jsx"));
 import ModuleIntroFS from "./screens/ModuleIntroFS.jsx";
 
 export default function App() {

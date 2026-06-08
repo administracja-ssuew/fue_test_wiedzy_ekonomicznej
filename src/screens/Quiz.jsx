@@ -138,15 +138,10 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       </div>
 
       <div style={{ padding: "0 14px 10px" }}>
-        {picked !== null && !answered ? (
-          <div style={{ background: "rgba(16,217,160,.18)", border: "2px solid rgba(16,217,160,.6)", borderRadius: 14, padding: "16px 16px", textAlign: "center" }}>
-            <p style={{ fontSize: 17, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {currentQ.opts[picked]}</p>
-            <p style={{ fontSize: 14, color: "#EDE9FE", marginTop: 6, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> — nie można jej zmienić.</p>
-          </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "#9B89CC", textAlign: "center" }}>Poprawne odpowiedzi: <strong style={{ color: "#10D9A0" }}>{correctCount}</strong> / {total}</p>
-        )}
+        <p style={{ fontSize: 12, color: "#9B89CC", textAlign: "center" }}>Poprawne odpowiedzi: <strong style={{ color: "#10D9A0" }}>{correctCount}</strong> / {total}</p>
       </div>
+      {/* Rezerwa miejsca pod stały pasek potwierdzenia (żeby nie zasłaniał odpowiedzi) */}
+      {picked !== null && !answered && <div style={{ height: 92, flexShrink: 0 }} />}
     </div>
   );
 
@@ -159,6 +154,14 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       <div className="fue-quiz-layout" style={{ width: "100%" }}>
         {quizContent}
       </div>
+
+      {/* Stały pasek potwierdzenia wyboru — zawsze widoczny u dołu (bez scrolla na mobile) */}
+      {picked !== null && !answered && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.97)", borderTop: "2px solid rgba(16,217,160,.55)", padding: "12px 18px", textAlign: "center", fontFamily: '"Space Grotesk",sans-serif' }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {currentQ.opts[picked]}</p>
+          <p style={{ fontSize: 13, color: "#EDE9FE", marginTop: 3, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> — nie można jej zmienić.</p>
+        </div>
+      )}
 
       {/* 2-second result bar — shown after timer hits 0 */}
       {answered && resultSec !== null && (

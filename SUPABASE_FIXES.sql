@@ -590,7 +590,7 @@ GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
 -- advance_session_question dostaje p_lead_seconds (domyślnie 4 = zwykłe
 -- odliczanie 3-2-1). Dla PIERWSZEGO pytania modułu klient podaje 30 → wszyscy
 -- (uczestnik + Live View) widzą 30s zapowiedź modułu liczoną z q_started_at.
--- start_quiz_session też używa 30s (zapowiedź modułu 1).
+-- start_quiz_session (MODUŁ 1) używa 10s — krótszy start; moduły 2–5 = 30s.
 
 DROP FUNCTION IF EXISTS public.advance_session_question(UUID, INT, INT);
 DROP FUNCTION IF EXISTS public.advance_session_question(UUID, INT, INT, INT);
@@ -625,7 +625,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_start TIMESTAMPTZ := clock_timestamp() + interval '30 seconds';  -- zapowiedź modułu 1
+  v_start TIMESTAMPTZ := clock_timestamp() + interval '10 seconds';  -- zapowiedź modułu 1
 BEGIN
   UPDATE public.quiz_sessions
   SET status = 'running', q_started_at = v_start, current_question_idx = 0
@@ -728,7 +728,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
          exp, is_practice, sort_order
   FROM public.questions
   WHERE city = p_city AND is_practice = false
-  ORDER BY module, sort_order;
+  ORDER BY module, sort_order, id;   -- id = tiebreaker (deterministyczna kolejność!)
 $$;
 REVOKE EXECUTE ON FUNCTION public.get_quiz_questions(TEXT) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.get_quiz_questions(TEXT) TO anon, authenticated;
@@ -741,7 +741,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT id, city, module, q, opts, ans, exp, is_practice, sort_order
   FROM public.questions
   WHERE city = p_city AND is_practice = true
-  ORDER BY module, sort_order;
+  ORDER BY module, sort_order, id;
 $$;
 REVOKE EXECUTE ON FUNCTION public.get_practice_questions(TEXT) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.get_practice_questions(TEXT) TO anon, authenticated;
@@ -793,7 +793,7 @@ RETURNS JSON LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   ),
   o AS (
     SELECT q.id, q.ans, COALESCE(m.time_per_q, 60) AS tpq,
-           row_number() OVER (ORDER BY q.module, q.sort_order) - 1 AS gidx
+           row_number() OVER (ORDER BY q.module, q.sort_order, q.id) - 1 AS gidx
     FROM public.questions q
     LEFT JOIN public.modules m ON m.id = q.module
     WHERE q.is_practice = false AND q.city = (SELECT city FROM s)
@@ -835,7 +835,7 @@ GRANT EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authe
 
 CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
 RETURNS TIMESTAMPTZ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_start TIMESTAMPTZ := clock_timestamp() + interval '30 seconds';
+DECLARE v_start TIMESTAMPTZ := clock_timestamp() + interval '10 seconds';
 BEGIN
   IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
   UPDATE public.quiz_sessions

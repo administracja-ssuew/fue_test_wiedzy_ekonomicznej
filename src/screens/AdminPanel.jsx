@@ -425,7 +425,7 @@ function KodyTab({ city, adminId }) {
               <p style={{ fontWeight: 600, fontSize: 14 }}>{c.name} {c.surname}</p>
               <p style={{ fontSize: 11, color: c.used ? "#10D9A0" : "#9B89CC", marginTop: 1 }}>{c.used ? "✓ Użyty" : "Oczekuje"}</p>
             </div>
-            {!c.used && <button onClick={() => remove(c.id)} style={C.btn("danger", { padding: "4px 10px", fontSize: 12 })}>✕</button>}
+            <button onClick={() => remove(c.id)} style={C.btn("danger", { padding: "4px 10px", fontSize: 12 })}>✕</button>
           </div>
         ))}
     </div>

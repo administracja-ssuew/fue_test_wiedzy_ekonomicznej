@@ -1,0 +1,36 @@
+# Konfiguracja CodeRabbit (https://coderabbit.ai) — recenzja AI dla PR-ów.
+# Po zainstalowaniu aplikacji GitHub CodeRabbit automatycznie recenzuje pull requesty.
+language: pl-PL
+reviews:
+  profile: chill            # "chill" = mniej szumu; "assertive" = bardziej drobiazgowo
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!dist/**"
+    - "!report/**"
+    - "!**/*.png"
+    - "!package-lock.json"
+  path_instructions:
+    - path: "src/**"
+      instructions: >
+        React 18 + Vite, style inline CSS-in-JS, brak TypeScript. Priorytety oceny:
+        (1) bezpieczeństwo — czy poprawna odpowiedź (ans) nie wycieka do klienta,
+        czy zapis idzie przez submit_answer (walidacja serwerowa), czy RPC admina
+        sprawdzają rolę; (2) synchronizacja realtime — timery liczone z serverNow()
+        (nie Date.now()); (3) brak regresji w przepływie quizu i reveal.
+    - path: "SUPABASE_FIXES.sql"
+      instructions: >
+        Funkcje SECURITY DEFINER. Sprawdź: SET search_path = public, poprawne granty
+        (REVOKE FROM PUBLIC/anon, GRANT do właściwej roli), kontrolę roli get_my_role()
+        w funkcjach admina, oraz brak luk RLS (anon nie czyta answers/questions/codes).
+    - path: "scripts/**"
+      instructions: >
+        Skrypty testowe/audytowe (vite-node). Nie wymagają pełnej produkcyjnej jakości,
+        ale zwróć uwagę na wycieki kluczy i celowanie w staging, nie produkcję.
+chat:
+  auto_reply: true

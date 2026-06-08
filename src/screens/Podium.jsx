@@ -1,27 +1,26 @@
 function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
   const confColors = ["#F5C518", "#6B21E8", "#E8376B", "#10D9A0", "#1EB5FF"];
   const top5 = results.slice(0, 5);
+  const count = top5.length;                 // ile miejsc realnie ogłaszamy (1–5)
+  // Reveal od ostatniego miejsca do 1.: miejsce o randze r (1-based) odsłaniane,
+  // gdy podStep >= (count - r + 1). Po count krokach widać wszystko.
+  const shownAt = (r) => count - r + 1;
+  const done = podStep >= count;
+  const nextPlace = count - podStep;         // które miejsce odsłoni kolejny klik
 
-  // Reveal 5→4→3→2→1: podStep 1=5. miejsce, 2=4., 3=3., 4=2., 5=1.
-  // Słupki podium: 3. (idx 2) od podStep≥3, 2. (idx 1) od ≥4, 1. (idx 0) od ≥5.
-  const barRevealAt = { 0: 5, 1: 4, 2: 3 };          // idx → próg podStep
-  const cardRevealAt = { 3: 2, 4: 1 };               // 4. miejsce od ≥2, 5. od ≥1
-  const labels = ["Pokaż 5. miejsce", "Pokaż 4. miejsce", "Pokaż 3. miejsce", "Pokaż 2. miejsce", "Pokaż 1. miejsce!"];
-
-  const Card = ({ idx }) => {
+  const Card = ({ idx }) => {                 // miejsca 4. i 5. (rank idx+1)
     const p = top5[idx];
-    const visible = podStep >= cardRevealAt[idx];
+    if (!p) return <div style={{ flex: 1 }} />;
+    const visible = podStep >= shownAt(idx + 1);
     return (
-      <div style={{ flex: 1, opacity: visible && p ? 1 : 0, transition: "opacity .5s" }}>
-        {visible && p && (
-          <div className="pi" style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: "#9B89CC", width: 28, textAlign: "center", flexShrink: 0 }}>{idx + 1}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</p>
-              <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city} · {p.correct}/{p.total} popr.</p>
-            </div>
+      <div style={{ flex: 1, opacity: visible ? 1 : 0, transition: "opacity .5s" }}>
+        <div className="pi" style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: "#9B89CC", width: 28, textAlign: "center", flexShrink: 0 }}>{idx + 1}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</p>
+            <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city} · {p.correct}/{p.total} popr.</p>
           </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -29,22 +28,24 @@ function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ justifyContent: "space-between", padding: "36px 22px 28px", overflow: "hidden", position: "relative" }}>
-        {podStep >= 5 && Array.from({ length: 24 }).map((_, i) => (
+        {done && Array.from({ length: 24 }).map((_, i) => (
           <div key={i} style={{ position: "absolute", top: -10, left: `${3 + i * 4}%`, width: 7 + (i % 3) * 3, height: 7 + (i % 3) * 3, borderRadius: i % 2 ? "50%" : 3, background: confColors[i % 5], animation: `conffall ${1.4 + (i % 4) * .3}s ${i * .07}s ease-in both`, zIndex: 10 }} />
         ))}
 
         <div style={{ textAlign: "center" }}>
           <p style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Test Wiedzy Ekonomicznej · FUE {new Date().getFullYear()}</p>
-          <h1 style={{ fontFamily: '"Bebas Neue"', fontSize: 56, letterSpacing: 3, color: podStep >= 5 ? "#F5C518" : "#EDE9FE", transition: "color .5s", lineHeight: 1 }}>
-            {podStep === 0 ? "CEREMONIA" : podStep >= 5 ? "PODIUM!" : "I OTO…"}
+          <h1 style={{ fontFamily: '"Bebas Neue"', fontSize: 56, letterSpacing: 3, color: done ? "#F5C518" : "#EDE9FE", transition: "color .5s", lineHeight: 1 }}>
+            {podStep === 0 ? "CEREMONIA" : done ? "PODIUM!" : "I OTO…"}
           </h1>
         </div>
 
-        {/* Miejsca 4–5 (karty, odsłaniane pierwsze) */}
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <Card idx={4} />
-          <Card idx={3} />
-        </div>
+        {/* Miejsca 4–5 (karty) — tylko gdy jest tylu uczestników */}
+        {count > 3 && (
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <Card idx={4} />
+            <Card idx={3} />
+          </div>
+        )}
 
         {/* Podium top-3 (słupki) */}
         <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 10, padding: "10px 0" }}>
@@ -53,7 +54,7 @@ function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
             const heights = [170, 100, 130];
             const colors = ["linear-gradient(180deg,#F5C518,#B8940A)", "linear-gradient(180deg,#A0622A,#6B3A12)", "linear-gradient(180deg,#A0A0A0,#6A6A6A)"];
             const glows = ["rgba(245,197,24,.5)", "rgba(205,127,50,.35)", "rgba(192,192,192,.3)"];
-            const visible = podStep >= barRevealAt[rank];
+            const visible = podStep >= shownAt(rank + 1);
             if (!p) return <div key={rank} style={{ flex: 1, height: heights[rank] }} />;
             return (
               <div key={rank} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", opacity: visible ? 1 : 0, transition: "opacity .5s" }}>
@@ -77,9 +78,9 @@ function PodiumScreen({ onBack, podStep, setPodStep, results = [] }) {
         </div>
 
         <div>
-          {podStep < 5 ? (
+          {!done ? (
             <button style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "16px", fontSize: 15, fontWeight: 700, width: "100%", cursor: "pointer" }} onClick={() => setPodStep((s) => s + 1)}>
-              {labels[podStep]}
+              {nextPlace === 1 ? "Pokaż 1. miejsce!" : `Pokaż ${nextPlace}. miejsce`}
             </button>
           ) : (
             <div style={{ textAlign: "center" }}>

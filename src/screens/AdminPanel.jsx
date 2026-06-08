@@ -99,6 +99,9 @@ function PytaniaTab({ city }) {
   const [qCsvErr, setQCsvErr]             = useState("");
   const [qCsvImporting, setQCsvImporting] = useState(false);
   const [qCsvProgress, setQCsvProgress]   = useState(0);
+  const [copyFrom, setCopyFrom]   = useState("");
+  const [copying, setCopying]     = useState(false);
+  const [copyProgress, setCopyProgress] = useState(0);
 
   const handleQuestionsCsv = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -141,6 +144,23 @@ function PytaniaTab({ city }) {
   const loadQs = (practice = isPractice) => practice ? getPracticeQuestions(city) : getQuestions(city);
   useEffect(() => { loadQs().then(setQuestions); }, [city, isPractice]);
   const reload = () => loadQs().then(setQuestions);
+
+  // Kopiuje pytania (z wybranego miasta) do BIEŻĄCEGO miasta — szybkie uzupełnienie
+  // treści, gdy wszystkie miasta mają ten sam zestaw (jak w TWE).
+  const copyFromCity = async () => {
+    if (!copyFrom || copyFrom === city) return;
+    const pool = isPractice ? "próbne" : "główne";
+    if (!confirm(`Skopiować pytania ${pool} z „${copyFrom}" do „${city}"? Dojdą do istniejących.`)) return;
+    setCopying(true); setCopyProgress(0);
+    const src = isPractice ? await getPracticeQuestions(copyFrom) : await getQuestions(copyFrom);
+    for (let i = 0; i < src.length; i++) {
+      const q = src[i];
+      await addQuestion({ module: q.module, q: q.q, opts: q.opts, ans: q.ans, exp: q.exp || "", city, createdBy: null, isPractice });
+      setCopyProgress(i + 1);
+    }
+    setCopying(false); setCopyFrom(""); reload();
+    alert(`Skopiowano ${src.length} pytań (${pool}) z „${copyFrom}" do „${city}".`);
+  };
 
   const openAdd  = () => { setForm({ ...EMPTY, module: mod }); setEditId(null); };
   const openEdit = (q) => { setForm({ module: q.module, q: q.q, opts: [...q.opts], ans: q.ans, exp: q.exp || "" }); setEditId(q.id); };
@@ -209,6 +229,27 @@ function PytaniaTab({ city }) {
                 </>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Kopiuj pytania z innego miasta (TWE: ten sam zestaw we wszystkich miastach) */}
+      <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 20, borderColor: "rgba(107,33,232,.25)", background: "rgba(107,33,232,.05)" }) }}>
+        <p style={{ fontWeight: 700, color: "#C4B5FD", fontSize: 13, marginBottom: 8 }}>📋 Kopiuj pytania {isPractice ? "(próbne)" : "(główne)"} z innego miasta</p>
+        <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 10 }}>
+          Dodaje wszystkie pytania wybranego miasta do <strong style={{ color: "#EDE9FE" }}>{city}</strong> (do istniejących — nie nadpisuje). Przydatne, gdy wszystkie miasta mają ten sam zestaw.
+        </p>
+        {copying ? (
+          <p style={{ fontSize: 13, color: "#C4B5FD" }}>Kopiuję {copyProgress}…</p>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} style={{ ...C.input(), width: "auto" }}>
+              <option value="">— wybierz miasto źródłowe —</option>
+              {CITIES.filter((c) => c.name !== city).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <button onClick={copyFromCity} disabled={!copyFrom} style={{ ...C.btn(copyFrom ? "primary" : "ghost", { fontSize: 13, padding: "8px 16px" }), opacity: copyFrom ? 1 : .5 }}>
+              📋 Kopiuj do {city}
+            </button>
           </div>
         )}
       </div>

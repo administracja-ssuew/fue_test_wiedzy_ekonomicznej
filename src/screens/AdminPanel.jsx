@@ -1053,10 +1053,11 @@ function SesjaTab({ city, adminId, onPodium }) {
               </div>
               {results.map((r, i) => (
                 <div key={r.code} style={{ ...C.card({ padding: "11px 16px", marginBottom: 7 }), display: "flex", alignItems: "center", gap: 12,
-                  borderColor: i === 0 ? "rgba(245,197,24,.3)" : i === 1 ? "rgba(192,192,192,.2)" : i === 2 ? "rgba(205,127,50,.2)" : undefined,
-                  background: i === 0 ? "rgba(245,197,24,.05)" : i < 3 ? "rgba(255,255,255,.03)" : undefined }}>
-                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : "#9B89CC", width: 28, textAlign: "center", flexShrink: 0 }}>{i + 1}</span>
+                  borderColor: i < 5 ? "rgba(245,197,24,.45)" : undefined,
+                  background: i < 5 ? "rgba(245,197,24,.07)" : undefined }}>
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: i === 0 ? "#F5C518" : i === 1 ? "#C0C0C0" : i === 2 ? "#CD7F32" : i < 5 ? "#F5C518" : "#9B89CC", width: 28, textAlign: "center", flexShrink: 0 }}>{i + 1}</span>
                   <p style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{r.name}</p>
+                  {i < 5 && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px", flexShrink: 0 }}>FINAŁ</span>}
                   <div style={{ textAlign: "right" }}>
                     <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#10D9A0", lineHeight: 1 }}>{r.correct}<span style={{ fontSize: 13, color: "#9B89CC" }}>/{r.total}</span></p>
                     <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}</p>

@@ -39,6 +39,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const [firstOfModule, setFirstOfModule] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [sessionId, setSessionId] = useState(null); // do subskrypcji szybkiego kanału sesji
+  const [podium, setPodium]       = useState(null); // {results, podStep} wypchnięte przez admina (#5)
 
   const sessionRef       = useRef(null);
   const questionsRef     = useRef([]);
@@ -178,9 +179,18 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     return () => clearInterval(iv);
   }, [city]);
 
+  // #5 — odbiór podium wypchniętego przez admina (kanał miasta).
+  useEffect(() => {
+    if (!city || DEMO || !supabase) return;
+    const ch = supabase.channel(`podium-${city}`)
+      .on("broadcast", { event: "podium" }, ({ payload }) => { if (payload?.results) setPodium(payload); })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [city]);
+
   const currentQ = questions[gIdx];
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
   const timePerQ = mod?.timePerQ || 60;
 
-  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg };
+  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium };
 }

@@ -74,6 +74,26 @@ export default function App() {
     quizChRef.current.send({ type: "broadcast", event: "quiz_event", payload });
   };
 
+  // #5 — wypchnij stan podium na Live View (projektor). Anon nie ma dostępu do
+  // wyników, więc admin rozgłasza ranking + krok odsłaniania na kanale miasta.
+  const podiumChRef = useRef(null);
+  useEffect(() => {
+    const city = podiumResults[0]?.city;
+    if (screen !== "podium" || DEMO || !supabase || !city) return;
+    const ch = supabase.channel(`podium-${city}`);
+    ch.subscribe((s) => {
+      if (s === "SUBSCRIBED") {
+        podiumChRef.current = ch;
+        ch.send({ type: "broadcast", event: "podium", payload: { results: podiumResults, podStep } });
+      }
+    });
+    return () => { podiumChRef.current = null; supabase.removeChannel(ch); };
+  }, [screen, podiumResults]); // eslint-disable-line
+  useEffect(() => {
+    if (screen === "podium" && podiumChRef.current)
+      podiumChRef.current.send({ type: "broadcast", event: "podium", payload: { results: podiumResults, podStep } });
+  }, [podStep]); // eslint-disable-line
+
   // Standalone live view — opened via ?live=1&city=X
   const liveParams = useMemo(() => {
     const p = new URLSearchParams(window.location.search);

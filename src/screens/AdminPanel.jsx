@@ -513,8 +513,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
   const presenceChRef  = useRef(null);
   const quizBcChRef    = useRef(null); // broadcast channel for instant status push to participants
-  const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: id pytania, dla którego już pominęliśmy czas
+  const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: idx pytania, dla którego już pominęliśmy czas
   const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
+  const liveStatsIdxRef = useRef(-1);  // #3 — idx pytania, dla którego policzono liveStats (świeżość; anty-wyścig)
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -531,6 +532,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   // start from 0 for the new question (don't stack onto the previous question's total).
   useEffect(() => {
     setLiveStats(null);
+    liveStatsIdxRef.current = -1;       // #3 — liczniki nieświeże do następnego pobrania
     setAnswersSettled(false);
     totalSeenRef.current = 0;
     totalChangedAtRef.current = Date.now();
@@ -608,7 +610,7 @@ function SesjaTab({ city, adminId, onPodium }) {
           getParticipantsInSession(city, s?.id),
           s?.id ? getViolationsForSession(s.id) : Promise.resolve([]),
         ]);
-        if (stats) setLiveStats(stats);
+        if (stats) { setLiveStats(stats); liveStatsIdxRef.current = s?.current_question_idx ?? 0; }
         setParticipants(parts);
         setViolations(viols);
       }, 3000);
@@ -627,7 +629,7 @@ function SesjaTab({ city, adminId, onPodium }) {
       const q = cityQuestions[s?.current_question_idx ?? 0];
       if (s?.id && q?.id && s.status === "running") {
         const stats = await getLiveAnswerSummary(s.id, q.id);
-        if (stats) setLiveStats(stats);
+        if (stats) { setLiveStats(stats); liveStatsIdxRef.current = s?.current_question_idx ?? 0; }
       }
     }, 1000);
     return () => clearInterval(liveStatsRef.current);
@@ -676,8 +678,10 @@ function SesjaTab({ city, adminId, onPodium }) {
       }, ({ new: a }) => {
         // Only count answers for the question currently on screen; the 1s poll
         // reconciles the exact value, so a missed event self-corrects within 1s.
-        const curQid = cityQuestionsRef.current[sessionRef.current?.current_question_idx ?? 0]?.id;
+        const curIdx = sessionRef.current?.current_question_idx ?? 0;
+        const curQid = cityQuestionsRef.current[curIdx]?.id;
         if (a.question_id !== curQid) return;
+        liveStatsIdxRef.current = curIdx; // #3 — przyrost dotyczy bieżącego pytania
         setLiveStats((prev) => {
           const cur = prev || { total: 0, correct: 0 };
           return { total: cur.total + 1, correct: cur.correct + (a.is_correct ? 1 : 0) };
@@ -737,7 +741,10 @@ function SesjaTab({ city, adminId, onPodium }) {
   useEffect(() => {
     const idx = session?.current_question_idx ?? 0;
     const total = liveStats?.total ?? 0;
-    const strict = session?.status === "running" && total > 0 && participants.length > 0 && total >= participants.length;
+    // Bramka świeżości: liczniki MUSZĄ dotyczyć bieżącego pytania (anty-wyścig przy
+    // zmianie pytania — inaczej stary total „konsumował" auto-advance kolejnego).
+    const fresh = liveStatsIdxRef.current === idx;
+    const strict = fresh && session?.status === "running" && total > 0 && participants.length > 0 && total >= participants.length;
     if (strict && autoAdvancedRef.current !== idx) {
       autoAdvancedRef.current = idx;
       goToNextRef.current();
@@ -881,9 +888,11 @@ function SesjaTab({ city, adminId, onPodium }) {
           )}
           {st === "running" && <>
             <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => {
-              const elapsed = session?.q_started_at
-                ? Math.floor((serverNow() - new Date(session.q_started_at).getTime()) / 1000)
-                : 0;
+              // Świeży q_started_at z ref (stan `session` bywa nieaktualny → liczyło elapsed
+              // względem POPRZEDNIEGO pytania, stąd „skok do końca"). Clamp do [0, tpq].
+              const qsa = sessionRef.current?.q_started_at || session?.q_started_at;
+              const raw = qsa ? Math.floor((serverNow() - new Date(qsa).getTime()) / 1000) : 0;
+              const elapsed = Math.max(0, Math.min(raw, curQuestionTimePerQ));
               upd({ status: "paused", pause_elapsed_s: elapsed });
             }}>⏸ Pauza</button>
             <button style={C.btn("ghost")} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={() => {

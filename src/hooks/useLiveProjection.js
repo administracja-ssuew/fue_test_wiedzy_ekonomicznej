@@ -182,7 +182,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   // #5 — odbiór podium wypchniętego przez admina (kanał miasta).
   useEffect(() => {
     if (!city || DEMO || !supabase) return;
-    const ch = supabase.channel(`podium-${city}`)
+    const ch = supabase.channel(`podium-${encodeURIComponent(city)}`) // ASCII — zgodne z nadawcą (App)
       .on("broadcast", { event: "podium" }, ({ payload }) => { if (payload?.results) setPodium(payload); })
       .subscribe();
     return () => supabase.removeChannel(ch);

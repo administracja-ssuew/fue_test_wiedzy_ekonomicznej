@@ -515,7 +515,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   const quizBcChRef    = useRef(null); // broadcast channel for instant status push to participants
   const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: idx pytania, dla którego już pominęliśmy czas
   const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
-  const liveStatsIdxRef = useRef(-1);  // #3 — idx pytania, dla którego policzono liveStats (świeżość; anty-wyścig)
+  const participantsRef = useRef(0);   // #3 — liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -527,12 +527,14 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   // Keep questions ref current for the realtime INSERT handler (avoids stale closure).
   useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
+  // #3 — synchronizacja refów do auto-przejścia (liczone w pollu, nie ze stanu).
+  useEffect(() => { participantsRef.current = participants.length; }, [participants]);
+  useEffect(() => { autoAdvancedRef.current = -1; }, [session?.id]); // nowa sesja → znów można auto-pomijać
 
   // Reset the live counter the instant the question changes so realtime increments
   // start from 0 for the new question (don't stack onto the previous question's total).
   useEffect(() => {
     setLiveStats(null);
-    liveStatsIdxRef.current = -1;       // #3 — liczniki nieświeże do następnego pobrania
     setAnswersSettled(false);
     totalSeenRef.current = 0;
     totalChangedAtRef.current = Date.now();
@@ -610,8 +612,8 @@ function SesjaTab({ city, adminId, onPodium }) {
           getParticipantsInSession(city, s?.id),
           s?.id ? getViolationsForSession(s.id) : Promise.resolve([]),
         ]);
-        if (stats) { setLiveStats(stats); liveStatsIdxRef.current = s?.current_question_idx ?? 0; }
-        setParticipants(parts);
+        if (stats) setLiveStats(stats);
+        setParticipants(parts); participantsRef.current = parts.length;
         setViolations(viols);
       }, 3000);
     }
@@ -626,10 +628,20 @@ function SesjaTab({ city, adminId, onPodium }) {
     if (session?.status !== "running") return;
     liveStatsRef.current = setInterval(async () => {
       const s = sessionRef.current;
-      const q = cityQuestions[s?.current_question_idx ?? 0];
+      const idx = s?.current_question_idx ?? 0;
+      const q = cityQuestions[idx];
       if (s?.id && q?.id && s.status === "running") {
         const stats = await getLiveAnswerSummary(s.id, q.id);
-        if (stats) { setLiveStats(stats); liveStatsIdxRef.current = s?.current_question_idx ?? 0; }
+        if (stats) {
+          setLiveStats(stats);
+          // #3 — auto-przejście liczone TU (świeże dane dla bieżącego pytania, bez
+          // wyścigu stanu React): gdy wszyscy odpowiedzieli, pomiń czas — raz na pytanie.
+          const pcount = participantsRef.current;
+          if (stats.total > 0 && pcount > 0 && stats.total >= pcount && autoAdvancedRef.current !== idx) {
+            autoAdvancedRef.current = idx;
+            goToNextRef.current();
+          }
+        }
       }
     }, 1000);
     return () => clearInterval(liveStatsRef.current);
@@ -681,7 +693,6 @@ function SesjaTab({ city, adminId, onPodium }) {
         const curIdx = sessionRef.current?.current_question_idx ?? 0;
         const curQid = cityQuestionsRef.current[curIdx]?.id;
         if (a.question_id !== curQid) return;
-        liveStatsIdxRef.current = curIdx; // #3 — przyrost dotyczy bieżącego pytania
         setLiveStats((prev) => {
           const cur = prev || { total: 0, correct: 0 };
           return { total: cur.total + 1, correct: cur.correct + (a.is_correct ? 1 : 0) };
@@ -734,22 +745,6 @@ function SesjaTab({ city, adminId, onPodium }) {
     URL.revokeObjectURL(url);
     logEvent({ type: "results_exported", sessionId: session?.id, city, actor: adminId, detail: { count: results.length } });
   };
-
-  // #3 — auto-przejście: gdy WSZYSCY odpowiedzą, sam pomiń czas (raz na pytanie).
-  // Hook MUSI być nad early-return (Rules of Hooks). Warunek liczony z aktualnego stanu,
-  // a samo przejście woła przez ref (goToNextQuestion jest zdefiniowany niżej).
-  useEffect(() => {
-    const idx = session?.current_question_idx ?? 0;
-    const total = liveStats?.total ?? 0;
-    // Bramka świeżości: liczniki MUSZĄ dotyczyć bieżącego pytania (anty-wyścig przy
-    // zmianie pytania — inaczej stary total „konsumował" auto-advance kolejnego).
-    const fresh = liveStatsIdxRef.current === idx;
-    const strict = fresh && session?.status === "running" && total > 0 && participants.length > 0 && total >= participants.length;
-    if (strict && autoAdvancedRef.current !== idx) {
-      autoAdvancedRef.current = idx;
-      goToNextRef.current();
-    }
-  }, [liveStats?.total, participants.length, session?.current_question_idx, session?.status]);
 
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
 

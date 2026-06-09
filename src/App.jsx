@@ -82,7 +82,7 @@ export default function App() {
   useEffect(() => {
     const city = podiumResults[0]?.city;
     if (screen !== "podium" || DEMO || !supabase || !city) return;
-    const ch = supabase.channel(`podium-${city}`);
+    const ch = supabase.channel(`podium-${encodeURIComponent(city)}`); // ASCII — polskie znaki psują broadcast
     const send = () => ch.send({ type: "broadcast", event: "podium", payload: { results: podiumResults, podStep: podStepRef.current } });
     ch.subscribe((s) => { if (s === "SUBSCRIBED") { podiumChRef.current = ch; send(); } });
     // Re-broadcast co 2 s — projektor, który podłączy się później, też dostanie stan.

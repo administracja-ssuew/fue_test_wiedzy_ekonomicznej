@@ -40,6 +40,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Natychmiastowa aktualizacja: nowy SW przejmuje kontrolę i odświeża stare
+        // cache od razu, bez konieczności zamykania wszystkich kart. Krytyczne, by
+        // poprawki docierały do użytkowników bez ręcznego czyszczenia cache.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

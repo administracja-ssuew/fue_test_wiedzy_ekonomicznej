@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
-  getParticipantCodes, generateParticipantCode, deleteParticipantCode,
+  getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions,
   getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
@@ -173,6 +173,12 @@ function PytaniaTab({ city }) {
   };
 
   const remove = async (id) => { if (!confirm("Usunąć pytanie?")) return; await deleteQuestion(id); reload(); };
+  const removeAll = async () => {
+    if (!questions.length) return;
+    if (!confirm(`Usunąć WSZYSTKIE pytania ${isPractice ? "próbne" : "główne"} miasta ${city} (${questions.length})? Tego nie można cofnąć.`)) return;
+    const { error } = await deleteAllQuestions(city, isPractice);
+    if (error) alert("Błąd usuwania: " + error); else reload();
+  };
   const filtered = questions.filter((q) => q.module === mod);
 
   return (
@@ -190,6 +196,7 @@ function PytaniaTab({ city }) {
           </button>
         ))}
         <button onClick={openAdd} style={{ ...C.btn("primary"), marginLeft: "auto" }}>+ Dodaj pytanie</button>
+        {questions.length > 0 && <button onClick={removeAll} style={C.btn("danger", { fontSize: 12, padding: "8px 12px" })}>🗑 Usuń wszystkie ({questions.length})</button>}
       </div>
 
       {/* Import pytań z CSV / Excel */}
@@ -333,6 +340,13 @@ function KodyTab({ city, adminId }) {
   useEffect(() => { getParticipantCodes(city).then(setCodes); }, [city]);
   const reload = () => getParticipantCodes(city).then(setCodes);
 
+  const removeAll = async () => {
+    if (!codes.length) return;
+    if (!confirm(`Usunąć WSZYSTKIE kody miasta ${city} (${codes.length})? Tego nie można cofnąć.`)) return;
+    const { error } = await deleteAllParticipantCodes(city);
+    if (error) alert("Błąd usuwania: " + error); else reload();
+  };
+
   const generate = async () => {
     if (!form.name.trim() || !form.surname.trim()) return setErr("Podaj imię i nazwisko.");
     setErr(""); setBusy(true);
@@ -454,6 +468,12 @@ function KodyTab({ city, adminId }) {
           </div>
         ))}
       </div>
+
+      {codes.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <button onClick={removeAll} style={C.btn("danger", { fontSize: 12, padding: "7px 14px" })}>🗑 Usuń wszystkie kody ({codes.length})</button>
+        </div>
+      )}
 
       {codes.length === 0
         ? <p style={{ color: "#9B89CC", textAlign: "center", padding: "24px 0" }}>Brak kodów dla {city}.</p>
@@ -736,6 +756,18 @@ function SesjaTab({ city, adminId, onPodium }) {
     upd({ status: "running", q_started_at: backdated });
     logEvent({ type: "question_skipped", sessionId: session?.id, city, actor: adminId, detail: { idx: session?.current_question_idx } });
   };
+
+  // #3 — auto-przejście: gdy WSZYSCY uczestnicy odpowiedzieli, sam pomiń czas pytania
+  // (bez klikania). Tylko warunek ścisły (nie plateau) — raz na pytanie (ref po idx).
+  const allAnsweredStrict = st === "running" && liveTotal > 0 && participants.length > 0 && liveTotal >= participants.length;
+  const autoAdvancedRef = useRef(-1);
+  useEffect(() => {
+    const idx = session?.current_question_idx ?? 0;
+    if (allAnsweredStrict && autoAdvancedRef.current !== idx) {
+      autoAdvancedRef.current = idx;
+      goToNextQuestion();
+    }
+  }, [allAnsweredStrict, session?.current_question_idx]); // eslint-disable-line
 
   return (
     <div>

@@ -132,6 +132,34 @@ export async function deleteParticipantCode(id) {
   return { error: error?.message || null };
 }
 
+// Masowe usuwanie (admin). RPC §30 (role-checked); soft-fallback do bezpośredniego delete.
+export async function deleteAllParticipantCodes(city) {
+  if (DEMO) {
+    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+    localStorage.setItem("fue_codes", JSON.stringify(codes.filter((c) => c.city !== city)));
+    return { error: null };
+  }
+  const { error } = await supabase.rpc("admin_delete_city_codes", { p_city: city });
+  if (!error) return { error: null };
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) return { error: error.message };
+  const { error: e2 } = await supabase.from("participant_codes").delete().eq("city", city);
+  return { error: e2?.message || null };
+}
+
+export async function deleteAllQuestions(city, isPractice) {
+  if (DEMO) {
+    localStorage.removeItem(isPractice ? `fue_practice_${city}` : `fue_questions_${city}`);
+    return { error: null };
+  }
+  const { error } = await supabase.rpc("admin_delete_city_questions", { p_city: city, p_practice: isPractice });
+  if (!error) return { error: null };
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) return { error: error.message };
+  const { error: e2 } = await supabase.from("questions").delete().eq("city", city).eq("is_practice", isPractice);
+  return { error: e2?.message || null };
+}
+
 // ─── QUESTIONS ────────────────────────────────────────────────────────────────
 
 export async function getQuestions(city) {

@@ -77,7 +77,7 @@ export default function Ended({ participant, myPts, allAnswers, isPractice, onGo
         <div className="su" style={{ ...W.card({ padding: "16px", marginTop: 12, borderColor: "rgba(245,197,24,.3)", background: "rgba(245,197,24,.06)" }), animationDelay: ".24s", width: "100%" }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: "#F5C518", marginBottom: 4 }}>⏳ Poczekaj na ogłoszenie organizatora</p>
           <p style={{ fontSize: 13, color: "#9B89CC", lineHeight: 1.6 }}>
-            Oficjalne wyniki ogłosi organizator. Nie zamykaj sali — wyniki zostaną podane na miejscu.
+            Wyniki zostaną podane za chwilę na miejscu.
           </p>
         </div>
         <button className="su" style={{ ...W.btn("ghost", { marginTop: 20 }), animationDelay: ".3s" }}

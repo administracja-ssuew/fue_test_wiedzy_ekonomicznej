@@ -307,6 +307,9 @@ function Shape({ style, gradient, delay = 0 }) {
   );
 }
 
+// Wspólny formularz zapisów dla wszystkich miast — podmień na właściwy URL.
+const REGISTRATION_URL = "#";
+
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   const [play, setPlay] = useState(() => document.fonts.status === "loaded" ? "running" : "paused");
   useEffect(() => {
@@ -365,6 +368,16 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
             backgroundSize: "200% auto",
             animation: "shimmer 3s linear infinite",
           }} />
+        </div>
+
+        {/* CTA Zapisy — wspólny formularz dla wszystkich miast (placeholder URL) */}
+        <div style={{ animation: "blurIn .55s .58s ease both", animationPlayState: play, display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <a href={REGISTRATION_URL} target="_blank" rel="noopener noreferrer"
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px) scale(1.03)"; e.currentTarget.style.boxShadow = "0 18px 46px rgba(245,197,24,.55)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 10px 32px rgba(245,197,24,.4)"; }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 10, textDecoration: "none", background: "linear-gradient(135deg,#F5C518,#E5A800)", color: "#07021A", fontWeight: 800, fontSize: 17, padding: "18px 44px", borderRadius: 14, boxShadow: "0 10px 32px rgba(245,197,24,.4)", transition: "all .2s", fontFamily: '"Space Grotesk",sans-serif', letterSpacing: .3 }}>
+            ✍️ Zapisz się na Test Wiedzy Ekonomicznej
+          </a>
         </div>
 
         {/* Buttons */}
@@ -512,7 +525,6 @@ function InformatorTab({ city, setCity }) {
 
   const INFO_SECTIONS = [
     { id: "harmonogram", label: "📅 Harmonogram" },
-    { id: "zasady",      label: "📋 Zasady"      },
     { id: "kontakt",     label: "📞 Kontakt"      },
   ];
 
@@ -556,20 +568,6 @@ function InformatorTab({ city, setCity }) {
                   <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 22, color: "#F5C518", letterSpacing: 1.5, lineHeight: 1 }}>{s.time}</p>
                   <p style={{ fontSize: 14, color: "#EDE9FE", marginTop: 4, fontWeight: 500 }}>{s.icon} {s.label}</p>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {section === "zasady" && (
-          <div key="zasady" style={{ display: "flex", flexDirection: "column", gap: 10, animation: "blurIn .35s ease both" }}>
-            {(RULES[city] || RULES.default).map((r, i) => (
-              <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", ...W.card({ padding: "14px 16px" }), animation: "cardIn .4s ease both", animationDelay: `${i * .05}s`,
-                transition: "border-color .2s" }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(107,33,232,.35)")}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,.09)")}>
-                <span style={{ background: "rgba(107,33,232,.25)", borderRadius: 6, padding: "2px 9px", fontSize: 12, fontWeight: 700, color: "#C4B5FD", flexShrink: 0, marginTop: 1 }}>{i + 1}</span>
-                <p style={{ fontSize: 14, lineHeight: 1.6 }}>{r}</p>
               </div>
             ))}
           </div>

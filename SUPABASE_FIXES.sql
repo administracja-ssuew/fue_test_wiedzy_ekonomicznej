@@ -863,6 +863,36 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
 
+-- ─── 30. Masowe usuwanie (admin): wszystkie pytania / kody miasta ──
+-- Admin nie ma RLS DELETE na answers, więc kasowanie pytań z odpowiedziami
+-- wymaga SECURITY DEFINER. Rola wymagana (city_admin/superadmin).
+
+CREATE OR REPLACE FUNCTION public.admin_delete_city_questions(p_city TEXT, p_practice BOOLEAN)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_count INT;
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  DELETE FROM public.answers WHERE question_id IN
+    (SELECT id FROM public.questions WHERE city = p_city AND is_practice = p_practice);
+  WITH d AS (DELETE FROM public.questions WHERE city = p_city AND is_practice = p_practice RETURNING 1)
+    SELECT count(*) INTO v_count FROM d;
+  RETURN v_count;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_city_questions(TEXT, BOOLEAN) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_city_questions(TEXT, BOOLEAN) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_city_codes(p_city TEXT)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_count INT;
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  WITH d AS (DELETE FROM public.participant_codes WHERE city = p_city RETURNING 1)
+    SELECT count(*) INTO v_count FROM d;
+  RETURN v_count;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_city_codes(TEXT) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_city_codes(TEXT) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

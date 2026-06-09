@@ -594,11 +594,52 @@ function InformatorTab({ city, setCity }) {
   );
 }
 
+// ─── Tab: Partnerzy ───────────────────────────────────────────────────────────
+
+function PartnerzyTab() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 760, padding: "32px 24px" }}>
+        <div style={{ animation: "blurIn .45s ease both", marginBottom: 28, textAlign: "center" }}>
+          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Wspierają nas</span>
+          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Partnerzy</h2>
+          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#F5C518,transparent)", margin: "10px auto 0" }} />
+          <p style={{ color: "#9B89CC", fontSize: 14, marginTop: 14, lineHeight: 1.6 }}>
+            Lista partnerów Testu Wiedzy Ekonomicznej wkrótce — trwają rozmowy.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 16 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} style={{
+              aspectRatio: "16 / 10",
+              borderRadius: 14,
+              border: "1px dashed rgba(255,255,255,.14)",
+              background: "linear-gradient(110deg, rgba(255,255,255,.03) 30%, rgba(255,255,255,.07) 50%, rgba(255,255,255,.03) 70%)",
+              backgroundSize: "200% 100%",
+              animation: `shimmer 2.4s linear ${i * .12}s infinite, cardIn .45s ease ${i * .05}s both`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "rgba(155,137,204,.4)", fontSize: 12, fontWeight: 600, letterSpacing: 1,
+            }}>
+              PARTNER
+            </div>
+          ))}
+        </div>
+
+        <p style={{ textAlign: "center", color: "rgba(155,137,204,.5)", fontSize: 12, marginTop: 24 }}>
+          Chcesz zostać partnerem? Napisz do organizatorów.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const NAV_TABS = [
   { id: "home",          label: "Główna"        },
   { id: "organizatorzy", label: "Organizatorzy" },
+  { id: "partnerzy",     label: "Partnerzy"     },
   { id: "koordynatorzy", label: "Koordynatorzy" },
   { id: "informator",    label: "Informator"    },
 ];
@@ -625,6 +666,7 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
       <div style={{ flex: 1 }}>
         {tab === "home"          && <HomeTab isDesktop={isDesktop} onEnterCode={onEnterCode} onAdminLogin={onAdminLogin} />}
         {tab === "organizatorzy" && <OrganizatorszyTab />}
+        {tab === "partnerzy"     && <PartnerzyTab />}
         {tab === "koordynatorzy" && <KoordynatorzyTab city={city} setCity={setCity} />}
         {tab === "informator"    && <InformatorTab city={city} setCity={setCity} />}
       </div>

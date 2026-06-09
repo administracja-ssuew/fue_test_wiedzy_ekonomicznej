@@ -409,56 +409,86 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
 
 // ─── Tab: Organizatorzy ───────────────────────────────────────────────────────
 
+// Pełne nazwy uczelni (placeholder — podmień gdy będą oficjalne).
+const UNIV_NAMES = {
+  UEK: "Uniwersytet Ekonomiczny w Krakowie",
+  SGH: "Szkoła Główna Handlowa w Warszawie",
+  UEP: "Uniwersytet Ekonomiczny w Poznaniu",
+  UEW: "Uniwersytet Ekonomiczny we Wrocławiu",
+  UEKat: "Uniwersytet Ekonomiczny w Katowicach",
+};
+
 function OrganizatorszyTab() {
-  let cardIdx = 0;
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 860, padding: "32px 24px" }}>
-        <div style={{ animation: "blurIn .45s ease both", marginBottom: 36 }}>
-          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Ludzie za projektem</span>
+        <div style={{ animation: "blurIn .45s ease both", marginBottom: 32, textAlign: "center" }}>
+          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Kto za tym stoi</span>
           <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Organizatorzy</h2>
-          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
+          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", margin: "10px auto 0" }} />
         </div>
 
-        {ORGANIZERS.map((section, sIdx) => (
-          <div key={section.group} style={{ marginBottom: 44, animation: "blurIn .5s ease both", animationDelay: `${.1 + sIdx * .1}s` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 22 }}>
-              <div style={{ height: 1, flex: 1, background: "linear-gradient(90deg,rgba(107,33,232,.4),rgba(255,255,255,.06))" }} />
-              <span style={{ fontSize: 10, color: "#9B89CC", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, whiteSpace: "nowrap" }}>{section.group}</span>
-              <div style={{ height: 1, flex: 1, background: "linear-gradient(270deg,rgba(107,33,232,.4),rgba(255,255,255,.06))" }} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 14 }}>
-              {section.members.map((m) => {
-                const color = UNIV_COLORS[m.univ] || "#9B89CC";
-                const initials = m.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                const delay = `${.15 + cardIdx++ * .07}s`;
-                return (
-                  <div key={m.name + m.role}
-                    style={{ ...W.card({ padding: "20px" }), animation: "cardIn .5s ease both", animationDelay: delay, transition: "transform .2s, box-shadow .2s", cursor: "default" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 12px 32px ${color}20`; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
-                      {m.photo
-                        ? <img src={m.photo} alt={m.name} style={{ width: 52, height: 52, borderRadius: 14, objectFit: "cover", border: `2px solid ${color}55`, flexShrink: 0 }} />
-                        : <div style={{ width: 52, height: 52, borderRadius: 14, background: `linear-gradient(135deg,${color}30,${color}15)`, border: `1px solid ${color}45`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 22, color, flexShrink: 0, letterSpacing: 1 }}>
-                            {initials}
-                          </div>
-                      }
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3 }}>{m.name}</p>
-                        <p style={{ fontSize: 11, color: "#9B89CC", marginTop: 4, lineHeight: 1.4 }}>{m.role}</p>
-                      </div>
-                    </div>
-                    <div style={{ background: `${color}18`, border: `1px solid ${color}35`, borderRadius: 8, padding: "4px 10px", display: "inline-block" }}>
-                      <span style={{ fontSize: 11, color, fontWeight: 700, letterSpacing: .5 }}>{m.univ}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        {/* FUE — główny organizator (na samej górze) */}
+        <div style={{ animation: "blurIn .5s .1s ease both", marginBottom: 40 }}>
+          <div style={{
+            position: "relative", overflow: "hidden", borderRadius: 20, padding: "34px 28px", textAlign: "center",
+            background: "linear-gradient(135deg, rgba(107,33,232,.22), rgba(245,197,24,.08))",
+            border: "1px solid rgba(107,33,232,.4)", boxShadow: "0 16px 48px rgba(107,33,232,.25)",
+          }}>
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(110deg, transparent 30%, rgba(255,255,255,.06) 50%, transparent 70%)", backgroundSize: "200% 100%", animation: "shimmer 4s linear infinite", pointerEvents: "none" }} />
+            <span style={{ fontSize: 10, color: "#F5C518", fontWeight: 800, letterSpacing: 2, textTransform: "uppercase" }}>Główny organizator</span>
+            <div style={{ margin: "16px auto 12px", width: 96, height: 96, borderRadius: 22, background: "linear-gradient(135deg,#6B21E8,#4F46E5)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 40, letterSpacing: 2, color: "#fff", boxShadow: "0 10px 30px rgba(107,33,232,.45)" }}>FUE</div>
+            <h3 style={{ fontFamily: '"Bebas Neue"', fontSize: 30, letterSpacing: 1.5, color: "#EDE9FE", lineHeight: 1 }}>Forum Uczelni Ekonomicznych</h3>
+            <p style={{ color: "#9B89CC", fontSize: 14, marginTop: 10, maxWidth: 560, marginInline: "auto", lineHeight: 1.6 }}>
+              Ogólnopolska inicjatywa łącząca pięć czołowych uczelni ekonomicznych — koordynuje Test Wiedzy Ekonomicznej w skali kraju.
+            </p>
           </div>
-        ))}
+        </div>
+
+        {/* Uczelnie */}
+        <SectionLabel text="Uczelnie partnerskie" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 14, marginBottom: 42 }}>
+          {UNIVERSITIES.map((u, i) => (
+            <div key={u.abbr}
+              style={{ ...W.card({ padding: "20px 16px" }), textAlign: "center", animation: "cardIn .5s ease both", animationDelay: `${.15 + i * .07}s`, transition: "transform .2s, box-shadow .2s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 12px 30px ${u.color}25`; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
+              <div style={{ width: 56, height: 56, margin: "0 auto 12px", borderRadius: 14, background: u.logo ? "#fff" : `linear-gradient(135deg,${u.color}30,${u.color}12)`, border: `1px solid ${u.color}45`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 20, letterSpacing: 1, color: u.color, overflow: "hidden" }}>
+                {u.logo ? <img src={u.logo} alt={u.abbr} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6 }} /> : u.abbr}
+              </div>
+              <p style={{ fontSize: 12, color: "#C4B5FD", fontWeight: 700, lineHeight: 1.35 }}>{UNIV_NAMES[u.abbr] || u.abbr}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Samorządy — za ich sprawą */}
+        <SectionLabel text="Samorządy studenckie" />
+        <p style={{ textAlign: "center", color: "#9B89CC", fontSize: 14, lineHeight: 1.7, maxWidth: 600, margin: "0 auto 22px" }}>
+          To <strong style={{ color: "#F5C518" }}>za ich sprawą</strong> Test Wiedzy Ekonomicznej odbywa się na każdej uczelni — samorządy studenckie organizują wydarzenie lokalnie i zapraszają uczestników.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 14 }}>
+          {UNIVERSITIES.map((u, i) => (
+            <div key={u.abbr}
+              style={{ ...W.card({ padding: "16px 18px", borderColor: `${u.color}30` }), display: "flex", alignItems: "center", gap: 12, animation: "cardIn .5s ease both", animationDelay: `${.2 + i * .07}s` }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: u.color, flexShrink: 0, boxShadow: `0 0 10px ${u.color}`, animation: "pulse 2.5s infinite" }} />
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>Samorząd Studencki</p>
+                <p style={{ fontSize: 11, color: u.color, fontWeight: 700, marginTop: 2 }}>{u.abbr}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function SectionLabel({ text }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
+      <div style={{ height: 1, flex: 1, background: "linear-gradient(90deg,rgba(107,33,232,.4),rgba(255,255,255,.06))" }} />
+      <span style={{ fontSize: 10, color: "#9B89CC", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, whiteSpace: "nowrap" }}>{text}</span>
+      <div style={{ height: 1, flex: 1, background: "linear-gradient(270deg,rgba(107,33,232,.4),rgba(255,255,255,.06))" }} />
     </div>
   );
 }

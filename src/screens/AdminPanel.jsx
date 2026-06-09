@@ -513,6 +513,8 @@ function SesjaTab({ city, adminId, onPodium }) {
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
   const presenceChRef  = useRef(null);
   const quizBcChRef    = useRef(null); // broadcast channel for instant status push to participants
+  const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: id pytania, dla którego już pominęliśmy czas
+  const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -729,6 +731,19 @@ function SesjaTab({ city, adminId, onPodium }) {
     logEvent({ type: "results_exported", sessionId: session?.id, city, actor: adminId, detail: { count: results.length } });
   };
 
+  // #3 — auto-przejście: gdy WSZYSCY odpowiedzą, sam pomiń czas (raz na pytanie).
+  // Hook MUSI być nad early-return (Rules of Hooks). Warunek liczony z aktualnego stanu,
+  // a samo przejście woła przez ref (goToNextQuestion jest zdefiniowany niżej).
+  useEffect(() => {
+    const idx = session?.current_question_idx ?? 0;
+    const total = liveStats?.total ?? 0;
+    const strict = session?.status === "running" && total > 0 && participants.length > 0 && total >= participants.length;
+    if (strict && autoAdvancedRef.current !== idx) {
+      autoAdvancedRef.current = idx;
+      goToNextRef.current();
+    }
+  }, [liveStats?.total, participants.length, session?.current_question_idx, session?.status]);
+
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
 
   const st     = session?.status || "waiting";
@@ -756,18 +771,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     upd({ status: "running", q_started_at: backdated });
     logEvent({ type: "question_skipped", sessionId: session?.id, city, actor: adminId, detail: { idx: session?.current_question_idx } });
   };
-
-  // #3 — auto-przejście: gdy WSZYSCY uczestnicy odpowiedzieli, sam pomiń czas pytania
-  // (bez klikania). Tylko warunek ścisły (nie plateau) — raz na pytanie (ref po idx).
-  const allAnsweredStrict = st === "running" && liveTotal > 0 && participants.length > 0 && liveTotal >= participants.length;
-  const autoAdvancedRef = useRef(-1);
-  useEffect(() => {
-    const idx = session?.current_question_idx ?? 0;
-    if (allAnsweredStrict && autoAdvancedRef.current !== idx) {
-      autoAdvancedRef.current = idx;
-      goToNextQuestion();
-    }
-  }, [allAnsweredStrict, session?.current_question_idx]); // eslint-disable-line
+  goToNextRef.current = goToNextQuestion; // #3 — efekt auto-przejścia (nad early-return) woła zawsze aktualną wersję
 
   return (
     <div>

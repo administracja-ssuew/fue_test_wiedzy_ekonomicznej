@@ -516,6 +516,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: idx pytania, dla którego już pominęliśmy czas
   const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
   const participantsRef = useRef(0);   // #3 — liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
+  const pollTotalRef    = useRef(-1);  // #3 plateau: ostatnio widziany total dla bieżącego pytania
+  const pollChangedAtRef = useRef(0);  // #3 plateau: kiedy total ostatnio się zmienił
+  const pollIdxRef      = useRef(-1);  // #3 plateau: idx, dla którego śledzimy plateau
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -634,10 +637,16 @@ function SesjaTab({ city, adminId, onPodium }) {
         const stats = await getLiveAnswerSummary(s.id, q.id);
         if (stats) {
           setLiveStats(stats);
-          // #3 — auto-przejście liczone TU (świeże dane dla bieżącego pytania, bez
-          // wyścigu stanu React): gdy wszyscy odpowiedzieli, pomiń czas — raz na pytanie.
+          // #3 — auto-przejście liczone TU (świeże dane, bez wyścigu stanu React).
+          // Odpala gdy: osiągnięto liczbę uczestników (jeśli znana) LUB odpowiedzi
+          // przestały napływać (plateau ~2,5 s) — odporne na zawodny licznik uczestników.
+          const total = stats.total ?? 0;
+          if (pollIdxRef.current !== idx) { pollIdxRef.current = idx; pollTotalRef.current = -1; }
+          if (total !== pollTotalRef.current) { pollTotalRef.current = total; pollChangedAtRef.current = Date.now(); }
           const pcount = participantsRef.current;
-          if (stats.total > 0 && pcount > 0 && stats.total >= pcount && autoAdvancedRef.current !== idx) {
+          const countReached = pcount > 0 && total >= pcount;
+          const plateau = Date.now() - pollChangedAtRef.current >= 2500;
+          if (total > 0 && (countReached || plateau) && autoAdvancedRef.current !== idx) {
             autoAdvancedRef.current = idx;
             goToNextRef.current();
           }
@@ -863,6 +872,13 @@ function SesjaTab({ city, adminId, onPodium }) {
         {st === "running" && totalQ > 0 && (
           <div style={{ height: 3, background: "rgba(255,255,255,.08)" }}>
             <div style={{ height: "100%", background: `linear-gradient(90deg,${stCol},#6B21E8)`, width: `${(curQ / totalQ) * 100}%`, transition: "width .6s ease" }} />
+          </div>
+        )}
+
+        {/* DEBUG — diagnostyka liczb (do namierzenia auto-skip). Można usunąć później. */}
+        {st === "running" && (
+          <div style={{ padding: "6px 20px", fontSize: 10, color: "rgba(155,137,204,.7)", fontFamily: "ui-monospace,monospace" }}>
+            🔧 idx={session?.current_question_idx ?? 0} · odp(liveTotal)={liveTotal} · uczestnicy(state)={participants.length} · uczestnicy(ref)={participantsRef.current} · settled={String(answersSettled)} · autoAdv={autoAdvancedRef.current}
           </div>
         )}
 

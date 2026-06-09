@@ -274,6 +274,18 @@ export async function endAndResetSession(city, adminId, isPractice = false) {
   return getOrCreateSession(city, adminId, isPractice);
 }
 
+// Historia (#7): zakończone sesje konkursowe (status ended/results) — do podglądu rankingu.
+export async function getEndedSessions(city) {
+  if (DEMO) return [];
+  let q = supabase.from("quiz_sessions")
+    .select("id, city, created_at, status")
+    .in("status", ["ended", "results"]).eq("is_practice", false)
+    .order("created_at", { ascending: false }).limit(50);
+  if (city) q = q.eq("city", city);
+  const { data } = await q;
+  return data || [];
+}
+
 export async function updateSession(sessionId, updates) {
   if (DEMO) {
     const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];

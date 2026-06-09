@@ -3,7 +3,7 @@ import {
   supabase, DEMO,
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions,
-  getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults,
+  getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults, getEndedSessions,
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
@@ -1386,6 +1386,75 @@ function LiveTab({ city }) {
 
 const EMPTY_MOD = { id: "", name: "", icon: "", color: "#6B21E8", timePerQ: 60, desc: "" };
 
+// ─── Historia (#7) ────────────────────────────────────────────────────────────
+function HistoriaTab({ city }) {
+  const [sessions, setSessions] = useState([]);
+  const [sel, setSel]           = useState(null);
+  const [results, setResults]   = useState([]);
+  const [loading, setLoading]   = useState(false);
+
+  useEffect(() => { getEndedSessions(city).then(setSessions); setSel(null); setResults([]); }, [city]);
+
+  const open = async (s) => {
+    if (sel?.id === s.id) { setSel(null); return; }
+    setSel(s); setLoading(true);
+    setResults(await getSessionResults(s.id));
+    setLoading(false);
+  };
+
+  const exportCsv = () => {
+    const esc = (v) => { const x = String(v ?? ""); return /[";\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
+    const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Śr. czas (s)"];
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime ?? ""])];
+    downloadCsv(`historia_${sel?.city || city}_${(sel?.created_at || "").slice(0, 10)}.csv`, "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n"));
+  };
+
+  const fmt = (iso) => { try { return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" }); } catch { return iso; } };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 18 }}>
+        <p style={{ fontWeight: 700, fontSize: 18 }}>Historia testów — {city}</p>
+        <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>Zakończone sesje. Kliknij, by zobaczyć ranking i pobrać CSV.</p>
+      </div>
+      {sessions.length === 0
+        ? <p style={{ color: "#9B89CC", textAlign: "center", padding: "24px 0" }}>Brak zakończonych sesji dla {city}.</p>
+        : sessions.map((s) => (
+          <div key={s.id}>
+            <button onClick={() => open(s)} style={{ ...C.card({ padding: "12px 16px", marginBottom: 8 }), width: "100%", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, borderColor: sel?.id === s.id ? "rgba(107,33,232,.5)" : undefined }}>
+              <span style={{ fontSize: 18 }}>🗂️</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 700, fontSize: 13 }}>{fmt(s.created_at)}</p>
+                <p style={{ fontSize: 11, color: "#9B89CC" }}>{s.city} · {s.status === "results" ? "ogłoszone" : "zakończone"}</p>
+              </div>
+              <span style={{ color: "#9B89CC", fontSize: 16 }}>{sel?.id === s.id ? "▾" : "▸"}</span>
+            </button>
+            {sel?.id === s.id && (
+              <div style={{ ...C.card({ padding: "14px 16px", marginBottom: 14, background: "rgba(255,255,255,.02)" }) }}>
+                {loading ? <p style={{ color: "#9B89CC" }}>Ładowanie rankingu…</p>
+                  : results.length === 0 ? <p style={{ color: "#9B89CC" }}>Brak wyników w tej sesji.</p>
+                  : <>
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                        <button onClick={exportCsv} style={C.btn("ghost", { fontSize: 12, padding: "6px 12px" })}>📥 CSV</button>
+                      </div>
+                      {results.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, marginBottom: 6,
+                          background: i < 5 ? "rgba(245,197,24,.07)" : "rgba(255,255,255,.03)", border: `1px solid ${i < 5 ? "rgba(245,197,24,.4)" : "rgba(255,255,255,.07)"}` }}>
+                          <span style={{ fontFamily: '"Bebas Neue"', fontSize: 18, color: i < 5 ? "#F5C518" : "#9B89CC", width: 24, textAlign: "center" }}>{i + 1}</span>
+                          <p style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{r.name}</p>
+                          {i < 5 && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px" }}>FINAŁ</span>}
+                          <span style={{ fontFamily: '"Bebas Neue"', fontSize: 16, color: "#10D9A0" }}>{r.correct}<span style={{ fontSize: 11, color: "#9B89CC" }}>/{r.total}</span></span>
+                        </div>
+                      ))}
+                    </>}
+              </div>
+            )}
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function ModulyTab() {
   const ctxModules = useModules();
   const [list, setList]       = useState(ctxModules);
@@ -1505,6 +1574,7 @@ const TABS = [
   { id: "pytania",    label: "📝 Pytania"    },
   { id: "kody",       label: "🎟️ Kody"      },
   { id: "sesja",      label: "🎮 Sesja"     },
+  { id: "historia",   label: "🗂️ Historia"  },
   { id: "moduly",     label: "🧩 Moduły"    },
   { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
@@ -1557,6 +1627,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
         <div style={{ display: tab === "sesja" ? "block" : "none" }}>
           <SesjaTab city={city} adminId={admin?.id} onPodium={onPodium} />
         </div>
+        {tab === "historia"   && <HistoriaTab city={city} />}
         {tab === "moduly"     && <ModulyTab />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>

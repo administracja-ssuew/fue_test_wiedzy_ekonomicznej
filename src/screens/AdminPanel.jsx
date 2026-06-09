@@ -883,12 +883,10 @@ function SesjaTab({ city, adminId, onPodium }) {
           )}
           {st === "running" && <>
             <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => {
-              // Świeży q_started_at z ref (stan `session` bywa nieaktualny → liczyło elapsed
-              // względem POPRZEDNIEGO pytania, stąd „skok do końca"). Clamp do [0, tpq].
-              const qsa = sessionRef.current?.q_started_at || session?.q_started_at;
-              const raw = qsa ? Math.floor((serverNow() - new Date(qsa).getTime()) / 1000) : 0;
-              const elapsed = Math.max(0, Math.min(raw, curQuestionTimePerQ));
-              upd({ status: "paused", pause_elapsed_s: elapsed });
+              // Zapamiętaj MOMENT pauzy (epoch s). q_started_at zostaje bez zmian — na
+              // wznowieniu przesuniemy go o czas pauzy, więc remaining zostaje zachowane
+              // (bez liczenia elapsed z potencjalnie nieaktualnego stanu = bez „skoku").
+              upd({ status: "paused", pause_elapsed_s: Math.floor(serverNow() / 1000) });
             }}>⏸ Pauza</button>
             <button style={C.btn("ghost")} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={() => {
               if (!confirm("Powtórzyć bieżące pytanie? Czas zostanie zresetowany dla wszystkich uczestników (na tym samym pytaniu).")) return;
@@ -908,9 +906,13 @@ function SesjaTab({ city, adminId, onPodium }) {
           </>}
           {st === "paused" && <>
             <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={() => {
-              const pe = sessionRef.current?.pause_elapsed_s ?? 0;
-              const newStartedAt = new Date(serverNow() - pe * 1000).toISOString();
-              upd({ status: "running", q_started_at: newStartedAt, pause_elapsed_s: null });
+              // Przesuń q_started_at o czas trwania pauzy → remaining identyczne jak przed pauzą.
+              const pausedAtMs = (sessionRef.current?.pause_elapsed_s ?? Math.floor(serverNow() / 1000)) * 1000;
+              const qsa = sessionRef.current?.q_started_at;
+              const shifted = qsa
+                ? new Date(new Date(qsa).getTime() + (serverNow() - pausedAtMs)).toISOString()
+                : new Date(serverNow()).toISOString();
+              upd({ status: "running", q_started_at: shifted, pause_elapsed_s: null });
             }}>▶ Wznów quiz</button>
             <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>

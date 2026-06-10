@@ -516,9 +516,6 @@ function SesjaTab({ city, adminId, onPodium }) {
   const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: idx pytania, dla którego już pominęliśmy czas
   const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
   const participantsRef = useRef(0);   // #3 — liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
-  const pollTotalRef    = useRef(-1);  // #3 plateau: ostatnio widziany total dla bieżącego pytania
-  const pollChangedAtRef = useRef(0);  // #3 plateau: kiedy total ostatnio się zmienił
-  const pollIdxRef      = useRef(-1);  // #3 plateau: idx, dla którego śledzimy plateau
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -641,12 +638,10 @@ function SesjaTab({ city, adminId, onPodium }) {
           // Odpala gdy: osiągnięto liczbę uczestników (jeśli znana) LUB odpowiedzi
           // przestały napływać (plateau ~2,5 s) — odporne na zawodny licznik uczestników.
           const total = stats.total ?? 0;
-          if (pollIdxRef.current !== idx) { pollIdxRef.current = idx; pollTotalRef.current = -1; }
-          if (total !== pollTotalRef.current) { pollTotalRef.current = total; pollChangedAtRef.current = Date.now(); }
           const pcount = participantsRef.current;
-          const countReached = pcount > 0 && total >= pcount;
-          const plateau = Date.now() - pollChangedAtRef.current >= 2500;
-          if (total > 0 && (countReached || plateau) && autoAdvancedRef.current !== idx) {
+          // Auto-skip dokładnie gdy WSZYSCY uczestnicy odpowiedzieli (precyzyjnie).
+          // Bez plateau — przy długich przerwach pomijałoby przedwcześnie i skakało po pauzie.
+          if (total > 0 && pcount > 0 && total >= pcount && autoAdvancedRef.current !== idx) {
             autoAdvancedRef.current = idx;
             goToNextRef.current();
           }
@@ -716,9 +711,11 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   const upd = async (updates) => {
     if (!session) return;
-    // Increment version + clear interval: any in-flight poll will see version mismatch and discard itself
+    // Increment version: in-flight poll zobaczy niezgodność wersji i się odrzuci.
+    // NIE czyścimy interwału — inaczej upd ze statusem "running" (np. back-date przy
+    // auto-skip) zabijał poll na stałe (efekt nie wznawia, bo status bez zmian) i
+    // sessionRef.current_question_idx zamarzał → auto-skip działał tylko dla 1. pytania.
     pollVersionRef.current++;
-    clearInterval(pollRef.current);
     const { error } = await updateSession(session.id, updates);
     if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
     const nextSession = { ...sessionRef.current, ...updates };

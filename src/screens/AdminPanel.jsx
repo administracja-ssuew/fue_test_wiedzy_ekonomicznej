@@ -872,13 +872,6 @@ function SesjaTab({ city, adminId, onPodium }) {
           </div>
         )}
 
-        {/* DEBUG — diagnostyka liczb (do namierzenia auto-skip). Można usunąć później. */}
-        {st === "running" && (
-          <div style={{ padding: "6px 20px", fontSize: 11, color: "#F5C518", fontFamily: "ui-monospace,monospace", background: "rgba(245,197,24,.06)" }}>
-            🔧 build {__BUILD__} · idx={session?.current_question_idx ?? 0} · odp={liveTotal} · uczestnicy={participants.length}/ref:{participantsRef.current} · settled={String(answersSettled)} · autoAdv={autoAdvancedRef.current}
-          </div>
-        )}
-
         {/* Action buttons */}
         <div style={{ padding: "14px 20px", borderTop: `1px solid ${stCol}20`, display: "flex", gap: 10, flexWrap: "wrap" }}>
           {st === "waiting" && (

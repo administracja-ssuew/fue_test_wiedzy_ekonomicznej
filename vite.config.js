@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  define: {
+    // Stempel builda — widoczny w apce, żeby od razu wiedzieć, którą wersję serwuje
+    // przeglądarka (rozstrzyga problemy z cache PWA).
+    __BUILD__: JSON.stringify(new Date().toISOString().slice(5, 16).replace("T", " ")),
+  },
   plugins: [
     react(),
     VitePWA({

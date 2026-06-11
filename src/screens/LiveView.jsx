@@ -2,6 +2,7 @@ import useLiveProjection from "../hooks/useLiveProjection.js";
 import Countdown from "./Countdown.jsx";
 import ModuleIntroFS from "./ModuleIntroFS.jsx";
 import PodiumScreen from "./Podium.jsx";
+import JoinQR from "../components/JoinQR.jsx";
 
 const ANS_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const ANS_LABELS = ["A", "B", "C", "D"];
@@ -52,7 +53,8 @@ export default function LiveView({ city }) {
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>⏳</div>
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Oczekiwanie</p>
-          <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8 }}>Quiz dla {city} zaraz się rozpocznie.</p>
+          <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8, marginBottom: 28 }}>Quiz dla {city} zaraz się rozpocznie.</p>
+          <JoinQR size={240} label="Nie masz jeszcze dostępu? Zeskanuj i dołącz" />
         </div>
       )}
 

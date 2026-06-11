@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { moduleQuestions, cityInfo } from "../lib/gameLogic.js";
 import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
+import JoinQR from "../components/JoinQR.jsx";
 
 // Broadcast presence so the admin lobby counter shows real-time waiting count
 import { useModules } from "../context/ModulesContext.jsx";
@@ -156,6 +157,11 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
             <p style={{ color: "#9B89CC", fontSize: 13, marginTop: 8 }}>
               Quiz zostanie wznowiony przez administratora. Zostań na tej stronie.
             </p>
+          )}
+          {(session?.status === "waiting" || !session) && (
+            <div style={{ marginTop: 22, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,.08)" }}>
+              <JoinQR size={150} label="Pokaż znajomym — niech zeskanują i dołączą" />
+            </div>
           )}
         </div>
 

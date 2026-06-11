@@ -47,6 +47,15 @@ export async function getCurrentAdmin() {
 
 // ─── PARTICIPANT CODES ────────────────────────────────────────────────────────
 
+// Stały identyfikator urządzenia (localStorage) — do wiązania kodu z urządzeniem (#7).
+export function getDeviceId() {
+  try {
+    let id = localStorage.getItem("fue_device_id");
+    if (!id) { id = (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`); localStorage.setItem("fue_device_id", id); }
+    return id;
+  } catch { return null; }
+}
+
 export async function validateParticipantCode(rawCode) {
   const code = rawCode.trim().toUpperCase();
   if (DEMO) {
@@ -55,22 +64,29 @@ export async function validateParticipantCode(rawCode) {
     if (!entry) return { error: "Nie znaleziono kodu." };
     return { data: entry, error: null };
   }
-  // SECURITY DEFINER RPC — zwraca tylko wpisany wiersz (anon NIE czyta całej tabeli).
-  // Soft-fallback do bezpośredniego SELECT, gdy sekcja 27 SQL nie jest jeszcze wgrana.
-  const { data: rpcData, error: rpcErr } = await supabase
-    .rpc("validate_participant_code", { p_code: code });
-  if (!rpcErr) {
-    const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-    if (!row) return { error: "Nie znaleziono kodu." };
-    return { data: row, error: null };
+  // claim_participant_code (sekcja 34): waliduje + wiąże kod z urządzeniem. To samo
+  // urządzenie wchodzi ponownie; inne dostaje 'taken'. Soft-fallback gdy nie wgrane.
+  const device = getDeviceId();
+  const { data, error } = await supabase.rpc("claim_participant_code", { p_code: code, p_device: device });
+  if (!error && data) {
+    if (data.ok) return { data: data.data, error: null };
+    if (data.reason === "taken") return { error: "Ten kod jest już używany na innym urządzeniu. Poproś organizatora o jego zwolnienie." };
+    return { error: "Nie znaleziono kodu." };
   }
-  const missingFn = rpcErr.code === "PGRST202" || /Could not find the function/i.test(rpcErr.message || "");
-  if (!missingFn) return { error: "Nie znaleziono kodu." };
-  const { data, error } = await supabase
-    .from("participant_codes").select("*").eq("code", code).single();
-  if (error || !data) return { error: "Nie znaleziono kodu." };
-  // Kod istnieje — można dołączyć (nawet po przypadkowym zamknięciu przeglądarki)
-  return { data, error: null };
+  const missing = error && (error.code === "PGRST202" || /Could not find the function/i.test(error.message || ""));
+  if (!missing) return { error: "Nie znaleziono kodu." };
+  // Fallback: validate_participant_code (§27) lub bezpośredni select (bez wiązania).
+  const { data: vData, error: vErr } = await supabase.rpc("validate_participant_code", { p_code: code });
+  if (!vErr) { const row = Array.isArray(vData) ? vData[0] : vData; return row ? { data: row, error: null } : { error: "Nie znaleziono kodu." }; }
+  const { data: sel } = await supabase.from("participant_codes").select("*").eq("code", code).single();
+  return sel ? { data: sel, error: null } : { error: "Nie znaleziono kodu." };
+}
+
+// Admin: zwolnij kod (wyczyść powiązanie z urządzeniem) — zmiana telefonu itp.
+export async function releaseCode(id) {
+  if (DEMO) return { error: null };
+  const { error } = await supabase.rpc("admin_release_code", { p_id: id });
+  return { error: error?.message || null };
 }
 
 export async function markCodeUsed(code, sessionId) {

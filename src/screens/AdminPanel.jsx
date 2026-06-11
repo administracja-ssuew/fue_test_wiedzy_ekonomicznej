@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
-  getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions,
+  getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions, releaseCode,
   getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults, getEndedSessions, renameSession, deleteSession,
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
@@ -389,6 +389,7 @@ function KodyTab({ city, adminId }) {
   };
 
   const remove = async (id) => { if (!confirm("Usunąć kod?")) return; await deleteParticipantCode(id); reload(); };
+  const release = async (id) => { if (!confirm("Zwolnić kod z urządzenia? Będzie mógł wejść z innego telefonu.")) return; await releaseCode(id); reload(); };
   const unused = codes.filter((c) => !c.used);
   const used   = codes.filter((c) =>  c.used);
 
@@ -484,8 +485,11 @@ function KodyTab({ city, adminId }) {
             </div>
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: 600, fontSize: 14 }}>{c.name} {c.surname}</p>
-              <p style={{ fontSize: 11, color: c.used ? "#10D9A0" : "#9B89CC", marginTop: 1 }}>{c.used ? "✓ Użyty" : "Oczekuje"}</p>
+              <p style={{ fontSize: 11, color: c.used ? "#10D9A0" : "#9B89CC", marginTop: 1 }}>
+                {c.used ? "✓ Użyty" : "Oczekuje"}{c.device_id ? " · 📱 powiązany z urządzeniem" : ""}
+              </p>
             </div>
+            {c.device_id && <button onClick={() => release(c.id)} title="Zwolnij kod z urządzenia (zmiana telefonu)" style={C.btn("ghost", { padding: "4px 10px", fontSize: 12 })}>🔓</button>}
             <button onClick={() => remove(c.id)} style={C.btn("danger", { padding: "4px 10px", fontSize: 12 })}>✕</button>
           </div>
         ))}

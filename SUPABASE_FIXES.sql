@@ -977,6 +977,45 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.admin_delete_session(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.admin_delete_session(UUID) TO authenticated;
 
+-- ─── 34. Wiązanie kodu z URZĄDZENIEM (anty-współdzielenie) ──────
+-- IP nie nadaje się (wszyscy w sali = jeden publiczny IP). Wiążemy kod z tokenem
+-- urządzenia (localStorage). To samo urządzenie wchodzi ponownie; inne dostaje
+-- "kod zajęty". Admin może zwolnić kod (zmiana telefonu itp.).
+
+ALTER TABLE public.participant_codes ADD COLUMN IF NOT EXISTS device_id TEXT;
+
+-- claim: waliduje kod i wiąże z urządzeniem (lub potwierdza to samo). Zwraca
+-- {ok:true,data:{...}} albo {ok:false,reason:'not_found'|'taken'}.
+DROP FUNCTION IF EXISTS public.claim_participant_code(TEXT, TEXT);
+CREATE OR REPLACE FUNCTION public.claim_participant_code(p_code TEXT, p_device TEXT)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_row public.participant_codes;
+BEGIN
+  SELECT * INTO v_row FROM public.participant_codes WHERE code = upper(btrim(p_code)) LIMIT 1;
+  IF v_row.id IS NULL THEN RETURN json_build_object('ok', false, 'reason', 'not_found'); END IF;
+  IF v_row.device_id IS NOT NULL AND p_device IS NOT NULL AND v_row.device_id <> p_device THEN
+    RETURN json_build_object('ok', false, 'reason', 'taken');
+  END IF;
+  IF p_device IS NOT NULL AND v_row.device_id IS DISTINCT FROM p_device THEN
+    UPDATE public.participant_codes SET device_id = p_device WHERE id = v_row.id;
+  END IF;
+  RETURN json_build_object('ok', true, 'data', json_build_object(
+    'id', v_row.id, 'code', v_row.code, 'name', v_row.name, 'surname', v_row.surname,
+    'city', v_row.city, 'used', v_row.used, 'session_id', v_row.session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.claim_participant_code(TEXT, TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.claim_participant_code(TEXT, TEXT) TO anon, authenticated;
+
+-- admin: zwolnij kod (wyczyść powiązanie z urządzeniem) — gdy ktoś zmienił telefon.
+CREATE OR REPLACE FUNCTION public.admin_release_code(p_id UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  UPDATE public.participant_codes SET device_id = NULL WHERE id = p_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_release_code(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_release_code(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

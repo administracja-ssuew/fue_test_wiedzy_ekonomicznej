@@ -942,6 +942,19 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
 
+-- ─── 32. Usuwanie pojedynczego pytania z odpowiedziami (FK) ──────
+-- Pytanie z odpowiedziami nie dawało się usunąć bezpośrednio (FK answers.question_id).
+-- RPC usuwa najpierw odpowiedzi, potem pytanie. Rola wymagana.
+CREATE OR REPLACE FUNCTION public.admin_delete_question(p_id UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  DELETE FROM public.answers WHERE question_id = p_id;
+  DELETE FROM public.questions WHERE id = p_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_question(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_question(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

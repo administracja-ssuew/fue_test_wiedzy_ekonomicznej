@@ -234,6 +234,12 @@ export async function deleteQuestion(id) {
     }
     return { error: null };
   }
+  // RPC (sekcja 32) usuwa też odpowiedzi (FK) — pytanie z odpowiedziami nie dawało się
+  // usunąć bezpośrednio. Soft-fallback do bezpośredniego delete, gdy RPC nie wgrany.
+  const { error: rpcErr } = await supabase.rpc("admin_delete_question", { p_id: id });
+  if (!rpcErr) return { error: null };
+  const missing = rpcErr.code === "PGRST202" || /Could not find the function/i.test(rpcErr.message || "");
+  if (!missing) return { error: rpcErr.message };
   const { error } = await supabase.from("questions").delete().eq("id", id);
   return { error: error?.message || null };
 }

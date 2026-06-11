@@ -651,12 +651,17 @@ export default function App() {
 
   // Pre-question overlay: start jest w przyszłości. Dla pierwszego pytania modułu
   // (qIdx===0, lead 30 s) pokazujemy zapowiedź modułu; w innym wypadku 3→2→1→START.
-  if (screen === "quiz" && countdownNum !== null)
+  // #4 — `counting` liczone SYNCHRONICZNIE z qStartedAtRef w renderze (nie z 200ms
+  // efektu countdownNum), żeby pytanie nie mignęło o klatkę po zmianie pytania.
+  const cdMs = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
+  const counting = screen === "quiz" && cdMs != null && cdMs > serverNow();
+  const cdShow = countdownNum != null ? countdownNum : (counting ? Math.max(0, Math.ceil((cdMs - serverNow()) / 1000) - 1) : 0);
+  if (counting)
     return qIdx === 0
-      ? <ModuleIntroFS mod={mod} secondsLeft={countdownNum} />
-      : <Countdown num={countdownNum} />;
+      ? <ModuleIntroFS mod={mod} secondsLeft={cdShow} />
+      : <Countdown num={cdShow} />;
 
-  if (screen === "quiz" && currentQ && mod)
+  if (screen === "quiz" && currentQ && mod && !counting)
     return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} correctAns={revealAns[currentQ?.id] ?? null} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;
 
   if (screen === "ended")

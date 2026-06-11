@@ -955,6 +955,28 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.admin_delete_question(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.admin_delete_question(UUID) TO authenticated;
 
+-- ─── 33. Historia: nazwa sesji + usuwanie + rename ──────
+ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS name TEXT;
+
+CREATE OR REPLACE FUNCTION public.admin_rename_session(p_id UUID, p_name TEXT)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  UPDATE public.quiz_sessions SET name = NULLIF(btrim(p_name), '') WHERE id = p_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_rename_session(UUID, TEXT) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_rename_session(UUID, TEXT) TO authenticated;
+
+-- Usuwa sesję (answers + violations znikają przez ON DELETE CASCADE).
+CREATE OR REPLACE FUNCTION public.admin_delete_session(p_id UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  DELETE FROM public.quiz_sessions WHERE id = p_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_session(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_session(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

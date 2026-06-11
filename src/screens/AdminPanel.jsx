@@ -3,7 +3,7 @@ import {
   supabase, DEMO,
   getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions,
-  getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults, getEndedSessions,
+  getOrCreateSession, getSessionById, updateSession, startQuizSession, getParticipantsInSession, getSessionResults, getEndedSessions, renameSession, deleteSession,
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
@@ -1407,7 +1407,8 @@ function HistoriaTab({ city }) {
   const [results, setResults]   = useState([]);
   const [loading, setLoading]   = useState(false);
 
-  useEffect(() => { getEndedSessions(city).then(setSessions); setSel(null); setResults([]); }, [city]);
+  const reload = () => getEndedSessions(city).then(setSessions);
+  useEffect(() => { reload(); setSel(null); setResults([]); }, [city]);
 
   const open = async (s) => {
     if (sel?.id === s.id) { setSel(null); return; }
@@ -1416,10 +1417,23 @@ function HistoriaTab({ city }) {
     setLoading(false);
   };
 
+  const rename = async (s) => {
+    const name = prompt("Nazwa sesji w historii:", s.name || "");
+    if (name === null) return;
+    await renameSession(s.id, name);
+    reload();
+  };
+  const del = async (s) => {
+    if (!confirm("Usunąć tę sesję z historii? Jej wyniki zostaną TRWALE usunięte.")) return;
+    await deleteSession(s.id);
+    if (sel?.id === s.id) { setSel(null); setResults([]); }
+    reload();
+  };
+
   const exportCsv = () => {
     const esc = (v) => { const x = String(v ?? ""); return /[";\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
     const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Śr. czas (s)"];
-    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime ?? ""])];
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(2).replace(".", ",") : ""])];
     downloadCsv(`historia_${sel?.city || city}_${(sel?.created_at || "").slice(0, 10)}.csv`, "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n"));
   };
 
@@ -1428,21 +1442,27 @@ function HistoriaTab({ city }) {
   return (
     <div>
       <div style={{ marginBottom: 18 }}>
-        <p style={{ fontWeight: 700, fontSize: 18 }}>Historia testów — {city}</p>
-        <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>Zakończone sesje. Kliknij, by zobaczyć ranking i pobrać CSV.</p>
+        <p style={{ fontWeight: 700, fontSize: 18, color: "#fff" }}>Historia testów — {city}</p>
+        <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>Zakończone sesje (też próbne). Kliknij, by zobaczyć ranking. ✏️ zmień nazwę · 🗑 usuń.</p>
       </div>
       {sessions.length === 0
         ? <p style={{ color: "#9B89CC", textAlign: "center", padding: "24px 0" }}>Brak zakończonych sesji dla {city}.</p>
         : sessions.map((s) => (
           <div key={s.id}>
-            <button onClick={() => open(s)} style={{ ...C.card({ padding: "12px 16px", marginBottom: 8 }), width: "100%", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, borderColor: sel?.id === s.id ? "rgba(107,33,232,.5)" : undefined }}>
-              <span style={{ fontSize: 18 }}>🗂️</span>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: 700, fontSize: 13 }}>{fmt(s.created_at)}</p>
-                <p style={{ fontSize: 11, color: "#9B89CC" }}>{s.city} · {s.status === "results" ? "ogłoszone" : "zakończone"}</p>
-              </div>
-              <span style={{ color: "#9B89CC", fontSize: 16 }}>{sel?.id === s.id ? "▾" : "▸"}</span>
-            </button>
+            <div style={{ ...C.card({ padding: "10px 12px", marginBottom: 8 }), display: "flex", alignItems: "center", gap: 8, borderColor: sel?.id === s.id ? "rgba(107,33,232,.5)" : undefined }}>
+              <button onClick={() => open(s)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, textAlign: "left", padding: 0, color: "inherit" }}>
+                <span style={{ fontSize: 18 }}>🗂️</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: 13, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name || fmt(s.created_at)}</p>
+                  <p style={{ fontSize: 11, color: "#9B89CC" }}>
+                    {s.city} · {s.status === "results" ? "ogłoszone" : "zakończone"}{s.is_practice ? " · PRÓBNY" : ""}{s.name ? ` · ${fmt(s.created_at)}` : ""}
+                  </p>
+                </div>
+                <span style={{ color: "#9B89CC", fontSize: 16 }}>{sel?.id === s.id ? "▾" : "▸"}</span>
+              </button>
+              <button onClick={() => rename(s)} title="Zmień nazwę" style={{ ...C.btn("ghost", { fontSize: 12, padding: "5px 9px" }) }}>✏️</button>
+              <button onClick={() => del(s)} title="Usuń z historii" style={{ ...C.btn("danger", { fontSize: 12, padding: "5px 9px" }) }}>🗑</button>
+            </div>
             {sel?.id === s.id && (
               <div style={{ ...C.card({ padding: "14px 16px", marginBottom: 14, background: "rgba(255,255,255,.02)" }) }}>
                 {loading ? <p style={{ color: "#9B89CC" }}>Ładowanie rankingu…</p>

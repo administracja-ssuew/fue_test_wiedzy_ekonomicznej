@@ -280,16 +280,28 @@ export async function endAndResetSession(city, adminId, isPractice = false) {
   return getOrCreateSession(city, adminId, isPractice);
 }
 
-// Historia (#7): zakończone sesje konkursowe (status ended/results) — do podglądu rankingu.
+// Historia: zakończone sesje (status ended/results), w tym próbne — do podglądu rankingu.
 export async function getEndedSessions(city) {
   if (DEMO) return [];
   let q = supabase.from("quiz_sessions")
-    .select("id, city, created_at, status")
-    .in("status", ["ended", "results"]).eq("is_practice", false)
-    .order("created_at", { ascending: false }).limit(50);
+    .select("id, city, created_at, status, name, is_practice")
+    .in("status", ["ended", "results"])
+    .order("created_at", { ascending: false }).limit(80);
   if (city) q = q.eq("city", city);
   const { data } = await q;
   return data || [];
+}
+
+// Historia (#9): zmiana nazwy / usuwanie sesji (RPC, rola admina; sekcja 33).
+export async function renameSession(id, name) {
+  if (DEMO) return { error: null };
+  const { error } = await supabase.rpc("admin_rename_session", { p_id: id, p_name: name });
+  return { error: error?.message || null };
+}
+export async function deleteSession(id) {
+  if (DEMO) return { error: null };
+  const { error } = await supabase.rpc("admin_delete_session", { p_id: id });
+  return { error: error?.message || null };
 }
 
 export async function updateSession(sessionId, updates) {

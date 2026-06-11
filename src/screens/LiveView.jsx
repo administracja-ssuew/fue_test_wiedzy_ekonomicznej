@@ -20,17 +20,33 @@ export default function LiveView({ city }) {
   const correctIdx = revealAns != null ? revealAns : currentQ?.ans;
 
   // #10 — audio TYLKO na projektorze. Dźwięki na zdarzeniach (odliczanie/reveal/podium).
-  const { enabled: audioOn, toggle: toggleAudio, play } = useLiveAudio();
+  const { enabled: audioOn, toggle: toggleAudio, play, bgVol, setBgVol, sfxVol, setSfxVol } = useLiveAudio();
   const prevPhase = useRef(phase), prevCd = useRef(cdNum), prevPod = useRef(false);
   useEffect(() => { if (phase === "reveal" && prevPhase.current !== "reveal") play("reveal"); prevPhase.current = phase; }, [phase]); // eslint-disable-line
   useEffect(() => { if (cdNum !== null && prevCd.current === null) play("countdown"); prevCd.current = cdNum; }, [cdNum]); // eslint-disable-line
   useEffect(() => { const has = !!podium?.results?.length; if (has && !prevPod.current) play("podium"); prevPod.current = has; }, [podium]); // eslint-disable-line
 
-  const AudioBtn = () => (
-    <button onClick={toggleAudio} title={audioOn ? "Wycisz" : "Włącz dźwięk"}
-      style={{ position: "fixed", top: 14, right: 14, zIndex: 300, background: "rgba(0,0,0,.55)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: "8px 12px", fontSize: 18, cursor: "pointer", color: "#fff" }}>
-      {audioOn ? "🔊" : "🔇"}
-    </button>
+  // JSX-wyrażenie (nie zagnieżdżony komponent) — żeby suwak nie remontował się przy renderze.
+  const slider = (label, val, onChange) => (
+    <label key={label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#C4B5FD" }}>
+      <span style={{ width: 42 }}>{label}</span>
+      <input type="range" min="0" max="1" step="0.05" value={val} onChange={(e) => onChange(parseFloat(e.target.value))} style={{ accentColor: "#6B21E8", width: 100 }} />
+      <span style={{ width: 28, textAlign: "right", color: "#9B89CC" }}>{Math.round(val * 100)}</span>
+    </label>
+  );
+  const audioPanel = (
+    <div style={{ position: "fixed", top: 14, right: 14, zIndex: 300, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+      <button onClick={toggleAudio} title={audioOn ? "Wycisz" : "Włącz dźwięk"}
+        style={{ background: "rgba(0,0,0,.55)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: "8px 12px", fontSize: 18, cursor: "pointer", color: "#fff" }}>
+        {audioOn ? "🔊" : "🔇"}
+      </button>
+      {audioOn && (
+        <div style={{ background: "rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.15)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {slider("Tło", bgVol, setBgVol)}
+          {slider("Efekty", sfxVol, setSfxVol)}
+        </div>
+      )}
+    </div>
   );
 
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
@@ -50,7 +66,7 @@ export default function LiveView({ city }) {
       fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE",
       padding: "24px",
     }}>
-      <AudioBtn />
+      {audioPanel}
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, width: "100%", maxWidth: 900 }}>
         <div style={{ background: "#E8376B", borderRadius: 20, padding: "3px 14px", fontSize: 13, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>

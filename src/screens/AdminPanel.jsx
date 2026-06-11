@@ -889,18 +889,12 @@ function SesjaTab({ city, adminId, onPodium }) {
           )}
           {st === "running" && <>
             <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={() => {
+              if (!confirm("Czy na pewno chcesz zatrzymać quiz?")) return;
               // Zapamiętaj MOMENT pauzy (epoch s). q_started_at zostaje bez zmian — na
               // wznowieniu przesuniemy go o czas pauzy, więc remaining zostaje zachowane
               // (bez liczenia elapsed z potencjalnie nieaktualnego stanu = bez „skoku").
               upd({ status: "paused", pause_elapsed_s: Math.floor(serverNow() / 1000) });
             }}>⏸ Pauza</button>
-            <button style={C.btn("ghost")} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={() => {
-              if (!confirm("Powtórzyć bieżące pytanie? Czas zostanie zresetowany dla wszystkich uczestników (na tym samym pytaniu).")) return;
-              const startedAt = new Date(serverNow()).toISOString();
-              // Same question index, fresh q_started_at → participants restart the timer.
-              upd({ status: "running", q_started_at: startedAt, pause_elapsed_s: null });
-              logEvent({ type: "question_repeated", sessionId: session.id, city, actor: adminId, detail: { idx: sessionRef.current?.current_question_idx } });
-            }}>🔁 Powtórz</button>
             <button
               disabled={!allAnswered}
               title={allAnswered ? "Można przejść dalej bez czekania na czas" : "Aktywne, gdy wszyscy odpowiedzą (lub gdy odpowiedzi przestaną napływać)"}
@@ -924,6 +918,14 @@ function SesjaTab({ city, adminId, onPodium }) {
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
           <button onClick={() => load()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
+          {st === "running" && (
+            <button style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={() => {
+              if (!confirm("Powtórzyć bieżące pytanie? Czas zostanie zresetowany dla wszystkich uczestników (na tym samym pytaniu).")) return;
+              const startedAt = new Date(serverNow()).toISOString();
+              upd({ status: "running", q_started_at: startedAt, pause_elapsed_s: null });
+              logEvent({ type: "question_repeated", sessionId: session.id, city, actor: adminId, detail: { idx: sessionRef.current?.current_question_idx } });
+            }}>🔁 Powtórz</button>
+          )}
         </div>
       </div>
 

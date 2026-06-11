@@ -519,7 +519,8 @@ export async function getSessionResults(sessionId) {
   if (!data) return [];
   // Number(...) || 0 — chroni przed NaN, gdyby na bazie była jeszcze STARA wersja
   // funkcji (sekcja 25 nie wgrana → brak correct_count/total_count).
-  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count) || 0, total: Number(r.total_count) || 0, avgResponseTime: r.avg_response_time_s ?? null }));
+  // avgResponseTime zawsze w MS (sekcja 31). Fallback: jeśli baza zwraca jeszcze sekundy.
+  return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count) || 0, total: Number(r.total_count) || 0, avgResponseTime: r.avg_response_time_ms ?? (r.avg_response_time_s != null ? r.avg_response_time_s * 1000 : null) }));
 }
 
 // Live stats for current question (admin panel).

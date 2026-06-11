@@ -893,6 +893,55 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.admin_delete_city_codes(TEXT) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.admin_delete_city_codes(TEXT) TO authenticated;
 
+-- ─── 31. Czas odpowiedzi w MILISEKUNDACH (precyzyjny tie-break) ──
+-- response_time_s (sekundy) dawał dużo remisów. Dodajemy response_time_ms i liczymy
+-- ranking po średnim czasie w ms (remis dużo rzadszy). Wstecznie: COALESCE z s*1000.
+
+ALTER TABLE public.answers ADD COLUMN IF NOT EXISTS response_time_ms INT;
+
+-- submit_answer: zapisuje też response_time_ms (z clock_timestamp − q_started_at).
+CREATE OR REPLACE FUNCTION public.submit_answer(
+  p_session_id UUID, p_code TEXT, p_name TEXT, p_question_id UUID, p_chosen INT
+) RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_ans INT; v_module INT; v_city TEXT; v_started TIMESTAMPTZ; v_is_correct BOOLEAN; v_rt_ms INT;
+BEGIN
+  IF NOT public.code_exists(p_code) THEN RAISE EXCEPTION 'invalid code'; END IF;
+  SELECT ans, module, city INTO v_ans, v_module, v_city FROM public.questions WHERE id = p_question_id;
+  IF v_ans IS NULL THEN RAISE EXCEPTION 'invalid question'; END IF;
+  SELECT q_started_at INTO v_started FROM public.quiz_sessions WHERE id = p_session_id;
+  v_rt_ms := CASE WHEN v_started IS NOT NULL
+              THEN GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - v_started)) * 1000)::INT
+              ELSE NULL END;
+  v_is_correct := (p_chosen IS NOT NULL AND p_chosen = v_ans);
+  INSERT INTO public.answers (session_id, participant_code, participant_name, city, question_id, module, chosen, is_correct, points, response_time_s, response_time_ms)
+  VALUES (p_session_id, p_code, p_name, v_city, p_question_id, v_module, p_chosen, v_is_correct, 0,
+          CASE WHEN v_rt_ms IS NOT NULL THEN (v_rt_ms / 1000) ELSE NULL END, v_rt_ms)
+  ON CONFLICT (session_id, participant_code, question_id) DO NOTHING;
+  RETURN json_build_object('is_correct', v_is_correct, 'correct_ans', v_ans);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) TO anon, authenticated;
+
+-- get_session_results: ranking po liczbie poprawnych, remis → krótszy średni czas w MS.
+DROP FUNCTION IF EXISTS public.get_session_results(UUID);
+CREATE OR REPLACE FUNCTION public.get_session_results(p_session_id UUID)
+RETURNS TABLE (participant_code TEXT, participant_name TEXT, city TEXT, correct_count BIGINT, total_count BIGINT, avg_response_time_ms INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT participant_code, participant_name, city,
+    COUNT(*) FILTER (WHERE is_correct = true)::BIGINT,
+    COUNT(*)::BIGINT,
+    ROUND(AVG(COALESCE(response_time_ms, response_time_s * 1000)))::INT
+  FROM public.answers
+  WHERE session_id = p_session_id
+    AND public.get_my_role() IN ('city_admin','superadmin')
+  GROUP BY participant_code, participant_name, city
+  ORDER BY COUNT(*) FILTER (WHERE is_correct = true) DESC,
+           ROUND(AVG(COALESCE(response_time_ms, response_time_s * 1000))) ASC NULLS LAST;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

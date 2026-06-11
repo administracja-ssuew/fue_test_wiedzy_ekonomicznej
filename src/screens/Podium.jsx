@@ -5,17 +5,17 @@ function PodiumScreen({ onBack, podStep, setPodStep = () => {}, results = [], re
   const shownAt = (r) => count - r + 1;       // miejsce r odsłaniane gdy podStep >= to
   const done = podStep >= count;
   const nextPlace = count - podStep;          // które miejsce odsłoni kolejny klik
+  const fmtAvg = (ms) => ms == null ? "" : "śr. " + (ms / 1000).toFixed(2).replace(".", ",") + " s";
 
   // Wiersz listy dla miejsc 4–10. Top-5 wyróżnione (awans do finału ogólnopolskiego).
+  // #1 — renderowany DOPIERO po odsłonięciu (wskakuje z animacją pi), bez migania na starcie.
   const Row = ({ idx }) => {
     const p = top[idx];
-    if (!p) return null;
     const rank = idx + 1;
-    const visible = podStep >= shownAt(rank);
+    if (!p || podStep < shownAt(rank)) return null;
     const finalist = rank <= 5;
     return (
       <div className="pi" style={{
-        opacity: visible ? 1 : 0, transition: "opacity .5s",
         display: "flex", alignItems: "center", gap: 12, padding: "9px 14px", borderRadius: 10, marginBottom: 6,
         background: finalist ? "rgba(245,197,24,.10)" : "rgba(255,255,255,.05)",
         border: `1px solid ${finalist ? "rgba(245,197,24,.45)" : "rgba(255,255,255,.10)"}`,
@@ -23,7 +23,7 @@ function PodiumScreen({ onBack, podStep, setPodStep = () => {}, results = [], re
         <span style={{ fontFamily: '"Bebas Neue"', fontSize: 24, color: finalist ? "#F5C518" : "#9B89CC", width: 30, textAlign: "center", flexShrink: 0 }}>{rank}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</p>
-          <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city} · {p.correct}/{p.total} popr.</p>
+          <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city}{p.avgResponseTime != null ? ` · ${fmtAvg(p.avgResponseTime)}` : ""}</p>
         </div>
         {finalist && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px", flexShrink: 0 }}>FINAŁ</span>}
       </div>
@@ -64,7 +64,7 @@ function PodiumScreen({ onBack, podStep, setPodStep = () => {}, results = [], re
                     </div>
                     <p style={{ fontSize: rank === 0 ? 12 : 11, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#EDE9FE" }}>{p.name.split(" ")[0]}</p>
                     <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.city}</p>
-                    <p style={{ fontSize: rank === 0 ? 14 : 12, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#9B89CC", marginTop: 2 }}>{p.correct}/{p.total} popr.</p>
+                    {p.avgResponseTime != null && <p style={{ fontSize: rank === 0 ? 12 : 11, fontWeight: 700, color: rank === 0 ? "#F5C518" : "#9B89CC", marginTop: 2 }}>{fmtAvg(p.avgResponseTime)}</p>}
                   </div>
                 )}
                 <div style={{ width: "100%", height: heights[rank], background: colors[rank], borderRadius: "10px 10px 0 0", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 0 ${rank === 0 ? 40 : 20}px ${glows[rank]}` }}>

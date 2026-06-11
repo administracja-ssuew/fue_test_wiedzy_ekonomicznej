@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import useLiveProjection from "../hooks/useLiveProjection.js";
+import useLiveAudio from "../hooks/useLiveAudio.js";
 import Countdown from "./Countdown.jsx";
 import ModuleIntroFS from "./ModuleIntroFS.jsx";
 import PodiumScreen from "./Podium.jsx";
@@ -17,6 +19,20 @@ export default function LiveView({ city }) {
   // (pre-migracja, gdy ans jest jeszcze w pytaniach).
   const correctIdx = revealAns != null ? revealAns : currentQ?.ans;
 
+  // #10 — audio TYLKO na projektorze. Dźwięki na zdarzeniach (odliczanie/reveal/podium).
+  const { enabled: audioOn, toggle: toggleAudio, play } = useLiveAudio();
+  const prevPhase = useRef(phase), prevCd = useRef(cdNum), prevPod = useRef(false);
+  useEffect(() => { if (phase === "reveal" && prevPhase.current !== "reveal") play("reveal"); prevPhase.current = phase; }, [phase]); // eslint-disable-line
+  useEffect(() => { if (cdNum !== null && prevCd.current === null) play("countdown"); prevCd.current = cdNum; }, [cdNum]); // eslint-disable-line
+  useEffect(() => { const has = !!podium?.results?.length; if (has && !prevPod.current) play("podium"); prevPod.current = has; }, [podium]); // eslint-disable-line
+
+  const AudioBtn = () => (
+    <button onClick={toggleAudio} title={audioOn ? "Wycisz" : "Włącz dźwięk"}
+      style={{ position: "fixed", top: 14, right: 14, zIndex: 300, background: "rgba(0,0,0,.55)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 10, padding: "8px 12px", fontSize: 18, cursor: "pointer", color: "#fff" }}>
+      {audioOn ? "🔊" : "🔇"}
+    </button>
+  );
+
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
@@ -34,6 +50,7 @@ export default function LiveView({ city }) {
       fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE",
       padding: "24px",
     }}>
+      <AudioBtn />
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, width: "100%", maxWidth: 900 }}>
         <div style={{ background: "#E8376B", borderRadius: 20, padding: "3px 14px", fontSize: 13, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>

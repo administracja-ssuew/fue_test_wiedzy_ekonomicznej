@@ -520,6 +520,8 @@ function SesjaTab({ city, adminId, onPodium }) {
   const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: idx pytania, dla którego już pominęliśmy czas
   const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
   const participantsRef = useRef(0);   // #3 — liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
+  const plTotalRef = useRef(-1);       // plateau: ostatni total
+  const plAtRef    = useRef(0);        // plateau: kiedy total ostatnio się zmienił
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -630,6 +632,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   useEffect(() => {
     clearInterval(liveStatsRef.current);
     if (session?.status !== "running") return;
+    plTotalRef.current = -1; plAtRef.current = Date.now(); // reset plateau przy (re)starcie (pauza-safe)
     liveStatsRef.current = setInterval(async () => {
       const s = sessionRef.current;
       const idx = s?.current_question_idx ?? 0;
@@ -639,13 +642,14 @@ function SesjaTab({ city, adminId, onPodium }) {
         if (stats) {
           setLiveStats(stats);
           // #3 — auto-przejście liczone TU (świeże dane, bez wyścigu stanu React).
-          // Odpala gdy: osiągnięto liczbę uczestników (jeśli znana) LUB odpowiedzi
-          // przestały napływać (plateau ~2,5 s) — odporne na zawodny licznik uczestników.
           const total = stats.total ?? 0;
           const pcount = participantsRef.current;
-          // Auto-skip dokładnie gdy WSZYSCY uczestnicy odpowiedzieli (precyzyjnie).
-          // Bez plateau — przy długich przerwach pomijałoby przedwcześnie i skakało po pauzie.
-          if (total > 0 && pcount > 0 && total >= pcount && autoAdvancedRef.current !== idx) {
+          if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
+          // Odpala: gdy WSZYSCY uczestnicy odpowiedzieli (natychmiast) LUB jako bezpiecznik,
+          // gdy odpowiedzi ucichną na 8 s (uczestnicy-widmo / rozłączeni — żeby nie utknąć).
+          const countReached = pcount > 0 && total >= pcount;
+          const plateau = total > 0 && Date.now() - plAtRef.current >= 8000;
+          if (total > 0 && (countReached || plateau) && autoAdvancedRef.current !== idx) {
             autoAdvancedRef.current = idx;
             goToNextRef.current();
           }

@@ -418,6 +418,16 @@ const UNIV_NAMES = {
   UEKat: "Uniwersytet Ekonomiczny w Katowicach",
 };
 
+// Oficjalne nazwy samorządów studenckich. Warszawa (SGH) i Wrocław (UEW) — Samorząd
+// Studentów; pozostałe — Parlament Studencki UE. `type` = nagłówek, `of` = dopełniacz uczelni.
+const STUDENT_GOV = {
+  UEK:   { type: "Parlament Studencki", of: "Uniwersytetu Ekonomicznego w Krakowie" },
+  SGH:   { type: "Samorząd Studentów",  of: "Szkoły Głównej Handlowej w Warszawie" },
+  UEP:   { type: "Parlament Studencki", of: "Uniwersytetu Ekonomicznego w Poznaniu" },
+  UEW:   { type: "Samorząd Studentów",  of: "Uniwersytetu Ekonomicznego we Wrocławiu" },
+  UEKat: { type: "Parlament Studencki", of: "Uniwersytetu Ekonomicznego w Katowicach" },
+};
+
 function OrganizatorszyTab() {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
@@ -466,17 +476,22 @@ function OrganizatorszyTab() {
         <p style={{ textAlign: "center", color: "#9B89CC", fontSize: 14, lineHeight: 1.7, maxWidth: 600, margin: "0 auto 22px" }}>
           To <strong style={{ color: "#F5C518" }}>za ich sprawą</strong> Test Wiedzy Ekonomicznej odbywa się na każdej uczelni — samorządy studenckie organizują wydarzenie lokalnie i zapraszają uczestników.
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 14 }}>
-          {UNIVERSITIES.map((u, i) => (
-            <div key={u.abbr}
-              style={{ ...W.card({ padding: "16px 18px", borderColor: `${u.color}30` }), display: "flex", alignItems: "center", gap: 12, animation: "cardIn .5s ease both", animationDelay: `${.2 + i * .07}s` }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: u.color, flexShrink: 0, boxShadow: `0 0 10px ${u.color}`, animation: "pulse 2.5s infinite" }} />
-              <div>
-                <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>Samorząd Studencki</p>
-                <p style={{ fontSize: 11, color: u.color, fontWeight: 700, marginTop: 2 }}>{u.abbr}</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 14 }}>
+          {UNIVERSITIES.map((u, i) => {
+            const gov = STUDENT_GOV[u.abbr] || { type: "Samorząd Studencki", of: UNIV_NAMES[u.abbr] || u.abbr };
+            return (
+              <div key={u.abbr}
+                style={{ ...W.card({ padding: "16px 18px", borderColor: `${u.color}30` }), display: "flex", alignItems: "center", gap: 13, animation: "cardIn .5s ease both", animationDelay: `${.2 + i * .07}s` }}>
+                <div style={{ width: 46, height: 46, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: u.logo ? "#fff" : `linear-gradient(135deg,${u.color}30,${u.color}12)`, border: `1px solid ${u.color}45`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {u.logo ? <img src={u.logo} alt={u.abbr} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} /> : <span style={{ fontFamily: '"Bebas Neue"', fontSize: 18, letterSpacing: 1, color: u.color }}>{u.abbr}</span>}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{gov.type}</p>
+                  <p style={{ fontSize: 11, color: u.color, fontWeight: 700, marginTop: 2, lineHeight: 1.35 }}>{gov.of}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

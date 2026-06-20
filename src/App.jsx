@@ -615,7 +615,7 @@ export default function App() {
     return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
 
   if (screen === "module_intro")
-    return <ModuleIntro currentMod={currentMod} onStart={async () => {
+    return <ModuleIntro currentMod={currentMod} questionCount={qs.length} onStart={async () => {
       const timePerQ  = mod?.timePerQ || 60;
       modTimePerQRef.current = timePerQ;
       setTimer(timePerQ);

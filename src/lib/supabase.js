@@ -190,7 +190,7 @@ export async function getQuestions(city) {
   const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
   if (!missing) return [];
   const { data: raw } = await supabase.from("questions").select("*")
-    .eq("city", city).neq("is_practice", true).order("module").order("sort_order").order("id");
+    .eq("city", city).or("is_practice.is.null,is_practice.eq.false").order("module").order("sort_order").order("id");
   return raw || [];
 }
 

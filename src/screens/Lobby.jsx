@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
-import { moduleQuestions, cityInfo } from "../lib/gameLogic.js";
-import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
+import { cityInfo } from "../lib/gameLogic.js";
+import { supabase, DEMO, getSessionForCity, getQuestions } from "../lib/supabase.js";
 import JoinQR from "../components/JoinQR.jsx";
 
 // Broadcast presence so the admin lobby counter shows real-time waiting count
@@ -11,6 +11,7 @@ import { useModules } from "../context/ModulesContext.jsx";
 export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz, onPractice }) {
   const MODULES = useModules();
   const [session, setSession]   = useState(null);
+  const [qCounts, setQCounts]   = useState(null); // {modId: liczba} z bazy (null = jeszcze nie pobrano)
   const [dots, setDots]         = useState(".");
   const pollRef                 = useRef(null);
   // Always-current callback — prevents stale closure bug when MODULES loads after
@@ -35,6 +36,16 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     const t = setInterval(() => setDots((d) => d.length >= 3 ? "." : d + "."), 600);
     return () => clearInterval(t);
   }, []);
+
+  // Realna liczba pytań per moduł — z bazy danego miasta (nie ze statycznego banku).
+  useEffect(() => {
+    if (!city) return;
+    getQuestions(city).then((qs) => {
+      const counts = {};
+      for (const q of qs) counts[q.module] = (counts[q.module] || 0) + 1;
+      setQCounts(counts);
+    });
+  }, [city]);
 
   // Fetch session once on mount (both DEMO and production)
   useEffect(() => {
@@ -173,7 +184,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
               <div key={m.id} style={{ background: `${m.color}12`, border: `1px solid ${m.color}25`, borderRadius: 10, padding: "10px 12px" }}>
                 <span style={{ fontSize: 16 }}>{m.icon}</span>
                 <p style={{ fontSize: 12, fontWeight: 700, color: "#EDE9FE", marginTop: 4 }}>{m.name}</p>
-                <p style={{ fontSize: 11, color: "#9B89CC" }}>{moduleQuestions(m.id).length} pyt. · {m.timePerQ}s</p>
+                <p style={{ fontSize: 11, color: "#9B89CC" }}>{qCounts ? `${qCounts[m.id] || 0} pyt.` : "…"} · {m.timePerQ}s</p>
               </div>
             ))}
           </div>

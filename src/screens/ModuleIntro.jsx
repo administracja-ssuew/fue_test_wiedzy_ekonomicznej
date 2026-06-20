@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { getModule, moduleQuestions } from "../lib/gameLogic.js";
+import { getModule } from "../lib/gameLogic.js";
 import { useModules } from "../context/ModulesContext.jsx";
 
 const W = {
@@ -35,7 +35,7 @@ const W = {
   ),
 };
 
-export default function ModuleIntro({ currentMod, onStart }) {
+export default function ModuleIntro({ currentMod, onStart, questionCount = 0 }) {
   const MODULES = useModules();
   const mod = getModule(currentMod, MODULES);
   const [countdown, setCountdown] = useState(3);
@@ -58,7 +58,7 @@ export default function ModuleIntro({ currentMod, onStart }) {
           {mod?.name}
         </h2>
         <p className="su" style={{ color: "#9B89CC", fontSize: 14, marginTop: 8, animationDelay: ".1s" }}>
-          {moduleQuestions(currentMod).length} pytań · {mod?.timePerQ} sekund na odpowiedź
+          {questionCount} pytań · {mod?.timePerQ} sekund na odpowiedź
         </p>
         <p className="su" style={{ color: "#9B89CC", fontSize: 14, marginTop: 4, animationDelay: ".14s" }}>
           {mod?.desc}

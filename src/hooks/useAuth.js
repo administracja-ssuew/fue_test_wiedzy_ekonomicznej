@@ -20,7 +20,7 @@ export default function useAuth() {
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
-          .single()
+          .maybeSingle()
           .then(({ data: profile }) => {
             setUser(profile ? { ...session.user, ...profile } : null);
             setLoading(false);
@@ -42,7 +42,7 @@ export default function useAuth() {
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
-          .single()
+          .maybeSingle()
           .then(({ data: profile }) => {
             if (profile) setUser({ ...session.user, ...profile });
           });

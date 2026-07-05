@@ -71,10 +71,9 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     const apply = (s) => { if (s) { sessionRef.current = s; if (s.id) setSessionId(s.id); } };
     if (!DEMO && supabase) {
       const ch = supabase.channel(`live-proj-${city}`)
-        .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
-          if (!payload?.status) return;
-          if (payload.id) apply(payload);
-          else getSessionForCity(city).then(apply);
+        .on("broadcast", { event: "quiz_event" }, () => {
+          // Sygnał, nie źródło prawdy — pobierz autorytatywny stan z bazy (anty-spoofing).
+          getSessionForCity(city).then(apply);
         })
         .on("postgres_changes", {
           event: "UPDATE", schema: "public", table: "quiz_sessions", filter: `city=eq.${city}`,
@@ -93,8 +92,9 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   useEffect(() => {
     if (!sessionId || DEMO || !supabase) return;
     const ch = supabase.channel(`quiz-${sessionId}`)
-      .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
-        if (payload?.id) sessionRef.current = payload;
+      .on("broadcast", { event: "quiz_event" }, () => {
+        // Sygnał do szybkiego odświeżenia — stan bierzemy z bazy, nie z payloadu (anty-spoofing).
+        getSessionForCity(city).then((s) => { if (s) sessionRef.current = s; });
       })
       .subscribe();
     return () => supabase.removeChannel(ch);
@@ -180,6 +180,12 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   }, [city]);
 
   // #5 — odbiór podium wypchniętego przez admina (kanał miasta).
+  // UWAGA (residual risk): anon nie może czytać wyników z bazy (get_session_results
+  // jest admin-only), więc podium MUSI przyjść broadcastem od admina i nie da się go
+  // zweryfikować z bazy jak stanu quizu. Skutek ewentualnego sfałszowania jest
+  // kosmetyczny i przejściowy (błędny ranking na projektorze), a admin re-broadcastuje
+  // stan co 2 s, nadpisując podszywkę. Pełne domknięcie wymaga Realtime Authorization
+  // (kanały prywatne z RLS) — świadomie poza zakresem tej poprawki.
   useEffect(() => {
     if (!city || DEMO || !supabase) return;
     const ch = supabase.channel(`podium-${encodeURIComponent(city)}`) // ASCII — zgodne z nadawcą (App)

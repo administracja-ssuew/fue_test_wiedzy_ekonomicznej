@@ -44,9 +44,38 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "profiles_own"        ON public.profiles;
-DROP POLICY IF EXISTS "profiles_superadmin" ON public.profiles;
-CREATE POLICY "profiles_own" ON public.profiles FOR ALL USING (auth.uid() = id);
+-- UWAGA BEZPIECZEŃSTWA: NIE nadawaj "FOR ALL USING (auth.uid() = id)" — pozwalałoby to
+-- każdemu adminowi zmienić własną rolę na 'superadmin' (UPDATE własnego wiersza).
+-- SELECT: własny wiersz (superadmin widzi wszystkie). Pełny zapis: tylko superadmin.
+-- Trigger blokuje zmianę role/city przez nie-superadmina (obrona w głąb). Patrz też
+-- sekcja 35 w SUPABASE_FIXES.sql.
+DROP POLICY IF EXISTS "profiles_own"            ON public.profiles;
+DROP POLICY IF EXISTS "profiles_superadmin"     ON public.profiles;
+DROP POLICY IF EXISTS "profiles_select_own"     ON public.profiles;
+DROP POLICY IF EXISTS "profiles_superadmin_all" ON public.profiles;
+CREATE POLICY "profiles_select_own" ON public.profiles FOR SELECT
+  USING (auth.uid() = id OR public.get_my_role() = 'superadmin');
+CREATE POLICY "profiles_superadmin_all" ON public.profiles FOR ALL
+  USING (public.get_my_role() = 'superadmin')
+  WITH CHECK (public.get_my_role() = 'superadmin');
+
+-- SECURITY INVOKER (bez DEFINER) — auth.uid() musi wiarygodnie wskazywać realnego
+-- wywołującego (w DEFINER bywa NULL, co przepuściłoby eskalację).
+CREATE OR REPLACE FUNCTION public.prevent_profile_privilege_change()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  -- Zaufany kontekst serwerowy (service role / SQL editor / migracje): brak auth.uid().
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF public.get_my_role() = 'superadmin' THEN RETURN NEW; END IF;
+  IF NEW.role IS DISTINCT FROM OLD.role OR NEW.city IS DISTINCT FROM OLD.city THEN
+    RAISE EXCEPTION 'Zmiana roli lub miasta profilu jest niedozwolona';
+  END IF;
+  RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS trg_prevent_profile_priv ON public.profiles;
+CREATE TRIGGER trg_prevent_profile_priv
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_profile_privilege_change();
 
 -- ─── PARTICIPANT CODES ────────────────────────────────────────────
 -- Admin generates a code per participant (name + city).

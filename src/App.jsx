@@ -40,6 +40,7 @@ export default function App() {
   const [timer, setTimer]               = useState(0);
   const [picked, setPicked]             = useState(null);
   const [answered, setAnswered]         = useState(false);
+  const answeredRef                     = useRef(false); // always-current answered (avoids stale closure in timer/timeout)
   const [myPts, setMyPts]               = useState(0);
   const [allAnswers, setAllAnswers]     = useState([]);
   const [nextModule, setNextModule]     = useState(null); // module to start after break
@@ -108,6 +109,7 @@ export default function App() {
   useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
   useEffect(() => { qIdxRef.current = qIdx; }, [qIdx]);
   useEffect(() => { pickedRef.current = picked; }, [picked]);
+  useEffect(() => { answeredRef.current = answered; }, [answered]);
   useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
 
   // Auto-restore admin session: redirect to panel when Supabase session is found on page load
@@ -309,12 +311,11 @@ export default function App() {
     }
 
     const ch = supabase.channel(`quiz-${quizSession.id}`)
-      .on("broadcast", { event: "quiz_event" }, ({ payload }) => {
-        // Admin broadcast: payload now contains the full merged session — no extra DB fetch needed.
-        // Fallback: fetch from DB if payload looks incomplete (old client compatibility).
-        if (!payload?.status) return;
-        if (payload.id) { handleUpdate(payload); }
-        else { getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); }); }
+      .on("broadcast", { event: "quiz_event" }, () => {
+        // Broadcast to tylko SYGNAŁ „stan sesji się zmienił", nie źródło prawdy — kanał
+        // jest publiczny, więc anon mógłby sfałszować payload (np. status:"ended" i wyrzucić
+        // wszystkich). Autorytatywny stan czytamy z bazy (RLS); powiadomienie zostaje szybkie.
+        getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
       })
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "quiz_sessions",
@@ -356,7 +357,7 @@ export default function App() {
   // Called when timer hits 0 — reveals correct answer to participant
   const handleTimeout = () => {
     clearInterval(timerRef.current);
-    if (answered) return;
+    if (answeredRef.current) return;
     // Brak wyboru → zapisz pustą odpowiedź (serwer policzy is_correct=false) i pobierz
     // poprawną odp. do reveal. Wybrane odpowiedzi zapisał już handlePick (recordAnswer).
     if (pickedRef.current === null) recordAnswer(null);

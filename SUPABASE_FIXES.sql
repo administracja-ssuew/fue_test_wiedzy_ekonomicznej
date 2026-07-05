@@ -1016,6 +1016,100 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.admin_release_code(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.admin_release_code(UUID) TO authenticated;
 
+-- ─── 35. HARDENING profiles — blokada eskalacji uprawnień ───────
+-- LUKA KRYTYCZNA: jedyną polityką na profiles było "profiles_own FOR ALL
+-- USING (auth.uid() = id)" — bez WITH CHECK i bez ograniczenia kolumn. W połączeniu
+-- z GRANT ALL ... TO authenticated pozwalało to city_adminowi wykonać
+--   UPDATE profiles SET role='superadmin', city=NULL WHERE id = auth.uid();
+-- i przejąć kontrolę nad wszystkimi miastami. Rozdzielamy politykę: SELECT własnego
+-- wiersza (superadmin widzi wszystkie), pełny zapis TYLKO dla superadmina — city_admin
+-- traci prawo modyfikacji własnego profilu. Trigger to obrona w głąb: nawet gdyby
+-- polityka kiedyś się poluzowała, zmiana role/city przez nie-superadmina jest odrzucana.
+-- get_my_role() jest SECURITY DEFINER, więc użycie go w polityce profiles nie powoduje
+-- rekurencji RLS (definer omija RLS na profiles).
+
+DROP POLICY IF EXISTS "profiles_own"            ON public.profiles;
+DROP POLICY IF EXISTS "profiles_superadmin"     ON public.profiles;
+DROP POLICY IF EXISTS "profiles_select_own"     ON public.profiles;
+DROP POLICY IF EXISTS "profiles_superadmin_all" ON public.profiles;
+
+CREATE POLICY "profiles_select_own" ON public.profiles FOR SELECT
+  USING (auth.uid() = id OR public.get_my_role() = 'superadmin');
+CREATE POLICY "profiles_superadmin_all" ON public.profiles FOR ALL
+  USING (public.get_my_role() = 'superadmin')
+  WITH CHECK (public.get_my_role() = 'superadmin');
+
+-- SECURITY INVOKER (bez DEFINER) — auth.uid() musi wiarygodnie wskazywać realnego
+-- wywołującego. W SECURITY DEFINER auth.uid() bywa NULL [[supabase-auth-uid-null-gotcha]],
+-- co tutaj byłoby groźne: NULL = zaufany kontekst → przepuszczenie eskalacji.
+CREATE OR REPLACE FUNCTION public.prevent_profile_privilege_change()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  -- Zaufany kontekst serwerowy (service role / SQL editor / migracje): brak auth.uid().
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+  IF public.get_my_role() = 'superadmin' THEN RETURN NEW; END IF;
+  IF NEW.role IS DISTINCT FROM OLD.role OR NEW.city IS DISTINCT FROM OLD.city THEN
+    RAISE EXCEPTION 'Zmiana roli lub miasta profilu jest niedozwolona';
+  END IF;
+  RETURN NEW;
+END; $$;
+
+DROP TRIGGER IF EXISTS trg_prevent_profile_priv ON public.profiles;
+CREATE TRIGGER trg_prevent_profile_priv
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_profile_privilege_change();
+
+-- ─── 36. submit_answer — walidacja aktywnego pytania i okna czasu ──
+-- Domyka integralność wyników: dotąd submit_answer przyjmował odpowiedź na DOWOLNE
+-- pytanie w dowolnym momencie sesji. Ponieważ kolejność pytań jest deterministyczna
+-- (ORDER BY module, sort_order, id), a poprawność liczona jest serwerowo, ktoś mógłby
+-- przez samo API zapisać odpowiedzi na przyszłe pytania. Teraz wymagamy:
+--   • sesja 'running',
+--   • pytanie AKTUALNIE aktywne (jego globalny indeks = current_question_idx),
+--   • wybór (p_chosen != NULL) w oknie [q_started_at, q_started_at + time_per_q + 1,5 s]
+--     (1,5 s zapasu na opóźnienia sieci); pusty zapis (p_chosen NULL — timeout) jest
+--     dozwolony także po czasie, bo tylko rejestruje brak odpowiedzi i zwraca correct_ans
+--     do reveala (nie da się nim „dostrzelić" poprawnej odpowiedzi).
+--   • limit długości participant_name (ochrona przed nadmiarowym wpisem od anon).
+CREATE OR REPLACE FUNCTION public.submit_answer(
+  p_session_id UUID, p_code TEXT, p_name TEXT, p_question_id UUID, p_chosen INT
+) RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_ans INT; v_module INT; v_city TEXT; v_started TIMESTAMPTZ; v_is_correct BOOLEAN; v_rt_ms INT;
+  v_status TEXT; v_cur_idx INT; v_tpq INT; v_gidx INT; v_name TEXT;
+BEGIN
+  IF NOT public.code_exists(p_code) THEN RAISE EXCEPTION 'invalid code'; END IF;
+  v_name := left(COALESCE(p_name, ''), 120);
+  SELECT ans, module, city INTO v_ans, v_module, v_city FROM public.questions WHERE id = p_question_id;
+  IF v_ans IS NULL THEN RAISE EXCEPTION 'invalid question'; END IF;
+  SELECT status, q_started_at, current_question_idx
+    INTO v_status, v_started, v_cur_idx
+    FROM public.quiz_sessions WHERE id = p_session_id;
+  IF v_status IS DISTINCT FROM 'running' THEN RAISE EXCEPTION 'session not running'; END IF;
+  -- globalny indeks pytania w obrębie miasta (identyczna kolejność jak get_quiz_questions)
+  SELECT o.tpq, o.gidx INTO v_tpq, v_gidx FROM (
+    SELECT q.id, COALESCE(m.time_per_q, 60) AS tpq,
+           row_number() OVER (ORDER BY q.module, q.sort_order, q.id) - 1 AS gidx
+    FROM public.questions q LEFT JOIN public.modules m ON m.id = q.module
+    WHERE q.is_practice = false AND q.city = v_city
+  ) o WHERE o.id = p_question_id;
+  IF v_gidx IS DISTINCT FROM v_cur_idx THEN RAISE EXCEPTION 'question not active'; END IF;
+  IF v_started IS NULL OR clock_timestamp() < v_started THEN RAISE EXCEPTION 'question not started'; END IF;
+  IF p_chosen IS NOT NULL
+     AND clock_timestamp() > v_started + (v_tpq || ' seconds')::interval + interval '1.5 seconds' THEN
+    RAISE EXCEPTION 'time is up';
+  END IF;
+  v_rt_ms := GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - v_started)) * 1000)::INT;
+  v_is_correct := (p_chosen IS NOT NULL AND p_chosen = v_ans);
+  INSERT INTO public.answers (session_id, participant_code, participant_name, city, question_id, module, chosen, is_correct, points, response_time_s, response_time_ms)
+  VALUES (p_session_id, p_code, v_name, v_city, p_question_id, v_module, p_chosen, v_is_correct, 0,
+          CASE WHEN v_rt_ms IS NOT NULL THEN (v_rt_ms / 1000) ELSE NULL END, v_rt_ms)
+  ON CONFLICT (session_id, participant_code, question_id) DO NOTHING;
+  RETURN json_build_object('is_correct', v_is_correct, 'correct_ans', v_ans);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

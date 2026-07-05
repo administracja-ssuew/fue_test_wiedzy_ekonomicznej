@@ -27,7 +27,11 @@
       "Bash(npm test *)",
       "Bash(git commit -q -m ' *)",
       "Bash(node --check scripts/bot-runner.js)",
-      "Read(//c/Users/Mikołaj/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/requesting-code-review/**)"
+      "Read(//c/Users/Mikołaj/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/requesting-code-review/**)",
+      "Bash(awk 'NR>=437 && NR<=765 && /return null|return <|if \\\\\\([^\\)]*\\\\\\) return|^  return/ {print NR\": \"$0}' src/screens/AdminPanel.jsx)",
+      "Bash(awk 'NR>=735 && NR<=790 && /use\\(State|Effect|Ref|Memo|Callback\\)\\\\\\(/ {print NR\": \"$0}' src/screens/AdminPanel.jsx)",
+      "Bash(npx vite-node *)",
+      "Bash(LOAD_TEST_CONFIRM=1 LOAD_TOTAL=200 npm run load)"
     ]
   }
 }

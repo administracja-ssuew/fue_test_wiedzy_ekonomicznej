@@ -4,9 +4,36 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const DEMO = !SUPABASE_URL || !SUPABASE_KEY;
+
+// Fail-closed: tryb DEMO (localStorage + testowe hasło admina) NIGDY nie może włączyć
+// się po cichu na produkcji przy braku/literówce zmiennych środowiskowych. Lepszy
+// twardy, widoczny błąd na etapie buildu/deployu niż niezauważona luka podczas konkursu.
+if (DEMO && import.meta.env.PROD) {
+  throw new Error(
+    "Brak konfiguracji Supabase (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). " +
+    "Tryb DEMO jest zablokowany w buildzie produkcyjnym — ustaw zmienne środowiskowe i zbuduj ponownie."
+  );
+}
+
 export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
+
+// Alfabet bez znaków mylących (brak 0/O/1/I/L) — kody czytelne przy przepisywaniu,
+// a jednocześnie z dużą entropią (31^5 ≈ 28,6 mln) → praktycznie nieodgadywalne
+// i bez kolizji przy setkach uczestników. Zastępuje dawne 4 cyfry (9000 kombinacji).
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function randomCodeBody(len = 5) {
+  const n = CODE_ALPHABET.length;
+  const bytes = (typeof crypto !== "undefined" && crypto.getRandomValues)
+    ? crypto.getRandomValues(new Uint8Array(len)) : null;
+  let out = "";
+  for (let i = 0; i < len; i++) {
+    const r = bytes ? bytes[i] : Math.floor(Math.random() * 256);
+    out += CODE_ALPHABET[r % n];
+  }
+  return out;
+}
 
 // ─── ADMIN AUTH ───────────────────────────────────────────────────────────────
 
@@ -23,7 +50,10 @@ export async function loginAdmin({ email, password }) {
   if (error) return { error: error.message };
   const { data: profile, error: pErr } = await supabase
     .from("profiles").select("*").eq("id", data.user.id).maybeSingle();
-  if (pErr) return { error: "Błąd bazy danych: " + pErr.message };
+  if (pErr) {
+    console.error("[loginAdmin] profile fetch failed:", pErr.message);
+    return { error: "Błąd logowania. Spróbuj ponownie lub skontaktuj się z administratorem systemu." };
+  }
   if (!profile) return { error: "Brak profilu admina. Skontaktuj się z administratorem systemu." };
   return { data: { ...data.user, ...profile }, error: null };
 }
@@ -110,7 +140,7 @@ export async function markCodeUsed(code, sessionId) {
 
 export async function generateParticipantCode({ name, surname, city, createdBy }) {
   const prefix = CITY_PREFIX[city] || "XXX";
-  const code = `${prefix}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+  const code = `${prefix}-${randomCodeBody(5)}`;
   if (DEMO) {
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
     if (codes.find((c) => c.code === code))

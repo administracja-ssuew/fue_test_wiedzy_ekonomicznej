@@ -4,6 +4,9 @@ dist
 *.local
 .env
 
+# Dane logowania adminów do seedowania (NIGDY nie commitujemy haseł)
+scripts/admins.local.json
+
 .vercel
 
 .claude/worktrees/

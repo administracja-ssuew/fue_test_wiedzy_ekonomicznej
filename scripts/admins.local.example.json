@@ -1,0 +1,16 @@
+[
+  {
+    "email": "superadmin@example.pl",
+    "password": "ZMIEN_MNIE",
+    "full_name": "Imię Nazwisko",
+    "role": "superadmin",
+    "city": null
+  },
+  {
+    "email": "admin_krakow@example.pl",
+    "password": "ZMIEN_MNIE",
+    "full_name": "Admin Kraków",
+    "role": "city_admin",
+    "city": "Kraków"
+  }
+]

@@ -13,23 +13,23 @@ export default function useAuth() {
       return;
     }
 
-    // Read existing session from localStorage (synchronous, no network round-trip)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .maybeSingle()
-          .then(({ data: profile }) => {
-            setUser(profile ? { ...session.user, ...profile } : null);
-            setLoading(false);
-          });
-      } else {
+    // Read existing session, then hydrate the admin profile.
+    // Backend może być nieosiągalny (projekt uśpiony, brak sieci, DNS) — wtedy promise
+    // ODRZUCA. Bez .catch()/.finally() loading zostawał true na zawsze i cała aplikacja
+    // wisiała na ekranie „Ładowanie…". Zawsze kończymy ładowanie: brak sesji = ekran
+    // powitalny, na którym uczestnik i tak może spróbować wpisać kod.
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (!session?.user) { setUser(null); return; }
+        const { data: profile } = await supabase
+          .from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+        setUser(profile ? { ...session.user, ...profile } : null);
+      })
+      .catch((err) => {
+        console.error("[useAuth] nie udało się odczytać sesji:", err?.message || err);
         setUser(null);
-        setLoading(false);
-      }
-    });
+      })
+      .finally(() => setLoading(false));
 
     // Subscribe to all future auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -45,7 +45,8 @@ export default function useAuth() {
           .maybeSingle()
           .then(({ data: profile }) => {
             if (profile) setUser({ ...session.user, ...profile });
-          });
+          })
+          .catch((err) => console.error("[useAuth] profil:", err?.message || err));
       }
     );
 

@@ -14,6 +14,7 @@
     "rls": "vite-node scripts/rls-check.js",
     "seed-admin": "vite-node scripts/seed-admin.js",
     "seed-admins": "vite-node scripts/seed-admins.js",
+    "seed-questions": "vite-node scripts/seed-questions.js",
     "verify-prod": "vite-node scripts/verify-prod.js",
     "verify-mark": "vite-node scripts/verify-mark.js",
     "verify-realtime": "vite-node scripts/verify-realtime.js",

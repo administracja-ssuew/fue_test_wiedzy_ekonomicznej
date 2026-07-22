@@ -19,18 +19,17 @@ export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
 
-// Alfabet bez znaków mylących (brak 0/O/1/I/L) — kody czytelne przy przepisywaniu,
-// a jednocześnie z dużą entropią (31^5 ≈ 28,6 mln) → praktycznie nieodgadywalne
-// i bez kolizji przy setkach uczestników. Zastępuje dawne 4 cyfry (9000 kombinacji).
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-function randomCodeBody(len = 5) {
-  const n = CODE_ALPHABET.length;
+// Kod uczestnika: 6 cyfr (np. KRK-482910). Numeryczny — łatwy do wpisania i
+// podyktowania — a jednocześnie 1 000 000 kombinacji, czyli ~110× więcej niż dawne
+// 4 cyfry (9000). To zamyka realne ryzyko: przy device-bindingu (claim_participant_code)
+// zgadnięty kod BLOKUJE prawowitego uczestnika, więc mała pula = łatwe griefowanie.
+function randomCodeBody(len = 6) {
   const bytes = (typeof crypto !== "undefined" && crypto.getRandomValues)
     ? crypto.getRandomValues(new Uint8Array(len)) : null;
   let out = "";
   for (let i = 0; i < len; i++) {
     const r = bytes ? bytes[i] : Math.floor(Math.random() * 256);
-    out += CODE_ALPHABET[r % n];
+    out += String(r % 10);
   }
   return out;
 }
@@ -140,7 +139,7 @@ export async function markCodeUsed(code, sessionId) {
 
 export async function generateParticipantCode({ name, surname, city, createdBy }) {
   const prefix = CITY_PREFIX[city] || "XXX";
-  const code = `${prefix}-${randomCodeBody(5)}`;
+  const code = `${prefix}-${randomCodeBody(6)}`;
   if (DEMO) {
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
     if (codes.find((c) => c.code === code))

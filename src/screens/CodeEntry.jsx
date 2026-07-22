@@ -26,18 +26,18 @@ export default function CodeEntry({ onBack, onSuccess }) {
           <h2 className="su" style={{ fontFamily: '"Bebas Neue"', fontSize: 44, letterSpacing: 1.5, textAlign: "center", marginBottom: 6 }}>Wpisz swój kod</h2>
           <p className="su" style={{ color: "#9B89CC", textAlign: "center", fontSize: 14, marginBottom: 32, lineHeight: 1.6 }}>
             Kod uczestnika otrzymasz od koordynatora swojego miasta.<br />
-            <span style={{ color: "#C4B5FD", fontWeight: 600 }}>Przykład: KRK-4829</span>
+            <span style={{ color: "#C4B5FD", fontWeight: 600 }}>Przykład: KRK-482910</span>
           </p>
 
           <input
             type="text"
             className="fue-input"
-            placeholder="XXX-0000"
+            placeholder="XXX-000000"
             value={code}
             onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            style={{ textAlign: "center", letterSpacing: 4, fontSize: 22, fontWeight: 700, marginBottom: 10, ...(err ? { borderColor: "#E8376B", background: "rgba(232,55,107,.1)" } : {}) }}
-            maxLength={8}
+            style={{ textAlign: "center", letterSpacing: 3, fontSize: 22, fontWeight: 700, marginBottom: 10, ...(err ? { borderColor: "#E8376B", background: "rgba(232,55,107,.1)" } : {}) }}
+            maxLength={12}
             autoFocus
           />
 

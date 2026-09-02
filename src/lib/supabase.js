@@ -586,6 +586,47 @@ export async function getSessionResults(sessionId) {
   return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count) || 0, total: Number(r.total_count) || 0, avgResponseTime: r.avg_response_time_ms ?? (r.avg_response_time_s != null ? r.avg_response_time_s * 1000 : null) }));
 }
 
+// Karta odpowiedzi KAŻDEGO uczestnika sesji — zasila eksport XLSX (arkusz per osoba).
+// Zwraca iloczyn uczestnicy × pytania (pytania bez odpowiedzi mają puste chosen_*),
+// więc dla 500 osób × 58 pytań to ~29 000 wierszy. PostgREST tnie odpowiedź na strony,
+// dlatego pobieramy zakresami aż do wyczerpania — inaczej eksport po cichu gubiłby
+// ogon listy i nikt by tego nie zauważył aż do reklamacji uczestnika.
+export async function getSessionDetailedResults(sessionId) {
+  if (DEMO) {
+    const answers = JSON.parse(localStorage.getItem("fue_answers") || "[]").filter((a) => a.sessionId === sessionId);
+    return {
+      error: null,
+      rows: answers.map((a, i) => ({
+        participantCode: a.participantCode, participantName: a.participantName, city: a.city || "",
+        qNo: i + 1, module: a.module, moduleName: `Moduł ${a.module}`, question: a.questionId,
+        chosenLabel: a.chosen != null ? "ABCD"[a.chosen] : "", chosenText: "",
+        correctLabel: "", correctText: "", isCorrect: !!a.isCorrect, responseTimeMs: a.responseTimeS != null ? a.responseTimeS * 1000 : null,
+      })),
+    };
+  }
+  const PAGE = 5000;
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .rpc("get_session_detailed_results", { p_session_id: sessionId })
+      .range(from, from + PAGE - 1);
+    if (error) return { error: error.message, rows: [] };
+    if (!data || !data.length) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return {
+    error: null,
+    rows: out.map((r) => ({
+      participantCode: r.participant_code, participantName: r.participant_name, city: r.city,
+      qNo: r.q_no, module: r.module, moduleName: r.module_name, question: r.question,
+      chosenLabel: r.chosen_label || "", chosenText: r.chosen_text || "",
+      correctLabel: r.correct_label || "", correctText: r.correct_text || "",
+      isCorrect: !!r.is_correct, responseTimeMs: r.response_time_ms,
+    })),
+  };
+}
+
 // Live stats for current question (admin panel).
 // Uses a SECURITY DEFINER RPC to bypass answers_admin_select RLS
 // — ensures the count works regardless of JWT/RLS edge cases.
@@ -731,20 +772,48 @@ export async function addModule({ id, name, icon, color, timePerQ, desc }) {
 }
 
 export async function updateModule(id, updates) {
+  // Akceptuj OBA warianty kluczy. AdminPanel wysyła snake_case (time_per_q, description),
+  // a mapowane były wyłącznie camelCase (timePerQ, desc) — przez co czas na pytanie
+  // i opis znikały po cichu przy każdym zapisie z panelu.
+  const timePerQ = updates.timePerQ !== undefined ? updates.timePerQ : updates.time_per_q;
+  const desc     = updates.desc     !== undefined ? updates.desc     : updates.description;
   const dbUpdates = {};
-  if (updates.name       !== undefined) dbUpdates.name        = updates.name;
-  if (updates.icon       !== undefined) dbUpdates.icon        = updates.icon;
-  if (updates.color      !== undefined) dbUpdates.color       = updates.color;
-  if (updates.timePerQ   !== undefined) dbUpdates.time_per_q  = updates.timePerQ;
-  if (updates.desc       !== undefined) dbUpdates.description = updates.desc;
+  if (updates.name  !== undefined) dbUpdates.name        = updates.name;
+  if (updates.icon  !== undefined) dbUpdates.icon        = updates.icon;
+  if (updates.color !== undefined) dbUpdates.color       = updates.color;
+  if (timePerQ      !== undefined) dbUpdates.time_per_q  = timePerQ;
+  if (desc          !== undefined) dbUpdates.description = desc;
+
   if (DEMO) {
     const mods = JSON.parse(localStorage.getItem("fue_modules") || JSON.stringify(FALLBACK_MODULES));
     const idx = mods.findIndex((m) => m.id === id);
-    if (idx >= 0) { mods[idx] = { ...mods[idx], ...updates }; localStorage.setItem("fue_modules", JSON.stringify(mods)); }
+    const camel = { ...updates };
+    if (timePerQ !== undefined) camel.timePerQ = timePerQ;
+    if (desc     !== undefined) camel.desc     = desc;
+    if (idx >= 0) { mods[idx] = { ...mods[idx], ...camel }; localStorage.setItem("fue_modules", JSON.stringify(mods)); }
     return { error: null };
   }
-  const { error } = await supabase.from("modules").update(dbUpdates).eq("id", id);
-  return { error: error?.message || null };
+
+  const { data, error } = await supabase.from("modules").update(dbUpdates).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (data && data.length) return { error: null };
+
+  // Zero zaktualizowanych wierszy = moduł istnieje TYLKO w fallbacku, bo tabela modules
+  // jest pusta (getModules() zwraca wtedy MODULES z data/questions.js). Wcześniej ten
+  // przypadek kończył się cichym no-op i wyglądał jak niedziałająca edycja — teraz
+  // materializujemy moduł w bazie, dokładając brakujące pola z fallbacku.
+  const fb = FALLBACK_MODULES.find((m) => m.id === id);
+  const row = {
+    id,
+    name:        dbUpdates.name        ?? fb?.name     ?? `Moduł ${id}`,
+    icon:        dbUpdates.icon        ?? fb?.icon     ?? "📚",
+    color:       dbUpdates.color       ?? fb?.color    ?? "#6B21E8",
+    time_per_q:  dbUpdates.time_per_q  ?? fb?.timePerQ ?? 60,
+    description: dbUpdates.description ?? fb?.desc     ?? null,
+    sort_order:  fb ? FALLBACK_MODULES.indexOf(fb) + 1 : id,
+  };
+  const { error: insErr } = await supabase.from("modules").insert(row);
+  return { error: insErr?.message || null };
 }
 
 export async function deleteModule(id) {
@@ -781,8 +850,13 @@ export async function getViolationsForSession(sessionId) {
     return JSON.parse(localStorage.getItem("fue_violations") || "[]")
       .filter((v) => v.sessionId === sessionId);
   }
+  // LIMIT jest istotny: panel odpytuje to co 3 s, a violations rośnie przez cały test
+  // (visibilitychange odpala się przy każdym zablokowaniu ekranu telefonu). Bez limitu
+  // admin w drugiej połowie ściąga tysiące wierszy co trzy sekundy. 200 najnowszych
+  // w zupełności wystarcza jako sygnał dla komisji.
   const { data } = await supabase.from("violations")
-    .select("*").eq("session_id", sessionId).order("created_at", { ascending: false });
+    .select("*").eq("session_id", sessionId)
+    .order("created_at", { ascending: false }).limit(200);
   return data || [];
 }
 

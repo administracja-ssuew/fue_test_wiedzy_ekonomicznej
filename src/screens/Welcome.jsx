@@ -563,15 +563,20 @@ function KoordynatorzyTab({ city, setCity }) {
 
 // ─── Tab: Informator ──────────────────────────────────────────────────────────
 
-function InformatorTab({ city, setCity }) {
-  const [section, setSection] = useState("harmonogram");
-  const coord = COORDINATORS_DATA[city];
-  const address = CITY_ADDRESSES[city];
+// Harmonogram wyłączony do czasu ustalenia realnych godzin i numerów sal — dane w SCHEDULE
+// są jeszcze zaślepkami, a publikowanie zmyślonego rozkładu przed wydarzeniem myli uczestników.
+// Przywrócenie: zmień na true. Kod sekcji poniżej zostaje nietknięty.
+const SHOW_HARMONOGRAM = false;
 
+function InformatorTab({ city, setCity }) {
   const INFO_SECTIONS = [
-    { id: "harmonogram", label: "📅 Harmonogram" },
+    ...(SHOW_HARMONOGRAM ? [{ id: "harmonogram", label: "📅 Harmonogram" }] : []),
     { id: "kontakt",     label: "📞 Kontakt"      },
   ];
+
+  const [section, setSection] = useState(INFO_SECTIONS[0].id);
+  const coord = COORDINATORS_DATA[city];
+  const address = CITY_ADDRESSES[city];
 
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
@@ -586,8 +591,9 @@ function InformatorTab({ city, setCity }) {
           <CitySelector city={city} setCity={setCity} />
         </div>
 
-        {/* Sekcja tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.09)", marginBottom: 28 }}>
+        {/* Sekcja tabs — ukryte, gdy została tylko jedna sekcja (pojedyncza zakładka
+            wygląda jak niedokończony interfejs). Wróci samo po SHOW_HARMONOGRAM = true. */}
+        <div style={{ display: INFO_SECTIONS.length > 1 ? "flex" : "none", borderBottom: "1px solid rgba(255,255,255,.09)", marginBottom: 28 }}>
           {INFO_SECTIONS.map((s) => (
             <button key={s.id} onClick={() => setSection(s.id)}
               className={`fue-tab${section === s.id ? " active" : ""}`}
@@ -597,7 +603,7 @@ function InformatorTab({ city, setCity }) {
           ))}
         </div>
 
-        {section === "harmonogram" && (
+        {SHOW_HARMONOGRAM && section === "harmonogram" && (
           <div key="harmonogram" style={{ animation: "blurIn .35s ease both" }}>
             <div style={{ ...W.card({ padding: "14px 18px", marginBottom: 24, background: "rgba(107,33,232,.07)", borderColor: "rgba(107,33,232,.28)" }) }}>
               <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>📍 Miejsce</p>

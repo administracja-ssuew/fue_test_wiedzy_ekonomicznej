@@ -1218,6 +1218,69 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.get_session_detailed_results(UUID) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.get_session_detailed_results(UUID) TO authenticated;
 
+-- ─── 38. PUBLIKACJA REALTIME — stan pożądany + diagnostyka ──────
+-- ZNALEZIONE 02.09.2026 na produkcji (ytbwmmqwbfcugouourih): klient anon wchodzi
+-- w SUBSCRIBED, ale UPDATE na quiz_sessions NIE DOCIERA. Czyli postgres_changes nie
+-- dostarcza nic. Projekt był migrowany (STATUS.md dokumentuje jeszcze stary
+-- dmoydtavstpurqebkngu), a blok DO z SUPABASE_SCHEMA.sql dodający tabele do
+-- publikacji najwyraźniej nie wykonał się na nowym projekcie.
+--
+-- Skutek: uczestnicy dowiadują się o starcie quizu WYŁĄCZNIE z polla w poczekalni,
+-- bo Lobby nie ma innej szybkiej ścieżki. Aplikacja działa, ale start jest opóźniony
+-- o pełen okres polla i cała synchronizacja opiera się na jednym mechanizmie.
+--
+-- Stan pożądany publikacji:
+--   quiz_sessions      JEST  (kanał sterujący quizem — krytyczny)
+--   answers            NIE   (sekcja 37.1 — lawina ~29 000 INSERT-ów)
+--   participant_codes  NIE   (sekcja 37.1 — nikt się nie subskrybuje)
+
+DO $$
+DECLARE v_all BOOLEAN;
+BEGIN
+  SELECT puballtables INTO v_all FROM pg_publication WHERE pubname = 'supabase_realtime';
+
+  IF v_all IS NULL THEN
+    RAISE NOTICE 'supabase_realtime NIE ISTNIEJE — tworzę z quiz_sessions.';
+    CREATE PUBLICATION supabase_realtime FOR TABLE public.quiz_sessions;
+
+  ELSIF v_all THEN
+    -- FOR ALL TABLES: nie da się usunąć pojedynczej tabeli. Sekcja 37.1 była wtedy
+    -- no-opem, więc lawina answers NADAL blokuje kanał — trzeba przebudować publikację.
+    RAISE NOTICE 'supabase_realtime jest FOR ALL TABLES — przebudowuję na listę tabel.';
+    DROP PUBLICATION supabase_realtime;
+    CREATE PUBLICATION supabase_realtime FOR TABLE public.quiz_sessions;
+
+  ELSE
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables
+                   WHERE pubname = 'supabase_realtime'
+                     AND schemaname = 'public' AND tablename = 'quiz_sessions') THEN
+      RAISE NOTICE 'Dodaję quiz_sessions do publikacji (brakowało!).';
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.quiz_sessions;
+    END IF;
+  END IF;
+END $$;
+
+-- Filtr Lobby to `city=eq.` — kolumna spoza klucza głównego. FULL gwarantuje, że
+-- Realtime ma komplet kolumn do dopasowania filtra i do old_record. quiz_sessions ma
+-- kilkanaście wierszy, więc koszt w WAL jest bez znaczenia.
+ALTER TABLE public.quiz_sessions REPLICA IDENTITY FULL;
+
+-- Diagnostyka — jedyny sposób, żeby SPRAWDZIĆ publikację spoza SQL Editora.
+-- Zwraca wyłącznie trzy booleany o tabelach, których nazwy i tak są w bundlu JS,
+-- więc nic nie ujawnia; za to `npm run verify-prod` może to odpytać jako anon.
+CREATE OR REPLACE FUNCTION public.realtime_publication_status()
+RETURNS JSON LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT json_build_object(
+    'publication_exists', EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'),
+    'all_tables',         COALESCE((SELECT puballtables FROM pg_publication WHERE pubname = 'supabase_realtime'), false),
+    'quiz_sessions',      EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'quiz_sessions'),
+    'answers',            EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'answers'),
+    'participant_codes',  EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'participant_codes')
+  );
+$$;
+REVOKE EXECUTE ON FUNCTION public.realtime_publication_status() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.realtime_publication_status() TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

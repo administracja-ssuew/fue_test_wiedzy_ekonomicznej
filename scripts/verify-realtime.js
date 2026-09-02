@@ -1,8 +1,19 @@
 /**
- * FUE Quiz — weryfikacja sekcji 21 (Realtime na tabeli answers = instant push)
+ * FUE Quiz — weryfikacja publikacji Realtime (sekcja 37.1)
  *
- * Subskrybuje INSERT na answers, wstawia odpowiedź i sprawdza, czy event Realtime
- * dochodzi — to wprost testuje, czy tabela jest w publikacji supabase_realtime.
+ * UWAGA — OCZEKIWANIE ZOSTAŁO ODWRÓCONE 02.09.2026.
+ * Wcześniej ten skrypt sprawdzał sekcję 21, czyli że INSERT na `answers` DOCIERA
+ * przez Realtime. Audyt obciążeniowy pokazał, że to był błąd projektowy: ~29 000
+ * zdarzeń INSERT (58 pytań × 500 osób) szło tym samym slotem replikacji, którym
+ * idą UPDATE-y `quiz_sessions` sterujące przejściem pytania — a lawina odpowiedzi
+ * kumuluje się dokładnie w chwili, gdy timer dobija zera. Sekcja 37.1 usuwa
+ * `answers` i `participant_codes` z publikacji.
+ *
+ * Skrypt sprawdza więc teraz DOKŁADNIE ODWROTNIE:
+ *   • quiz_sessions UPDATE  MUSI dotrzeć  (kanał sterujący quizem — krytyczny)
+ *   • answers INSERT        NIE MOŻE dotrzeć (zdjęte w 37.1)
+ *
+ * Licznik odpowiedzi w panelu jedzie z polla co 1 s i to jest zamierzone.
  * Klient service_role omija RLS, więc mierzymy czyste członkostwo w publikacji.
  * Tworzy tymczasową sesję/pytanie/odpowiedź i sprząta. Domyślnie PRODUKCJA.
  *
@@ -25,7 +36,7 @@ const st = { sessionId: null, qId: null };
 
 async function main() {
   console.log(`\n🌐 Cel: ${URL}  ${STAGE ? "(STAGING)" : "(PRODUKCJA)"}`);
-  console.log("🔎 Sekcja 21 — czy INSERT na answers dociera przez Realtime?\n");
+  console.log("🔎 Sekcja 37.1 — czy answers są ZDJĘTE z publikacji, a quiz_sessions zostały?\n");
 
   const { data: sess, error: sErr } = await supa.from("quiz_sessions")
     .insert({ city: "Kraków", status: "running", is_practice: true, current_question_idx: 0, q_started_at: new Date().toISOString() })
@@ -38,8 +49,8 @@ async function main() {
   if (qErr) { console.error("❌ pytanie:", qErr.message); await cleanup(); process.exit(1); }
   st.qId = q.id;
 
-  let gotAnswer = false;   // target: INSERT answers (sekcja 21)
-  let gotControl = false;  // kontrola: UPDATE quiz_sessions (na pewno w publikacji)
+  let gotAnswer = false;   // target: INSERT answers — po sekcji 37.1 MA NIE dotrzeć
+  let gotControl = false;  // kontrola: UPDATE quiz_sessions — MUSI dotrzeć (kanał quizu)
   let subscribed = false;
   let nonce = 0;
   const fireWrites = async () => {
@@ -63,29 +74,35 @@ async function main() {
       }
     });
 
-  // Czekaj do 12 s; jeśli po ~4 s nic nie dotarło (cold-start), ponów zapis raz.
+  // Czekaj na KONTROLĘ (do 12 s); jeśli po ~4 s nic nie dotarło (cold-start), ponów zapis.
   const start = Date.now();
   let retried = false;
-  while (!(gotAnswer && gotControl) && Date.now() - start < 12000) {
+  while (!gotControl && Date.now() - start < 12000) {
     await sleep(150);
-    if (!retried && subscribed && !gotControl && !gotAnswer && Date.now() - start > 4000) {
+    if (!retried && subscribed && !gotControl && Date.now() - start > 4000) {
       retried = true;
       await fireWrites();
     }
   }
+  // Brak zdarzenia to teraz WYNIK POZYTYWNY, a nieobecności nie da się stwierdzić
+  // natychmiast — po dotarciu kontroli dajemy answers jeszcze 3 s. Kontrola dowodzi,
+  // że kanał żyje i zdarzenia płyną, więc cisza na answers znaczy "nie ma w publikacji",
+  // a nie "Realtime nie działa".
+  if (gotControl) await sleep(3000);
 
   await supa.removeChannel(ch);
   await cleanup();
 
+  const passed = gotControl && !gotAnswer;
   console.log("─".repeat(56));
-  console.log(`  kontrola (quiz_sessions UPDATE): ${gotControl ? "✅ dotarła" : "❌ brak"}`);
-  console.log(`  target   (answers INSERT):       ${gotAnswer ? "✅ dotarł" : "❌ brak"}`);
+  console.log(`  quiz_sessions UPDATE (ma dotrzeć):  ${gotControl ? "✅ dotarła" : "❌ brak"}`);
+  console.log(`  answers INSERT (ma NIE dotrzeć):    ${gotAnswer ? "❌ dotarł" : "✅ cisza"}`);
   console.log("─".repeat(56));
-  if (!subscribed)        console.log("⚠️ Kanał nie wszedł w SUBSCRIBED — Realtime niedostępny dla tego klienta.");
-  else if (!gotControl)   console.log("⚠️ Nawet kontrola nie dotarła — to mechanizm (service-key Realtime), nie sekcja 21.");
-  else if (gotAnswer)     console.log("✅ SEKCJA 21 WGRANA — instant push odpowiedzi działa.");
-  else                    console.log("❌ Kontrola OK, ale answers NIE — tabela answers NIE jest w publikacji → uruchom sekcję 21.");
-  process.exit(gotAnswer && gotControl ? 0 : 1);
+  if (!subscribed)      console.log("⚠️ Kanał nie wszedł w SUBSCRIBED — Realtime niedostępny dla tego klienta.");
+  else if (!gotControl) console.log("⚠️ Kontrola nie dotarła — to mechanizm (service-key Realtime), nie publikacja.\n   Bez działającej kontroli cisza na answers niczego nie dowodzi.");
+  else if (gotAnswer)   console.log("❌ answers WCIĄŻ w publikacji → uruchom sekcję 37.1.\n   Lawina ~29 000 INSERT-ów będzie blokować kanał sterujący quizem.");
+  else                  console.log("✅ SEKCJA 37.1 WGRANA — kanał quizu czysty, answers poza publikacją.");
+  process.exit(passed ? 0 : 1);
 }
 
 async function cleanup() {

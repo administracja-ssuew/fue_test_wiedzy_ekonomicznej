@@ -57,6 +57,27 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     });
   }, [city]);
 
+  // Broadcast admina (`quiz-<id>`) jako DRUGA szybka ścieżka startu.
+  // Powód: 02.09.2026 wyszło, że na produkcji postgres_changes nie dostarcza nic
+  // (kanał wchodzi w SUBSCRIBED, ale UPDATE nie dociera — patrz sekcja 38 SQL).
+  // Poczekalnia miała wtedy JEDNĄ ścieżkę startu: poll. Admin przy "Start quizu"
+  // i tak rozgłasza `quiz_event` na kanale sesji, więc wystarczy go słuchać —
+  // start dociera w ~50 ms nawet przy zepsutej publikacji. Payload to tylko sygnał;
+  // autorytatywny stan czytamy z bazy (kanał jest publiczny).
+  useEffect(() => {
+    if (DEMO || !supabase || !session?.id) return;
+    const ch = supabase.channel(`quiz-${session.id}`)
+      .on("broadcast", { event: "quiz_event" }, () => {
+        getSessionForCity(city).then((s) => {
+          if (!s) return;
+          setSession(s);
+          if (s.status === "running") { clearInterval(pollRef.current); onStartQuizRef.current(s); }
+        });
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session?.id, city]);
+
   // Realtime + safety-net polling in production; polling-only in DEMO.
   useEffect(() => {
     if (!city) return;

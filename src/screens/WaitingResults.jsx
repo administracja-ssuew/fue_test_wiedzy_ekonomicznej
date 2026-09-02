@@ -21,7 +21,9 @@ export default function WaitingResults({ participant, onReveal }) {
       }
     };
     check();
-    pollRef.current = setInterval(check, 3000);
+    // Siatka bezpieczeństwa — ogłoszenie wyników przychodzi subskrypcją Realtime niżej.
+    // Poll co 3 s = 167 zapytań/s przez cały czas oczekiwania na podium przy 500 osobach.
+    pollRef.current = setInterval(check, 20000);
     return () => clearInterval(pollRef.current);
   }, [city]);
 

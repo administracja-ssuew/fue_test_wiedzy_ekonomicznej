@@ -13,7 +13,11 @@ export default function Break({ participant, nextModule, isAdminPause, sessionId
     return () => clearInterval(t);
   }, []);
 
-  // Poll co 3s — specific session when sessionId known, city-wide otherwise
+  // Siatka bezpieczeństwa, NIE główny mechanizm — wznowienie przychodzi subskrypcją
+  // Realtime w efekcie niżej. Przy 500 uczestnikach poll co 3 s to 167 zapytań/s przez
+  // całą przerwę (a przerwa po module 2 trwa realnie kilkanaście minut), w całości
+  // dublujących to, co Realtime już dostarcza. 20 s wystarcza jako zabezpieczenie
+  // na zgubione zdarzenie i schodzi do 25 zapytań/s. NIE skracać bez potrzeby.
   useEffect(() => {
     if (!city) return;
     let mounted = true;
@@ -22,7 +26,7 @@ export default function Break({ participant, nextModule, isAdminPause, sessionId
       if (mounted && s?.status === "running") { clearInterval(pollRef.current); onResume(s); }
     };
     check();
-    pollRef.current = setInterval(check, 3000);
+    pollRef.current = setInterval(check, 20000);
     return () => { mounted = false; clearInterval(pollRef.current); };
   }, [city, sessionId]); // eslint-disable-line
 

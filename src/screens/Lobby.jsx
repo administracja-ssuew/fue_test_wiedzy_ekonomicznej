@@ -80,8 +80,11 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           }
         });
 
-      // Safety-net: poll every 5s in case a Realtime event is dropped (e.g. encoding
-      // issues with Polish city names in the filter, or brief network hiccup).
+      // Safety-net na zgubione zdarzenie Realtime (np. kodowanie polskich znaków
+      // w filtrze albo chwilowy zanik sieci) — NIE główna ścieżka startu.
+      // Poczekalnia trwa realnie 20–30 minut przed startem, więc przy 500 uczestnikach
+      // poll co 5 s to 100 zapytań/s przez pół godziny — najdłuższe obciążenie całego
+      // wydarzenia i w całości nadmiarowe. 15 s wystarcza, subskrypcja niesie start.
       pollRef.current = setInterval(async () => {
         const s = await getSessionForCity(city);
         if (!s) return;
@@ -91,7 +94,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
         } else {
           setSession(s);
         }
-      }, 5000);
+      }, 15000);
 
       return () => { supabase.removeChannel(channel); clearInterval(pollRef.current); };
     }

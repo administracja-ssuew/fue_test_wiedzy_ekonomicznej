@@ -1110,6 +1110,114 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) TO anon, authenticated;
 
+-- ─── 37. WYDAJNOŚĆ POD OBCIĄŻENIEM (audyt 02.09.2026) ───────────
+-- Trzy zmiany zdejmujące z bazy ruch, który przy 500 uczestnikach działa
+-- przeciwko quizowi, plus RPC pod eksport indywidualnych wyników.
+
+-- 37.1 — Zdejmij answers z publikacji Realtime.
+-- PRZYCZYNA: 58 pytań × 500 osób = ~29 000 zdarzeń INSERT przechodzących tym samym
+-- slotem replikacji, którym idą UPDATE-y quiz_sessions sterujące przejściem pytania.
+-- Najgorszy moment jest wbudowany w konstrukcję: gdy timer dobija zera, wszyscy, którzy
+-- nie kliknęli, wysyłają pustą odpowiedź w tej samej ćwierćsekundzie — i dokładnie za tą
+-- lawiną staje w kolejce komunikat, który musi dojść w <1 s.
+-- Panel admina i tak dolicza licznik pollem co 1 s (AdminPanel.jsx), więc ta subskrypcja
+-- kupowała sekundę ładniejszego UI kosztem ścieżki krytycznej całej sali.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication_tables
+             WHERE pubname = 'supabase_realtime' AND tablename = 'answers') THEN
+    ALTER PUBLICATION supabase_realtime DROP TABLE public.answers;
+  END IF;
+  -- participant_codes: nic w kodzie klienta się do niej nie subskrybuje, a mark_code_used
+  -- generuje UPDATE per uczestnik przy dołączaniu (500 zdarzeń do zdekodowania bez odbiorcy).
+  IF EXISTS (SELECT 1 FROM pg_publication_tables
+             WHERE pubname = 'supabase_realtime' AND tablename = 'participant_codes') THEN
+    ALTER PUBLICATION supabase_realtime DROP TABLE public.participant_codes;
+  END IF;
+END $$;
+
+-- 37.2 — Indeks pod getViolationsForSession (panel odpytuje co 3 s).
+-- Bez niego to skan sekwencyjny po rosnącej tabeli — a violations rośnie szybko,
+-- bo visibilitychange odpala się przy każdym zablokowaniu ekranu telefonu.
+CREATE INDEX IF NOT EXISTS idx_violations_session
+  ON public.violations(session_id, created_at DESC);
+
+-- 37.3 — Zasiej tabelę modules wartościami domyślnymi.
+-- PRZYCZYNA usterki "modułów nie da się edytować": przy PUSTEJ tabeli getModules()
+-- zwraca FALLBACK_MODULES z src/data/questions.js. Panel pokazuje 5 modułów, ale
+-- UPDATE modules WHERE id=1 trafia w 0 wierszy — bez błędu. Po reloadzie znowu widać
+-- fallback, więc wygląda to jak niedziałająca edycja. ON CONFLICT DO NOTHING = bezpieczne
+-- na bazie, gdzie moduły już są (nie nadpisuje zmian admina).
+INSERT INTO public.modules (id, name, icon, color, time_per_q, description, sort_order) VALUES
+  (1, 'Obliczenia',              '🧮', '#6B21E8', 90, 'Zadania obliczeniowe',          1),
+  (2, 'Terminy',                 '📚', '#1565C0', 30, 'Pojęcia i definicje',           2),
+  (3, 'Logika ekonomiczna',      '🧠', '#2E7D32', 60, 'Analiza i wnioskowanie',        3),
+  (4, 'Pytania kreatywne',       '💡', '#E65100', 75, 'Scenariusze i dylematy',        4),
+  (5, 'Aktualności gospodarcze', '📰', '#880E4F', 45, 'Bieżące wydarzenia ekonomiczne', 5)
+ON CONFLICT (id) DO NOTHING;
+
+-- 37.4 — get_session_detailed_results: karta odpowiedzi każdego uczestnika.
+-- Zasila eksport XLSX (arkusz per uczestnik). Zwraca iloczyn uczestnicy × pytania,
+-- więc uczestnik, który na coś nie odpowiedział, ma widoczny pusty wiersz zamiast
+-- brakującego — inaczej w arkuszu nie widać, że ktoś pytanie pominął.
+-- Rola wymagana w WHERE (brak roli = 0 wierszy) — ten sam wzorzec co get_session_results.
+DROP FUNCTION IF EXISTS public.get_session_detailed_results(UUID);
+CREATE OR REPLACE FUNCTION public.get_session_detailed_results(p_session_id UUID)
+RETURNS TABLE (
+  participant_code TEXT,
+  participant_name TEXT,
+  city             TEXT,
+  q_no             INT,
+  module           INT,
+  module_name      TEXT,
+  question         TEXT,
+  chosen_label     TEXT,
+  chosen_text      TEXT,
+  correct_label    TEXT,
+  correct_text     TEXT,
+  is_correct       BOOLEAN,
+  response_time_ms INT
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH s AS (
+    SELECT id, city FROM public.quiz_sessions WHERE id = p_session_id
+  ),
+  q AS (
+    -- Ta sama kolejność co get_quiz_questions i submit_answer — numer pytania
+    -- w arkuszu zgadza się z numerem, który uczestnik widział na ekranie.
+    SELECT qq.id, qq.module, qq.q, qq.opts, qq.ans,
+           (row_number() OVER (ORDER BY qq.module, qq.sort_order, qq.id))::INT AS q_no
+    FROM public.questions qq
+    WHERE qq.is_practice = false AND qq.city = (SELECT city FROM s)
+  ),
+  p AS (
+    SELECT pc.code, btrim(pc.name || ' ' || pc.surname) AS full_name, pc.city
+    FROM public.participant_codes pc
+    WHERE pc.session_id = p_session_id AND pc.used = true
+  )
+  SELECT
+    p.code, p.full_name, p.city,
+    q.q_no, q.module,
+    COALESCE(m.name, 'Moduł ' || q.module),
+    q.q,
+    CASE WHEN a.chosen IS NOT NULL THEN chr(65 + a.chosen) END,
+    CASE WHEN a.chosen IS NOT NULL THEN q.opts[a.chosen + 1] END,
+    chr(65 + q.ans),
+    q.opts[q.ans + 1],
+    COALESCE(a.is_correct, false),
+    a.response_time_ms
+  FROM p
+  CROSS JOIN q
+  LEFT JOIN public.answers a
+         ON a.session_id = p_session_id
+        AND a.participant_code = p.code
+        AND a.question_id = q.id
+  LEFT JOIN public.modules m ON m.id = q.module
+  WHERE public.get_my_role() IN ('city_admin','superadmin')
+  ORDER BY p.full_name, p.code, q.q_no;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_session_detailed_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_detailed_results(UUID) TO authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

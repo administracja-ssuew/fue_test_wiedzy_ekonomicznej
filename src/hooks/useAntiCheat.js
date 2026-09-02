@@ -6,15 +6,25 @@ export default function useAntiCheat({ active, participantCode, sessionId }) {
   const [showWarning, setShowWarning]   = useState(false);
   const [lastType, setLastType]         = useState("");
   const countRef = useRef(0);
+  const lastSentRef = useRef({}); // type → timestamp ostatniego ZAPISU do bazy
 
   useEffect(() => {
     if (!active) return;
+
+    // Ostrzeżenie na ekranie pokazujemy zawsze, ale do bazy piszemy najwyżej raz na
+    // 10 s per typ. Bez tego jedno zablokowanie i odblokowanie ekranu telefonu potrafi
+    // wygenerować serię wierszy, a przy 500 uczestnikach przez godzinę tabela violations
+    // rośnie do tysięcy rekordów, które panel admina odpytuje co 3 s.
+    const DEDUPE_MS = 10000;
 
     const trigger = (type) => {
       countRef.current += 1;
       setViolations(countRef.current);
       setLastType(type);
       setShowWarning(true);
+      const now = Date.now();
+      if (now - (lastSentRef.current[type] || 0) < DEDUPE_MS) return;
+      lastSentRef.current[type] = now;
       recordViolation({ participantCode, sessionId, type, count: countRef.current });
     };
 

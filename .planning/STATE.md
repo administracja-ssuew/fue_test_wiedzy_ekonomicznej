@@ -111,6 +111,17 @@ Plan: 1 of 4
 
 None — Phase 1 can start immediately.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260902-lp2 | Naprawy po audycie obciążeniowym + 5 zadań użytkownika | 2026-09-02 | `5d76829` | [260902-lp2-naprawy-po-audycie-obciazeniowym-5-zadan](./quick/260902-lp2-naprawy-po-audycie-obciazeniowym-5-zadan/) |
+
+**Otwarte po 260902-lp2** (szczegóły w SUMMARY):
+- Sekcja 37 `SUPABASE_FIXES.sql` NIE jest jeszcze wgrana na żaden projekt Supabase
+- Przebieg na żywo z dwoma klientami po zmianie sterowania przejściem pytania
+- Plan Supabase Pro + podniesienie limitu połączeń do 800 (510 potrzebnych, Pro daje 500)
+
 ---
 
 ## Session Continuity
@@ -128,4 +139,4 @@ None — Phase 1 can start immediately.
 
 ---
 
-*Last updated: 2026-04-23 — Plan 01-03 complete*
+*Last updated: 2026-09-02 — Completed quick task 260902-lp2: naprawy po audycie obciążeniowym + 5 zadań użytkownika*

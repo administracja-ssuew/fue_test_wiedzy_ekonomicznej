@@ -52,7 +52,11 @@ export async function syncServerClock(rounds = 4) {
 }
 
 // Uruchom raz na starcie aplikacji; odświeżaj okresowo (dryf zegara, zmiana sieci).
-export function startServerClock(refreshMs = 60000) {
+// refreshMs = 5 min, nie 60 s: syncServerClock robi 4 sekwencyjne wywołania server_now,
+// więc przy 500 uczestnikach odświeżanie co minutę to 2000 zapytań/min (33/s) czystego
+// narzutu przez całe wydarzenie. Offset raz zmierzony nie dryfuje w ciągu godziny na
+// tyle, żeby to uzasadniało — a timery i tak liczą się z q_started_at, nie z licznika.
+export function startServerClock(refreshMs = 300000) {
   syncServerClock();
   if (timer) clearInterval(timer);
   timer = setInterval(() => syncServerClock(), refreshMs);

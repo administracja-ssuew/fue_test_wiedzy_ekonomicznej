@@ -114,11 +114,55 @@ async function main() {
     else note("questions — niejednoznaczne", eqr.message);
   }
 
+  console.log("\n⚡ SEKCJA 37 (wydajność pod obciążeniem + eksport XLSX):\n");
+  {
+    // 37.4 — anon MUSI dostać "permission denied" (funkcja istnieje, ale jest admin-only).
+    // "function not found" = sekcja 37 nie wgrana. To jedyna sonda sekcji 37 dostępna
+    // dla anona: 37.1 (publikacja Realtime), 37.2 (indeks) i 37.3 (seed modules)
+    // wymagają uprawnień, których anon z definicji nie ma.
+    const { error } = await callRpc("get_session_detailed_results", { p_session_id: DUMMY });
+    if (isMissing(error))     bad("get_session_detailed_results — BRAK", "→ uruchom sekcję 37 (eksport XLSX nie zadziała)");
+    else if (isDenied(error)) ok("get_session_detailed_results — istnieje", "sekcja 37, anon zablokowany ✓");
+    else                      bad("get_session_detailed_results — anon MA DOSTĘP", "⚠️ GRANT źle wgrany — wyniki wyciekają!");
+
+    // 37.3 — moduły zasiane? Pusta tabela = przyczyna usterki "modułów nie da się edytować".
+    const { data: mods, error: em } = await anon.from("modules").select("id").limit(6);
+    if (em)                   note("modules — nie udało się sprawdzić", em.message);
+    else if (!mods?.length)   bad("modules — tabela PUSTA", "→ sekcja 37.3 nie wgrana; edycja modułów będzie no-op");
+    else                      ok("modules — zasiane", `${mods.length} modułów w bazie`);
+  }
+
+  console.log("\n📡 SEKCJA 38 (publikacja Realtime — stan pożądany):\n");
+  {
+    const { data: pub, error } = await callRpc("realtime_publication_status", {});
+    if (isMissing(error)) {
+      bad("realtime_publication_status — BRAK", "→ uruchom sekcję 38");
+      note("publikacji nie da się sprawdzić bez tej funkcji", "sprawdź ręcznie w SQL Editorze");
+    } else if (error) {
+      bad("realtime_publication_status — błąd", error.message);
+    } else {
+      if (!pub.publication_exists)  bad("supabase_realtime — publikacja NIE ISTNIEJE", "→ sekcja 38");
+      else if (pub.all_tables)      bad("supabase_realtime — FOR ALL TABLES", "→ sekcja 37.1 była no-opem! uruchom 38");
+      else                          ok("supabase_realtime — lista tabel", "sekcja 38");
+
+      if (pub.quiz_sessions) ok("quiz_sessions W publikacji", "kanał sterujący quizem żyje");
+      else                   bad("quiz_sessions POZA publikacją", "⚠️ uczestnicy nie dostaną startu przez Realtime → sekcja 38");
+
+      if (pub.answers) bad("answers WCIĄŻ w publikacji", "→ sekcja 37.1 (lawina blokuje kanał quizu)");
+      else             ok("answers POZA publikacją", "sekcja 37.1 ✓");
+
+      if (pub.participant_codes) note("participant_codes wciąż w publikacji", "→ sekcja 37.1 (nieszkodliwe, ale zbędne)");
+      else                       ok("participant_codes POZA publikacją", "sekcja 37.1 ✓");
+    }
+  }
+
   console.log("\n" + "─".repeat(56));
   if (fail === 0) console.log(`✅ PRODUKCJA GOTOWA pod kątem SQL (${pass} OK${warn ? `, ${warn} uwag` : ""})`);
   else console.log(`❌ ${fail} PROBLEM(ÓW) — uzupełnij wskazane sekcje SQL na produkcji`);
-  console.log("ℹ️  Sekcji 21 (Realtime na answers) nie da się sprawdzić sondą — weryfikuje ją");
-  console.log("    instant-push w panelu. 22/24 to zachowanie — najpewniej po prostu (re)uruchom.");
+  console.log("ℹ️  Sekcja 37.1 CELOWO zdejmuje answers z publikacji Realtime (odwraca sekcję 21):");
+  console.log("    lawina ~29 000 INSERT-ów blokowała kanał, którym idą przejścia pytań.");
+  console.log("    Licznik odpowiedzi w panelu jedzie teraz z polla co 1 s — to jest poprawne.");
+  console.log("    Publikacji ani indeksu (37.1/37.2) nie da się sprawdzić z uprawnieniami anona.");
   process.exit(fail === 0 ? 0 : 1);
 }
 

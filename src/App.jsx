@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy } from "react";
 import { supabase, DEMO, logoutAdmin, submitAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
-import { getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds } from "./lib/gameLogic.js";
+import { getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds, advanceLeadSeconds, fallbackJitterMs } from "./lib/gameLogic.js";
 import { serverNow, startServerClock } from "./lib/serverClock.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
@@ -64,6 +64,7 @@ export default function App() {
   const qIdxRef            = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
   const cityQuestionsRef   = useRef([]);          // always-current questions for session event handler
   const quizChRef          = useRef(null);        // kanał broadcast sesji (instant push przejścia pytania)
+  const advFallbackRef     = useRef(null);        // timer awaryjnego przejścia (gdy admin milczy)
   const isDesktop = useWindowWidth() >= 900;
 
   // Natychmiastowy push nowego stanu sesji na szybkiej ścieżce (broadcast ~50ms),
@@ -282,8 +283,12 @@ export default function App() {
       if (s.current_question_idx > myGlobalIdx) {
         const state = getQuestionState(s.current_question_idx, questions);
         if (state) {
+          // Pytanie ruszyło — awaryjne przejście nie jest już potrzebne.
+          clearTimeout(advFallbackRef.current);
           const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
-          const remaining = Math.max(1, state.mod.timePerQ - elapsed);
+          // Clamp do timePerQ: przy starcie w przyszłości (lead 4 s / 30 s) elapsed jest
+          // ujemny, więc bez tego timer pokazywałby wartość większą niż czas pytania.
+          const remaining = Math.min(state.mod.timePerQ, Math.max(1, state.mod.timePerQ - elapsed));
           qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
           // Do NOT clearInterval here — the timer effect handles its own lifecycle when
           // currentMod/qIdx change. Calling clearInterval without a guaranteed re-run
@@ -328,7 +333,10 @@ export default function App() {
       if (s) handleUpdate(s);
     }, 10000); // pure safety-net — broadcast + Realtime are the fast path. Longer
                // interval keeps DB load low at 500 concurrent participants.
-    return () => { supabase.removeChannel(ch); quizChRef.current = null; clearInterval(poll); };
+    return () => {
+      supabase.removeChannel(ch); quizChRef.current = null;
+      clearInterval(poll); clearTimeout(advFallbackRef.current);
+    };
   }, [quizSession?.id, participant?.code]);
 
   // ── Quiz logic ───────────────────────────────────────────────────
@@ -373,72 +381,80 @@ export default function App() {
     recordAnswer(i); // zapis serwerowy + poprawna odp. do reveal (odpowiedź ostateczna)
   };
 
+  // Awaryjne przejście pytania, gdyby admin przestał sterować (zamknięta karta, padnięty
+  // laptop). Odpala się z deterministycznym opóźnieniem wyprowadzonym z kodu uczestnika,
+  // więc odzywa się najwcześniejszy z sali, a pozostali anulują timer, gdy zobaczą jego
+  // zapis. Przy normalnym przebiegu admin przesuwa pytanie zanim którykolwiek wystartuje
+  // → do bazy nie idzie ani jedno zapytanie z 500 telefonów.
+  const armAdvanceFallback = (expectedIdx, nextIdx) => {
+    clearTimeout(advFallbackRef.current);
+    if (DEMO || !quizSession?.id) return;
+    const sessionId = quizSession.id;
+    advFallbackRef.current = setTimeout(async () => {
+      const s = await getSessionById(sessionId);
+      // Admin (albo szybszy uczestnik) już przesunął — nic nie robimy.
+      if (!s || s.status !== "running" || s.current_question_idx !== expectedIdx) return;
+      const questions = cityQuestionsRef.current;
+      const lead = advanceLeadSeconds(questions[expectedIdx], questions[nextIdx]);
+      const { startedAt } = await advanceSessionQuestion(sessionId, expectedIdx, nextIdx, lead);
+      if (startedAt) broadcastSession({ current_question_idx: nextIdx, q_started_at: startedAt });
+    }, fallbackJitterMs(participant?.code));
+  };
+
+  // Po zakończeniu okna reveal. UWAGA: uczestnik NIE zapisuje już przejścia do bazy —
+  // kierowcą jest admin (AdminPanel driver co 1 s). Uczestnik wyłącznie reaguje na nowe
+  // q_started_at w handleUpdate. Dzięki temu znika zarówno pik ~2000 zapytań na przejście,
+  // jak i błysk następnego pytania: qIdx zmienia się dopiero razem z przyszłym
+  // q_started_at, więc `counting` jest prawdziwe już w pierwszym renderze.
   const advanceQuestion = async () => {
-    const nextIdx = qIdx + 1;
-    if (nextIdx < qs.length) {
-      const nextGlobalIdx = activeQuestions.filter((q) => q.module < currentMod).length + nextIdx;
-      const curGlobalIdx  = nextGlobalIdx - 1;
-      modTimePerQRef.current = mod.timePerQ;
+    const nextIdx       = qIdx + 1;
+    const atModuleEnd   = nextIdx >= qs.length;
+    const nextMod       = currentMod + 1;
+    const curGlobalIdx  = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
+    const nextGlobalIdx = curGlobalIdx + 1;
 
-      if (quizSession && !DEMO) {
-        // Race-safe: only one client wins; winner gets server-generated timestamp back.
-        // Loser gets null and waits for Realtime event from the winner's DB write.
-        const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
-        if (startedAt) {
-          qStartedAtRef.current = startedAt;
-          // Wygrany advance → natychmiast rozgłoś nowy stan (Live View + reszta uczestników
-          // dostają w ~50ms zamiast czekać na postgres_changes), żeby reveal kończył się równo.
-          broadcastSession({ current_question_idx: nextGlobalIdx, q_started_at: startedAt });
+    // DEMO: jedna przeglądarka, brak admina-kierowcy → zachowaj samodzielne przejście.
+    if (DEMO || !quizSession) {
+      if (!atModuleEnd) {
+        modTimePerQRef.current = mod.timePerQ;
+        if (quizSession) {
+          const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
+          qStartedAtRef.current = startedAt || new Date().toISOString();
         } else {
-          qStartedAtRef.current = null;
-          // Safety-net: if Realtime hasn't corrected us in 1s, fetch directly from DB
-          const capturedIdx  = nextGlobalIdx;
-          const capturedCity = participant?.city;
-          setTimeout(async () => {
-            if (!qStartedAtRef.current && capturedCity) {
-              const s = await getSessionForCity(capturedCity);
-              if (s?.q_started_at && s.current_question_idx === capturedIdx) {
-                qStartedAtRef.current = s.q_started_at;
-              }
-            }
-          }, 1000);
+          qStartedAtRef.current = new Date().toISOString();
         }
-      } else if (DEMO && quizSession) {
-        // DEMO mode: advanceSessionQuestion handles localStorage optimistic lock.
-        const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
-        qStartedAtRef.current = startedAt || new Date().toISOString();
-      } else {
-        // No session (solo practice without session) — local timestamp is fine.
-        qStartedAtRef.current = new Date().toISOString();
+        const startedMs = new Date(qStartedAtRef.current).getTime();
+        setCountdownNum(startedMs > serverNow() ? Math.max(0, Math.ceil((startedMs - serverNow()) / 1000) - 1) : null);
+        setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
+        return;
       }
-
-      // Show the pre-question countdown immediately if the next start is in the future
-      // (winner gets the server timestamp; losers pick it up via the countdown effect
-      // once Realtime delivers it). Avoids a 1-frame flash of the question.
-      const startedMs = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
-      setCountdownNum(startedMs && startedMs > serverNow() ? Math.max(0, Math.ceil((startedMs - serverNow()) / 1000) - 1) : null);
-
-      setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
-    } else {
-      const nextMod = currentMod + 1;
       if (BREAK_AFTER.includes(currentMod)) {
-        // Automatyczna przerwa po module 2
-        const afterBreakModule = nextMod <= MODULES.length ? nextMod : null;
-        setNextModule(afterBreakModule);
-        setPicked(null); setAnswered(false);
-        setScreen("break");
-        // BUG 3 FIX: NIE zapisuj status:"paused" do bazy — to robiło by każdy uczestnik
-        // osobno, triggerując admin-pause Realtime subscription u innych uczestników.
-        // Status sesji kontroluje wyłącznie admin (przycisk Pauza w AdminPanel).
-      } else if (nextMod <= MODULES.length) {
-        setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
-        setTimer(getModule(nextMod, MODULES).timePerQ); setScreen("module_intro");
-      } else {
-        // Wszystkie moduły skończone → czekaj na ogłoszenie wyników przez admina
-        setScreen("waiting_results");
-        // BUG 3 FIX: NIE zapisuj status:"paused" do bazy — patrz komentarz wyżej.
+        setNextModule(nextMod <= MODULES.length ? nextMod : null);
+        setPicked(null); setAnswered(false); setScreen("break"); return;
       }
+      if (nextMod <= MODULES.length) {
+        setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
+        setTimer(getModule(nextMod, MODULES).timePerQ); setScreen("module_intro"); return;
+      }
+      setScreen("waiting_results"); return;
     }
+
+    // Przerwa po module 2 i 4 — ekran lokalny, wznawia admin (status paused → running).
+    // NIE zapisujemy status:"paused" do bazy: robiłby to każdy uczestnik osobno.
+    if (atModuleEnd && BREAK_AFTER.includes(currentMod)) {
+      setNextModule(nextMod <= MODULES.length ? nextMod : null);
+      setPicked(null); setAnswered(false); setScreen("break");
+      return;
+    }
+
+    // Koniec ostatniego pytania testu → czekamy na ogłoszenie wyników przez admina.
+    if (nextGlobalIdx >= activeQuestions.length) { setScreen("waiting_results"); return; }
+
+    // Zwykłe przejście — także przez granicę modułu. Nie ruszamy qIdx: zrobi to
+    // handleUpdate, gdy przyjdzie nowe q_started_at. Pierwsze pytanie modułu dostaje
+    // od admina lead 30 s, więc zapowiedź modułu (ModuleIntroFS) pokaże się sama,
+    // zsynchronizowana z Live View — lokalny ekran module_intro nie jest już potrzebny.
+    armAdvanceFallback(curGlobalIdx, nextGlobalIdx);
   };
 
   // Wznowienie po przerwie (admin zmienił status na "running")
@@ -621,33 +637,26 @@ export default function App() {
       modTimePerQRef.current = timePerQ;
       setTimer(timePerQ);
       setScreen("quiz");
-      if (quizSession) {
-        const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
-        // prevGlobalIdx is the last question of the previous module (or -1 for module 1 start).
-        // We use globalIdx as both expected and next so the optimistic lock key is globalIdx itself;
-        // we pass globalIdx - 1 as expected so any client at idx-1 can advance to globalIdx.
-        // For module 1, the admin wrote q_started_at via "Start quizu" — no race here.
-        // For subsequent modules, previous question was globalIdx-1.
-        // Pierwsze pytanie modułu → lead = 30 s (ekran zapowiedzi modułu).
-        const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx, MODULE_INTRO_SECONDS);
-        qStartedAtRef.current = startedAt || null;
-        // Wygrany start modułu → rozgłoś od razu (Live View pokaże zapowiedź modułu równo).
-        if (startedAt) broadcastSession({ current_question_idx: globalIdx, q_started_at: startedAt });
-        const ms = startedAt ? new Date(startedAt).getTime() : null;
-        if (ms && ms > serverNow()) setCountdownNum(Math.max(0, Math.ceil((ms - serverNow()) / 1000) - 1));
-        if (!startedAt) {
-          const capturedCity = participant?.city;
-          setTimeout(async () => {
-            if (!qStartedAtRef.current && capturedCity) {
-              const s = await getSessionForCity(capturedCity);
-              if (s?.q_started_at && s.current_question_idx === globalIdx) qStartedAtRef.current = s.q_started_at;
-            }
-          }, 1000);
-        }
-      } else {
-        // No session (practice / demo fallback)
+      if (!quizSession) {
+        // Brak sesji (praktyka solo) — lokalny znacznik w zupełności wystarcza.
         qStartedAtRef.current = new Date().toISOString();
+        return;
       }
+      const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
+      if (DEMO) {
+        const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx, MODULE_INTRO_SECONDS);
+        qStartedAtRef.current = startedAt || new Date().toISOString();
+        const ms = new Date(qStartedAtRef.current).getTime();
+        if (ms > serverNow()) setCountdownNum(Math.max(0, Math.ceil((ms - serverNow()) / 1000) - 1));
+        return;
+      }
+      // Produkcja: ten ekran jest już tylko awaryjny (sesja bez q_started_at, tzn. admin
+      // nie kliknął jeszcze „Start quizu"). Wcześniej KAŻDY uczestnik zapisywał tu
+      // przejście po lokalnym odliczaniu 3 s — czyli drugi stampede 500 wywołań, przy
+      // każdym starcie modułu. Teraz czekamy na admina, a fallback z jitterem ratuje
+      // sytuację tylko wtedy, gdy admin naprawdę milczy.
+      qStartedAtRef.current = null;
+      armAdvanceFallback(globalIdx - 1, globalIdx);
     }} />;
 
   // Pre-question overlay: start jest w przyszłości. Dla pierwszego pytania modułu

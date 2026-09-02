@@ -7,12 +7,14 @@ import {
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
+  advanceSessionQuestion, getSessionDetailedResults,
   logEvent,
 } from "../lib/supabase.js";
 import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
+import { shouldAdvance, advanceLeadSeconds } from "../lib/gameLogic.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -522,10 +524,14 @@ function SesjaTab({ city, adminId, onPodium }) {
   const participantsRef = useRef(0);   // #3 — liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
   const plTotalRef = useRef(-1);       // plateau: ostatni total
   const plAtRef    = useRef(0);        // plateau: kiedy total ostatnio się zmienił
+  const driverIdxRef = useRef(-1);     // pytanie, dla którego kierowca policzył już baseline
+  const expectedRef  = useRef(0);      // realna frekwencja: max liczby odpowiedzi z poprzednich pytań
+  const advancingRef = useRef(false);  // blokada re-entrancy — interwał 1 s vs. trwający RPC
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
   const [answersSettled, setAnswersSettled] = useState(false); // odpowiedzi przestały napływać
+  const [xlsxBusy, setXlsxBusy]             = useState(false); // trwa budowanie skoroszytu
   const totalSeenRef     = useRef(0);
   const totalChangedAtRef = useRef(0);
 
@@ -535,7 +541,13 @@ function SesjaTab({ city, adminId, onPodium }) {
   useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
   // #3 — synchronizacja refów do auto-przejścia (liczone w pollu, nie ze stanu).
   useEffect(() => { participantsRef.current = participants.length; }, [participants]);
-  useEffect(() => { autoAdvancedRef.current = -1; }, [session?.id]); // nowa sesja → znów można auto-pomijać
+  // Nowa sesja → znów można auto-pomijać, a oszacowanie frekwencji liczymy od zera
+  // (poprzednia sesja mogła mieć zupełnie inną liczbę uczestników).
+  useEffect(() => {
+    autoAdvancedRef.current = -1;
+    driverIdxRef.current = -1;
+    expectedRef.current = 0;
+  }, [session?.id]);
 
   // Reset the live counter the instant the question changes so realtime increments
   // start from 0 for the new question (don't stack onto the previous question's total).
@@ -637,27 +649,72 @@ function SesjaTab({ city, adminId, onPodium }) {
       const s = sessionRef.current;
       const idx = s?.current_question_idx ?? 0;
       const q = cityQuestions[idx];
-      if (s?.id && q?.id && s.status === "running") {
-        const stats = await getLiveAnswerSummary(s.id, q.id);
-        if (stats) {
-          setLiveStats(stats);
-          // #3 — auto-przejście liczone TU (świeże dane, bez wyścigu stanu React).
-          const total = stats.total ?? 0;
-          const pcount = participantsRef.current;
-          if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
-          // Odpala: gdy WSZYSCY uczestnicy odpowiedzieli (natychmiast) LUB jako bezpiecznik,
-          // gdy odpowiedzi ucichną na 8 s (uczestnicy-widmo / rozłączeni — żeby nie utknąć).
-          const countReached = pcount > 0 && total >= pcount;
-          const plateau = total > 0 && Date.now() - plAtRef.current >= 8000;
-          if (total > 0 && (countReached || plateau) && autoAdvancedRef.current !== idx) {
-            autoAdvancedRef.current = idx;
-            goToNextRef.current();
+      if (!s?.id || !q?.id || s.status !== "running") return;
+
+      // Zmiana pytania — zamknij poprzednie i zaktualizuj oszacowanie frekwencji.
+      // Ostatni total poprzedniego pytania to najlepsza miara, ilu uczestników REALNIE
+      // odpowiada. participants.length liczy wydane kody, więc kody-widma (ktoś dołączył
+      // i zamknął przeglądarkę) trwale zawyżały próg i „wszyscy odpowiedzieli" nie
+      // odpalało się nigdy — trzeba było czekać na plateau. [[auto-skip-widma-plateau]]
+      if (driverIdxRef.current !== idx) {
+        if (plTotalRef.current > expectedRef.current) expectedRef.current = plTotalRef.current;
+        driverIdxRef.current = idx;
+        plTotalRef.current = -1;
+        plAtRef.current = Date.now();
+      }
+
+      const stats = await getLiveAnswerSummary(s.id, q.id);
+      if (stats) {
+        setLiveStats(stats);
+        // #3 — wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
+        const total = stats.total ?? 0;
+        if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
+        // Próg: frekwencja z poprzednich pytań; dla pierwszego pytania nie ma jeszcze
+        // historii, więc spadamy na liczbę wydanych kodów (a plateau i tak ratuje).
+        const denom = expectedRef.current > 0 ? expectedRef.current : participantsRef.current;
+        const countReached = denom > 0 && total >= denom;
+        const plateau = total > 0 && Date.now() - plAtRef.current >= 8000;
+        if (total > 0 && (countReached || plateau) && autoAdvancedRef.current !== idx) {
+          autoAdvancedRef.current = idx;
+          goToNextRef.current(); // cofa q_started_at → remaining=0 → reveal u wszystkich
+        }
+      }
+
+      // ── KIEROWCA PRZEJŚCIA PYTANIA ──────────────────────────────────────────
+      // Od 09.2026 to admin zapisuje przejście, nie uczestnicy. Wcześniej robił to
+      // KAŻDY z 500 telefonów w tym samym ticku 250 ms — ~500 wywołań RPC
+      // serializowanych na blokadzie jednego wiersza plus ~1500 zapytań pochodnych,
+      // na każde z 58 pytań. Uczestnik ma teraz wyłącznie reagować na q_started_at.
+      //
+      // Warunek nie zależy od liczby odpowiedzi, więc pytanie, na które NIE odpowiedział
+      // NIKT (total === 0), też idzie dalej — wcześniej plateau wymagało total > 0
+      // i quiz potrafił stanąć do ręcznej interwencji.
+      const startedMs = s.q_started_at ? new Date(s.q_started_at).getTime() : null;
+      const tpq = MODULES.find((m) => m.id === q.module)?.timePerQ || 60;
+      const nextIdx = idx + 1;
+      if (advancingRef.current || nextIdx >= cityQuestions.length) return;
+      if (!shouldAdvance(tpq, startedMs, serverNow())) return;
+
+      advancingRef.current = true;
+      try {
+        const lead = advanceLeadSeconds(q, cityQuestions[nextIdx]);
+        const { startedAt } = await advanceSessionQuestion(s.id, idx, nextIdx, lead);
+        if (startedAt) {
+          const next = { ...sessionRef.current, current_question_idx: nextIdx, q_started_at: startedAt, status: "running" };
+          sessionRef.current = next;
+          setSession(next);
+          // Instant push — Live View i uczestnicy dostają zmianę w ~50 ms zamiast czekać
+          // na postgres_changes. Payload to tylko sygnał; klient i tak czyta stan z bazy.
+          if (!DEMO && supabase && quizBcChRef.current) {
+            quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: next });
           }
         }
+      } finally {
+        advancingRef.current = false;
       }
     }, 1000);
     return () => clearInterval(liveStatsRef.current);
-  }, [session?.status, cityQuestions]);
+  }, [session?.status, cityQuestions, MODULES]);
 
   // Realtime Presence — count participants actually on the lobby screen
   useEffect(() => {
@@ -758,6 +815,91 @@ function SesjaTab({ city, adminId, onPodium }) {
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     logEvent({ type: "results_exported", sessionId: session?.id, city, actor: adminId, detail: { count: results.length } });
+  };
+
+  // Indywidualne podsumowanie każdego uczestnika — jeden skoroszyt, osobny arkusz na osobę
+  // plus arkusz zbiorczy i płaska tabela wszystkich odpowiedzi (do tabel przestawnych).
+  // Import dynamiczny: generator .xlsx nie jest potrzebny do prowadzenia quizu, więc nie
+  // ma powodu, żeby wchodził do bundla ładowanego przy starcie panelu.
+  const exportResultsXlsx = async () => {
+    if (!session?.id) return;
+    setXlsxBusy(true);
+    try {
+      const { rows, error } = await getSessionDetailedResults(session.id);
+      if (error) { alert("Nie udało się pobrać szczegółowych wyników: " + error); return; }
+      if (!rows.length) { alert("Brak danych do eksportu — nikt jeszcze nie odpowiadał w tej sesji."); return; }
+
+      const { buildXlsx } = await import("../lib/xlsx.js");
+      const secs = (ms) => (ms == null ? "" : Math.round(ms / 100) / 10);
+
+      // Arkusz 1 — ranking (ta sama kolejność co na podium).
+      const ranking = [
+        ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Skuteczność %", "Śr. czas (s)"],
+        ...results.map((r, i) => [
+          i + 1, r.code, r.name, r.city || city, r.correct, r.total,
+          r.total ? Math.round((r.correct / r.total) * 1000) / 10 : 0,
+          secs(r.avgResponseTime),
+        ]),
+      ];
+
+      // Arkusz 2 — wszystko płasko, jeden wiersz = jedna odpowiedź.
+      const flat = [
+        ["Kod", "Uczestnik", "Miasto", "Nr pyt.", "Moduł", "Pytanie", "Odp.", "Treść odpowiedzi", "Poprawna", "Treść poprawnej", "Trafione", "Czas (s)"],
+        ...rows.map((r) => [
+          r.participantCode, r.participantName, r.city, r.qNo, r.moduleName, r.question,
+          r.chosenLabel, r.chosenText, r.correctLabel, r.correctText,
+          r.chosenLabel ? (r.isCorrect ? "TAK" : "NIE") : "brak odp.", secs(r.responseTimeMs),
+        ]),
+      ];
+
+      // Arkusze 3..N — karta każdego uczestnika.
+      const byCode = new Map();
+      for (const r of rows) {
+        if (!byCode.has(r.participantCode)) byCode.set(r.participantCode, []);
+        byCode.get(r.participantCode).push(r);
+      }
+      const perPerson = [...byCode.entries()].map(([code, list]) => {
+        const p = list[0];
+        const answered = list.filter((r) => r.chosenLabel);
+        const correct = list.filter((r) => r.isCorrect).length;
+        const times = answered.map((r) => r.responseTimeMs).filter((t) => t != null);
+        const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
+        return {
+          name: `${p.participantName} ${code}`,
+          rows: [
+            ["Uczestnik", p.participantName],
+            ["Kod", code],
+            ["Miasto", p.city],
+            ["Poprawne odpowiedzi", correct, `z ${list.length}`],
+            ["Bez odpowiedzi", list.length - answered.length],
+            ["Średni czas odpowiedzi (s)", secs(avg)],
+            [],
+            ["Nr", "Moduł", "Pytanie", "Twoja odp.", "Treść", "Poprawna", "Treść poprawnej", "Wynik", "Czas (s)"],
+            ...list.sort((a, b) => a.qNo - b.qNo).map((r) => [
+              r.qNo, r.moduleName, r.question,
+              r.chosenLabel, r.chosenText, r.correctLabel, r.correctText,
+              r.chosenLabel ? (r.isCorrect ? "✓ dobrze" : "✗ źle") : "— brak odpowiedzi",
+              secs(r.responseTimeMs),
+            ]),
+          ],
+        };
+      });
+
+      const blob = buildXlsx([
+        { name: "Ranking", rows: ranking },
+        { name: "Wszystkie odpowiedzi", rows: flat },
+        ...perPerson,
+      ]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `wyniki_${city}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      logEvent({ type: "results_exported_xlsx", sessionId: session.id, city, actor: adminId, detail: { participants: perPerson.length, rows: rows.length } });
+    } finally {
+      setXlsxBusy(false);
+    }
   };
 
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
@@ -1067,6 +1209,11 @@ function SesjaTab({ city, adminId, onPodium }) {
                   <p style={{ fontSize: 11, color: "rgba(155,137,204,.5)", marginTop: 2 }}>Przy równej liczbie pkt decyduje krótszy średni czas.</p>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
+                  <button style={C.btn("ghost", { fontSize: 13, padding: "8px 16px", opacity: xlsxBusy ? .5 : 1 })}
+                    disabled={xlsxBusy} onClick={exportResultsXlsx}
+                    title="Skoroszyt z arkuszem dla każdego uczestnika: pytanie po pytaniu, jego odpowiedź, poprawna, czas">
+                    {xlsxBusy ? "⏳ Buduję…" : "📊 Eksport XLSX (per uczestnik)"}
+                  </button>
                   <button style={C.btn("ghost", { fontSize: 13, padding: "8px 16px" })} onClick={exportResultsCsv}>
                     📥 Eksport CSV
                   </button>
@@ -1497,7 +1644,7 @@ function HistoriaTab({ city }) {
   );
 }
 
-function ModulyTab() {
+function ModulyTab({ isSuperadmin }) {
   const ctxModules = useModules();
   const [list, setList]       = useState(ctxModules);
   const [form, setForm]       = useState(null);
@@ -1514,18 +1661,38 @@ function ModulyTab() {
   const save = async () => {
     if (!form.name.trim() || !form.id) return alert("Podaj ID (liczbę) i nazwę modułu.");
     setSaving(true);
-    if (editId) {
-      await updateModule(editId, { name: form.name, icon: form.icon, color: form.color, time_per_q: form.timePerQ, description: form.desc });
-    } else {
-      await addModule(form);
-    }
-    setSaving(false); setForm(null); setEditId(null); reload();
+    // Błąd MUSI być pokazany. Wcześniej wynik był ignorowany, więc nieudany zapis
+    // (pusta tabela modules, brak uprawnień) wyglądał identycznie jak udany —
+    // formularz się zamykał, lista wracała do starych wartości.
+    const { error } = editId
+      ? await updateModule(editId, { name: form.name, icon: form.icon, color: form.color, time_per_q: form.timePerQ, description: form.desc })
+      : await addModule(form);
+    setSaving(false);
+    if (error) { alert("Nie udało się zapisać modułu: " + error); return; }
+    setForm(null); setEditId(null); reload();
   };
 
   const remove = async (id) => {
     if (!confirm("Usunąć moduł? Pytania powiązane z tym ID modułu stracą przypisanie.")) return;
-    await deleteModule(id); reload();
+    const { error } = await deleteModule(id);
+    if (error) { alert("Nie udało się usunąć modułu: " + error); return; }
+    reload();
   };
+
+  // Obrona w głąb — zakładka i tak nie jest pokazywana nie-superadminom (TABS filtruje),
+  // ale gdyby ktoś kiedyś dodał ją z powrotem, tu jest twardy stop. Czasy modułów są
+  // wspólne dla wszystkich pięciu miast, więc zmiana przez admina jednego miasta
+  // przestawiałaby przebieg testu pozostałym czterem.
+  if (!isSuperadmin) return (
+    <div style={{ ...C.card({ padding: "28px 24px" }), textAlign: "center" }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+      <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Moduły edytuje wyłącznie superadmin</p>
+      <p style={{ fontSize: 13, color: "#9B89CC", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>
+        Moduły (nazwy, kolory, czas na pytanie) są wspólne dla wszystkich pięciu miast —
+        zmiana wpłynęłaby na przebieg testu także w pozostałych. Napisz do superadmina.
+      </p>
+    </div>
+  );
 
   return (
     <div>
@@ -1612,12 +1779,13 @@ function ModulyTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+// superadminOnly — moduły są wspólne dla wszystkich miast, więc city_admin ich nie widzi.
 const TABS = [
   { id: "pytania",    label: "📝 Pytania"    },
   { id: "kody",       label: "🎟️ Kody"      },
   { id: "sesja",      label: "🎮 Sesja"     },
   { id: "historia",   label: "🗂️ Historia"  },
-  { id: "moduly",     label: "🧩 Moduły"    },
+  { id: "moduly",     label: "🧩 Moduły",    superadminOnly: true },
   { id: "ustawienia", label: "⚙️ Ustawienia" },
 ];
 
@@ -1649,7 +1817,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
       )}
 
       <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.15)", overflowX: "auto" }}>
-        {TABS.map((t) => (
+        {TABS.filter((t) => !t.superadminOnly || isSuperadmin).map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`fue-tab${tab === t.id ? " active" : ""}`}
             style={{ whiteSpace: "nowrap", fontSize: 13, padding: "14px 20px" }}>
@@ -1670,7 +1838,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
           <SesjaTab city={city} adminId={admin?.id} onPodium={onPodium} />
         </div>
         {tab === "historia"   && <HistoriaTab city={city} />}
-        {tab === "moduly"     && <ModulyTab />}
+        {tab === "moduly"     && <ModulyTab isSuperadmin={isSuperadmin} />}
         {tab === "ustawienia" && <UstawieniaTab city={city} />}
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { cityInfo, projectLiveState, remainingSeconds, REVEAL_SECONDS } from "./gameLogic.js";
+import { cityInfo, projectLiveState, remainingSeconds, REVEAL_SECONDS,
+  shouldAdvance, advanceLeadSeconds, fallbackJitterMs,
+  MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD } from "./gameLogic.js";
 
 describe("cityInfo", () => {
   it("returns correct abbr for known city", () => {
@@ -142,5 +144,65 @@ describe("remainingSeconds — timing precision", () => {
         expect(proj.timer).toBe(remainingSeconds(30, NOW - sec * 1000, NOW));
       }
     }
+  });
+});
+
+// ─── Sterowanie przejściem pytania (admin jako kierowca, 09.2026) ────────────
+
+describe("shouldAdvance", () => {
+  const NOW = 1_700_000_000_000;
+  const startedAgo = (sec) => NOW - sec * 1000;
+
+  it("nie przechodzi w trakcie trwania pytania", () => {
+    expect(shouldAdvance(60, startedAgo(30), NOW)).toBe(false);
+  });
+  it("nie przechodzi w oknie odsłonięcia odpowiedzi", () => {
+    expect(shouldAdvance(60, startedAgo(60 + REVEAL_SECONDS - 1), NOW)).toBe(false);
+  });
+  it("przechodzi dokładnie po czasie pytania + reveal", () => {
+    expect(shouldAdvance(60, startedAgo(60 + REVEAL_SECONDS), NOW)).toBe(true);
+  });
+  it("nie przechodzi, gdy pytanie jeszcze nie wystartowało (lead w przyszłość)", () => {
+    expect(shouldAdvance(60, NOW + 4000, NOW)).toBe(false);
+  });
+  it("nie przechodzi bez q_started_at", () => {
+    expect(shouldAdvance(60, null, NOW)).toBe(false);
+  });
+  it("po cofnięciu q_started_at (auto-skip) czeka jeszcze pełne okno reveal", () => {
+    // goToNextQuestion cofa znacznik o timePerQ → elapsed == timePerQ, reveal dopiero leci
+    expect(shouldAdvance(60, startedAgo(60), NOW)).toBe(false);
+    expect(shouldAdvance(60, startedAgo(60), NOW + REVEAL_SECONDS * 1000)).toBe(true);
+  });
+});
+
+describe("advanceLeadSeconds", () => {
+  it("pierwsze pytanie nowego modułu dostaje pełną zapowiedź modułu", () => {
+    expect(advanceLeadSeconds({ module: 1 }, { module: 2 })).toBe(MODULE_INTRO_SECONDS);
+  });
+  it("kolejne pytanie w tym samym module dostaje odliczanie 3-2-1", () => {
+    expect(advanceLeadSeconds({ module: 2 }, { module: 2 })).toBe(PRE_QUESTION_LEAD);
+  });
+  it("brak następnego pytania → domyślny lead", () => {
+    expect(advanceLeadSeconds({ module: 2 }, undefined)).toBe(PRE_QUESTION_LEAD);
+  });
+});
+
+describe("fallbackJitterMs", () => {
+  it("jest deterministyczny dla tego samego kodu", () => {
+    expect(fallbackJitterMs("KRK-482910")).toBe(fallbackJitterMs("KRK-482910"));
+  });
+  it("mieści się w zadanym oknie", () => {
+    for (const code of ["KRK-000001", "WAR-999999", "POZ-123456", "", null]) {
+      const ms = fallbackJitterMs(code);
+      expect(ms).toBeGreaterThanOrEqual(6000);
+      expect(ms).toBeLessThan(14000);
+    }
+  });
+  it("rozrzuca uczestników — 100 kodów daje wiele różnych opóźnień", () => {
+    const codes = Array.from({ length: 100 }, (_, i) => `KRK-${String(i).padStart(6, "0")}`);
+    const distinct = new Set(codes.map((c) => fallbackJitterMs(c)));
+    // Sens fallbacku: NIE odzywają się wszyscy naraz. Gdyby jitter był stały,
+    // wróciłby dokładnie ten stampede, który ta zmiana likwiduje.
+    expect(distinct.size).toBeGreaterThan(50);
   });
 });

@@ -15,6 +15,41 @@ export const REVEAL_SECONDS = 6;
 // więc jest zsynchronizowana między uczestnikiem a Live View.
 export const MODULE_INTRO_SECONDS = 30;
 
+// Lead zwykłego pytania — okno na odliczanie 3-2-1 przed pokazaniem treści.
+export const PRE_QUESTION_LEAD = 4;
+
+// ── Sterowanie przejściem pytania ────────────────────────────────────────────
+// Od 09.2026 kierowcą jest ADMIN, nie uczestnicy. Wcześniej advance wołał KAŻDY
+// uczestnik w tym samym ticku 250 ms (zegar jest zsynchronizowany), więc jedno
+// przejście pytania to było ~500 wywołań RPC serializowanych na blokadzie jednego
+// wiersza quiz_sessions plus ~1500 zapytań pochodnych. Poniższe funkcje są czyste,
+// żeby ta decyzja dała się przetestować bez bazy.
+
+// Czy minął czas pytania RAZEM z oknem odsłonięcia odpowiedzi — czyli czy wolno
+// już przejść dalej. Ten sam warunek liczą admin (kierowca) i fallback uczestnika.
+export function shouldAdvance(timePerQ, startedAtMs, nowMs = Date.now()) {
+  if (!startedAtMs) return false;
+  return (nowMs - startedAtMs) / 1000 >= timePerQ + REVEAL_SECONDS;
+}
+
+// Ile sekund wyprzedzenia dostaje kolejne pytanie. Pierwsze pytanie nowego modułu
+// dostaje pełną zapowiedź modułu (ModuleIntroFS), zwykłe — odliczanie 3-2-1.
+export function advanceLeadSeconds(curQuestion, nextQuestion) {
+  if (!nextQuestion) return PRE_QUESTION_LEAD;
+  return nextQuestion.module !== curQuestion?.module ? MODULE_INTRO_SECONDS : PRE_QUESTION_LEAD;
+}
+
+// Deterministyczne opóźnienie awaryjnego przejścia, wyprowadzone z kodu uczestnika.
+// Sens: gdyby admin padł, quiz nie może stanąć — ale 500 klientów nie może też ruszyć
+// naraz. Każdy czeka inną liczbę ms, więc odzywa się najwcześniejszy, a pozostali
+// anulują swój timer, gdy zobaczą jego zapis. Stampede 500 → 1-2 wywołania.
+export function fallbackJitterMs(code, minMs = 6000, spanMs = 8000) {
+  let h = 0;
+  const s = code || "";
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return minMs + (h % spanMs);
+}
+
 export const cityInfo = (n) => CITIES.find((c) => c.name === n) || { abbr: "?", color: "#888" };
 // Accepts optional modules array (from context); falls back to hardcoded MODULES
 export const getModule = (id, modules = MODULES) => modules.find((m) => m.id === id);

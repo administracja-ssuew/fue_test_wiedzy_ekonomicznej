@@ -79,7 +79,13 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
           event: "UPDATE", schema: "public", table: "quiz_sessions", filter: `city=eq.${city}`,
         }, ({ new: s }) => apply(s))
         .subscribe();
-      const poll = setInterval(() => getSessionForCity(city).then(apply), 5000);
+      // detailed = embed w panelu admina. Ten jeden klient MUSI nadążać, bo prowadzący
+      // patrzy na niego i na salę jednocześnie. Broadcast go nie ratuje: Supabase ma
+      // domyślnie broadcast.self=false, więc podgląd NIE dostaje przejścia rozgłoszonego
+      // przez ten sam panel — zmierzone na produkcji. Zostaje postgres_changes (~670 ms)
+      // i ten poll, więc dla admina schodzimy na 1 s. Publiczne projektory (anon) mają
+      // działający broadcast od admina i zostają na 5 s.
+      const poll = setInterval(() => getSessionForCity(city).then(apply), detailed ? 1000 : 5000);
       return () => { supabase.removeChannel(ch); clearInterval(poll); };
     }
     const poll = setInterval(() => getSessionForCity(city).then(apply), 3000);

@@ -60,5 +60,18 @@ export function startServerClock(refreshMs = 300000) {
   syncServerClock();
   if (timer) clearInterval(timer);
   timer = setInterval(() => syncServerClock(), refreshMs);
-  return () => { if (timer) clearInterval(timer); timer = null; };
+
+  // Telefon z zablokowanym ekranem to najbardziej realne źródło rozjazdu na sali:
+  // przeglądarka usypia timery, więc odświeżenie co 5 min może nie wykonać się wcale,
+  // a uczestnik wraca do quizu z offsetem sprzed kilkunastu minut. Przy powrocie karty
+  // na pierwszy plan mierzymy od nowa — to jedna seria zapytań na odblokowanie
+  // telefonu, więc kosztu przy 500 osobach praktycznie nie ma.
+  const onVisible = () => { if (!document.hidden) syncServerClock(); };
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
+
+  return () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
+  };
 }

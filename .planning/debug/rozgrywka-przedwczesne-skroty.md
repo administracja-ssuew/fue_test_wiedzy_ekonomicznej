@@ -114,3 +114,55 @@ bramkowany progiem `AUTO_SKIP_MIN_TPQ = 45`. Przy 20 s jest wyłączony, przy
 
 Testy 58/58. Niezweryfikowane: przebieg na realnych telefonach — brak środowiska
 testowego (staging usunięty, brak miejsca na planie Free, brak Dockera na maszynie).
+
+---
+
+## ROOT CAUSE 4 — socket Realtime uczestnika umierał po wyjściu z poczekalni
+
+Znalezione 23.09 sondą Playwright z podsłuchem ramek WebSocket, na **buildzie
+produkcyjnym** (nie dev — StrictMode wykluczony osobnym przebiegiem).
+
+```
+-5.9s  SOCKET-OPEN    wss://...supabase.co/realtime/v1/websocket
+ 0.3s  BROADCAST      quiz_event          <- start quizu dociera
+ 0.7s  POSTGRES_CHANGES                   <- zmiana sesji dociera
+ 0.9s  SOCKET-CLOSE                       <- i koniec, 17 ramek łącznie
+```
+
+Po starcie quizu socket uczestnika zamykał się i **nigdy nie wracał**. Od tej chwili
+telefon żył wyłącznie z polla awaryjnego co 10 s. Stąd mierzone zachowanie:
+
+```
+30.2s  host[q=1]  tel[q=1 t=0]    koniec czasu pytania 1
+40.7s  host[q=2]  tel[q=1 t=0]    host już na pytaniu 2
+44.2s  host[q=2]  tel[q=2 t=17]   telefon wskakuje 3 s PO starcie
+```
+
+Telefon stał 14 s na zerze, po czym wpadał w kolejne pytanie w locie, tracąc 3 z 20
+sekund. To jest zgłaszane „zatrzymuje się i przeskakuje" — i jednocześnie źródło
+„rozjazdu czasów", bo host był poprawny, a spóźniał się telefon.
+
+**Mechanizm:** wyjście z poczekalni odmontowuje `Lobby`, które woła `removeChannel`
+dla swoich kanałów. supabase-js rozłącza socket, gdy lista kanałów się opróżni, a raz
+rozłączony socket sam nie wraca — kanał quizu zostawał martwy mimo poprawnej subskrypcji.
+
+**Naprawa:** dozorca w `App.jsx` sprawdza co 3 s stan kanału i przy stanie innym niż
+`joined`/`joining` odtwarza go (`supabase.realtime.connect()` + ponowny `subscribe`)
+oraz dociąga stan z bazy. Generyczna, bo na sali to samo zrobi zanik wifi lub
+przełączenie na LTE.
+
+### Pomiar kontrolny na tym samym buildzie
+
+| Metryka | Przed | Po |
+|---|---|---|
+| Czas trwania pytań (20 s + 6 s reveal) | 33,6 / 30,0 / 20,6 s | **26,3 / 26,9 / 26,1 s** |
+| Rozjazd host vs telefon | 7,2% próbek, do 3,4 s | **0,0%, 0 ms** |
+| Rozjazd timera telefon1 vs telefon2 | — | **max 1 s (3 próbki)** |
+| Wejście w pytanie 2 | t=17 (strata 3 s) | **t=20** |
+| Najdłuższy czas bez zmiany pytania | 33,6 s | 26,9 s (limit 35 s) |
+
+Hipotezy ODRZUCONE pomiarem po drodze (żeby nikt do nich nie wracał):
+- filtr `city=eq.Kraków` z polskimi znakami — działa, 532 ms
+- nazwa kanału z polskimi znakami — działa, 725 ms
+- kanał z dwoma bindingami (broadcast + postgres_changes) — działa, 579/277 ms
+- dławienie timerów w kartach w tle — objaw identyczny z wyłączonym dławieniem

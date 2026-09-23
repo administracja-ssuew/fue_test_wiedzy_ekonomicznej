@@ -315,27 +315,63 @@ export default function App() {
       return () => clearInterval(poll);
     }
 
-    const ch = supabase.channel(`quiz-${quizSession.id}`)
-      .on("broadcast", { event: "quiz_event" }, () => {
-        // Broadcast to tylko SYGNAŁ „stan sesji się zmienił", nie źródło prawdy — kanał
-        // jest publiczny, więc anon mógłby sfałszować payload (np. status:"ended" i wyrzucić
-        // wszystkich). Autorytatywny stan czytamy z bazy (RLS); powiadomienie zostaje szybkie.
-        getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
-      })
-      .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "quiz_sessions",
-        filter: `id=eq.${quizSession.id}`,
-      }, ({ new: s }) => handleUpdate(s))
-      .subscribe();
-    quizChRef.current = ch;
+    // ZMIERZONE 23.09.2026 (sonda Playwright, build produkcyjny): socket Realtime
+    // uczestnika ZAMYKAŁ SIĘ ~0,9 s po starcie quizu i nigdy nie wracał. Uczestnik
+    // żył wtedy wyłącznie z polla co 10 s — zastygał na skończonym pytaniu, a potem
+    // wskakiwał w kolejne w locie, tracąc 3 z 20 sekund. Dokładnie objaw „zatrzymuje
+    // się i przeskakuje".
+    //
+    // Mechanizm: wyjście z poczekalni odmontowuje Lobby, które woła removeChannel dla
+    // swoich kanałów; supabase-js rozłącza socket, gdy lista kanałów się opróżni, a raz
+    // rozłączony socket sam nie wraca. Kanał quizu zostawał martwy mimo poprawnej
+    // subskrypcji. Na sali to samo zrobi byle zanik wifi albo przełączenie na LTE,
+    // więc naprawa jest generyczna: kanał ma dozorcę, który go odtwarza.
+    let disposed = false;
+    let ch = null;
+
+    const connect = () => {
+      if (disposed) return;
+      // Socket mógł zostać rozłączony przez removeChannel innego ekranu — bez tego
+      // subscribe() dopiąłby się do martwego połączenia.
+      try { supabase.realtime.connect(); } catch (_) { /* nieistotne */ }
+      ch = supabase.channel(`quiz-${quizSession.id}`)
+        .on("broadcast", { event: "quiz_event" }, () => {
+          // Broadcast to tylko SYGNAŁ „stan sesji się zmienił", nie źródło prawdy — kanał
+          // jest publiczny, więc anon mógłby sfałszować payload (np. status:"ended" i wyrzucić
+          // wszystkich). Autorytatywny stan czytamy z bazy (RLS); powiadomienie zostaje szybkie.
+          getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
+        })
+        .on("postgres_changes", {
+          event: "UPDATE", schema: "public", table: "quiz_sessions",
+          filter: `id=eq.${quizSession.id}`,
+        }, ({ new: s }) => handleUpdate(s))
+        .subscribe();
+      quizChRef.current = ch;
+    };
+    connect();
+
+    // Dozorca: jeśli kanał nie jest (i nie staje się) połączony, odtwórz go i dociągnij
+    // stan z bazy, żeby nadrobić to, co przespaliśmy. 3 s to kompromis — szybciej niż
+    // poll awaryjny, a przy 500 uczestnikach to i tak tylko sprawdzenie pola w pamięci.
+    const watchdog = setInterval(() => {
+      if (disposed) return;
+      const st = ch?.state;
+      if (st === "joined" || st === "joining") return;
+      try { supabase.removeChannel(ch); } catch (_) { /* nieistotne */ }
+      connect();
+      getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
+    }, 3000);
+
     const poll = setInterval(async () => {
       const s = await getSessionById(quizSession.id);
       if (s) handleUpdate(s);
     }, 10000); // pure safety-net — broadcast + Realtime are the fast path. Longer
                // interval keeps DB load low at 500 concurrent participants.
     return () => {
-      supabase.removeChannel(ch); quizChRef.current = null;
-      clearInterval(poll); clearTimeout(advFallbackRef.current);
+      disposed = true;
+      try { supabase.removeChannel(ch); } catch (_) { /* nieistotne */ }
+      quizChRef.current = null;
+      clearInterval(watchdog); clearInterval(poll); clearTimeout(advFallbackRef.current);
     };
   }, [quizSession?.id, participant?.code]);
 

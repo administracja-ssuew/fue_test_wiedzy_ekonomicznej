@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { cityInfo, projectLiveState, remainingSeconds, REVEAL_SECONDS,
   shouldAdvance, advanceLeadSeconds, fallbackJitterMs,
   MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD,
-  shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS } from "./gameLogic.js";
+  shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS, AUTO_SKIP_MIN_TPQ } from "./gameLogic.js";
 
 describe("cityInfo", () => {
   it("returns correct abbr for known city", () => {
@@ -231,17 +231,18 @@ describe("shouldEndEarly", () => {
     expect(shouldEndEarly({ ...base, total: 0, elapsedS: 59 })).toBe(false);
   });
 
-  it("plateau wymaga 12 s ciszy, nie 8", () => {
+  it("plateau wymaga dluzszej ciszy niz dawne 8 s", () => {
     const q = { ...base, total: 60, expected: 500, issued: 500, elapsedS: 50 };
     expect(shouldEndEarly({ ...q, sinceLastAnswerMs: 8000 })).toBe(false);
     expect(shouldEndEarly({ ...q, sinceLastAnswerMs: ANSWER_PLATEAU_MS })).toBe(true);
   });
 
   it("podłoga skaluje się z czasem modułu, ale nie schodzi poniżej 20 s", () => {
-    expect(earlySkipFloorSeconds(90)).toBe(54);  // obliczenia
-    expect(earlySkipFloorSeconds(60)).toBe(36);  // logika
-    expect(earlySkipFloorSeconds(30)).toBe(20);  // terminy — podłoga minimalna
-    expect(earlySkipFloorSeconds(10)).toBe(20);
+    expect(earlySkipFloorSeconds(90)).toBe(54);
+    expect(earlySkipFloorSeconds(60)).toBe(36);
+    expect(earlySkipFloorSeconds(30)).toBe(18);
+    expect(earlySkipFloorSeconds(20)).toBe(12);
+    expect(earlySkipFloorSeconds(5)).toBe(8);
   });
 
   it("REGRESJA: zatruty próg nie ucina quizu 500 osób przy 60 odpowiedziach", () => {
@@ -261,5 +262,25 @@ describe("shouldEndEarly", () => {
     const floor = earlySkipFloorSeconds(60);
     expect(floor).toBeGreaterThanOrEqual(36);
     expect(floor + REVEAL_SECONDS).toBeGreaterThan(10);
+  });
+});
+
+describe("AUTO_SKIP_MIN_TPQ — auto-skrót wyłączony przy krótkich pytaniach", () => {
+  // Docelowy format TWE to pytania do 20 s. Pomiar: skrót oszczędza tam 2-3 s,
+  // więc nie warto go ryzykować. Prowadzący ma ręczny przycisk niezależnie.
+  const all = { total: 500, expected: 500, issued: 500, elapsedS: 19, timePerQ: 20, sinceLastAnswerMs: 0 };
+
+  it("pytanie 20 s NIE jest skracane automatycznie, nawet gdy wszyscy odpowiedzieli", () => {
+    expect(shouldEndEarly(all)).toBe(false);
+  });
+
+  it("pytanie 90 s nadal korzysta ze skrótu po podłodze", () => {
+    expect(shouldEndEarly({ ...all, timePerQ: 90, elapsedS: earlySkipFloorSeconds(90) })).toBe(true);
+  });
+
+  it("próg jest dokładnie na granicy 45 s", () => {
+    const at = { ...all, timePerQ: AUTO_SKIP_MIN_TPQ, elapsedS: earlySkipFloorSeconds(AUTO_SKIP_MIN_TPQ) };
+    expect(shouldEndEarly(at)).toBe(true);
+    expect(shouldEndEarly({ ...at, timePerQ: AUTO_SKIP_MIN_TPQ - 1 })).toBe(false);
   });
 });

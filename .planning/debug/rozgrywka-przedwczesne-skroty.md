@@ -88,3 +88,29 @@ jest dziś nieuruchamialny, więc nie ma gdzie przećwiczyć finału poza produk
 3. Poll projekcji w embedzie admina 5 s → 1 s
 4. Re-sync zegara po powrocie karty na pierwszy plan (telefon po odblokowaniu)
 5. Logika decyzyjna wyniesiona do czystych funkcji + testy regresyjne z symulacji
+
+---
+
+## Rekalibracja pod docelowy format (23.09, po informacji od użytkownika)
+
+Pytania TWE mają trwać **maksymalnie 20 s**, nie 60–90 s. To unieważniło pierwszą
+kalibrację: podłoga „min 20 s" równała się całemu czasowi pytania, więc skrót
+nigdy by się nie odpalił.
+
+Podłoga jest teraz proporcjonalna (60% czasu modułu, dolne 8 s), a plateau skaluje
+się z czasem pytania. Pomiar przy 20 s:
+
+| Scenariusz | Trwanie pytania | Oszczędność ze skrótu |
+|---|---|---|
+| 3 telefony | 18 s z 20 s | 2 s |
+| 500 osób | 23 s (z reveal) | 3 s |
+
+**Wniosek: przy 20-sekundowych pytaniach auto-skrót oszczędza 2–3 s.** Za taką
+oszczędność nie warto płacić ryzykiem ucięcia komuś odpowiedzi, więc jest
+bramkowany progiem `AUTO_SKIP_MIN_TPQ = 45`. Przy 20 s jest wyłączony, przy
+90-sekundowych obliczeniach nadal działa. Prowadzący ma ręczny przycisk zawsze.
+
+## Status: ROZWIĄZANE (czeka na weryfikację na urządzeniach)
+
+Testy 58/58. Niezweryfikowane: przebieg na realnych telefonach — brak środowiska
+testowego (staging usunięty, brak miejsca na planie Free, brak Dockera na maszynie).

@@ -20,6 +20,7 @@
     "verify-realtime": "vite-node scripts/verify-realtime.js",
     "verify-clock": "vite-node scripts/verify-clock.js",
     "verify-order": "vite-node scripts/verify-order.js",
+    "sonda": "vite-node scripts/probe-gameplay.js",
     "e2e": "playwright test",
     "report": "node scripts/report.js"
   },

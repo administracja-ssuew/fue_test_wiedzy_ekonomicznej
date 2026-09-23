@@ -17,6 +17,22 @@ if (DEMO && import.meta.env.PROD) {
 
 export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ─── REALTIME KEEPALIVE ───────────────────────────────────────────────────────
+// PRZYCZYNA (zmierzona 23.09.2026 podsłuchem ramek WebSocket na buildzie produkcyjnym):
+// supabase-js rozłącza socket, gdy lista kanałów się opróżni. Wyjście z poczekalni
+// odmontowuje Lobby i usuwa jego kanały; w tej samej chwili socket padał i NIE WRACAŁ.
+// Uczestnik żył wtedy wyłącznie z polla awaryjnego co 10 s: zastygał na skończonym
+// pytaniu i wskakiwał w kolejne w locie, tracąc kilka sekund na odpowiedź.
+//
+// Ten kanał jest subskrybowany raz i nigdy nie usuwany, więc lista kanałów nigdy nie
+// schodzi do zera i socket nie ma powodu się rozłączyć. Nie przesyła żadnych danych
+// i nie tworzy dodatkowego połączenia — Supabase liczy sockety, nie kanały.
+let keepAliveCh = null;
+export function keepRealtimeAlive() {
+  if (DEMO || !supabase || keepAliveCh) return;
+  try { keepAliveCh = supabase.channel("fue-keepalive").subscribe(); } catch (_) { /* nieistotne */ }
+}
+
 const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
 
 // Kod uczestnika: 6 cyfr (np. KRK-482910). Numeryczny — łatwy do wpisania i

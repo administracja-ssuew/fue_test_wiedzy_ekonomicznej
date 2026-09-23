@@ -166,3 +166,25 @@ Hipotezy ODRZUCONE pomiarem po drodze (żeby nikt do nich nie wracał):
 - nazwa kanału z polskimi znakami — działa, 725 ms
 - kanał z dwoma bindingami (broadcast + postgres_changes) — działa, 579/277 ms
 - dławienie timerów w kartach w tle — objaw identyczny z wyłączonym dławieniem
+
+---
+
+## Domknięcie: przyczyna usunięta, sonda w repo (23.09)
+
+Obejście (dozorca odtwarzający kanał) zastąpione **usunięciem przyczyny**: jeden
+kanał `fue-keepalive` subskrybowany raz na całe życie aplikacji sprawia, że lista
+kanałów nigdy nie schodzi do zera, więc supabase-js nie ma powodu rozłączać socketu.
+Dozorca zostaje jako druga linia obrony na realne zaniki sieci.
+
+Pomiar po naprawie (`npm run sonda`, build produkcyjny, produkcja):
+
+```
+⏱️  pyt.1: 25.9s ✅   pyt.2: 26.8s ✅        (oczekiwane 26s = 20s + 6s)
+🖥️  Host vs telefon: 0.0% rozbieżnych, 0 ms ✅
+📱 Telefon vs telefon: maks. 1s ✅
+🧊 Bez zmiany pytania: 26.8s (limit 34s) ✅
+🔌 Socket: 1× otwarcie, 0× ZAMKNIĘCIE, 31 ramek ✅
+```
+
+Sonda dodana do repo jako `scripts/probe-gameplay.js` + `npm run sonda`, z progami
+i kodem wyjścia — nadaje się na bramkę przed wydarzeniem. Opis w TESTING.md.

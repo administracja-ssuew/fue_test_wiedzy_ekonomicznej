@@ -113,3 +113,36 @@ start z odliczaniem 3‑2‑1; zgodność licznika i okna reveal (5 s) między e
 pauza/wznowienie (LiveView „Wstrzymano" i wraca); „Powtórz pytanie"; odświeżenie
 telefonu w trakcie (wynik nie znika); zmiana czasu modułu w bazie odzwierciedlona
 wszędzie (regresja 90 s).
+
+## Sonda rozgrywki (`npm run sonda`)
+
+Uruchamia **realną rozgrywkę end-to-end**: panel admina + N telefonów w osobnych
+kontekstach przeglądarki, próbkuje ich ekrany co 250 ms i ocenia płynność.
+
+```bash
+npm run build && npm run preview          # w osobnym terminalu
+PROBE_TARGET=prod PROBE_CONFIRM=1 npm run sonda
+```
+
+Sprawdza i ocenia progami (kod wyjścia 1 przy problemie):
+
+| Kontrola | Próg |
+|---|---|
+| Czas trwania pytania | czas modułu + 6 s odsłonięcia, ±5 s |
+| Host vs telefon | ciągły rozjazd < 1,5 s |
+| Telefon vs telefon | różnica timera ≤ 1 s |
+| Zacięcie | brak zmiany pytania < czas pytania + 8 s |
+| Socket Realtime uczestnika | żyje przez cały przebieg, zdarzenia docierają do końca |
+
+**Ostatnia kontrola jest najważniejsza.** 23.09.2026 socket uczestnika umierał
+0,9 s po starcie quizu i nigdy nie wracał — telefon żył z polla co 10 s, zastygał
+na skończonym pytaniu i wskakiwał w kolejne w locie. Żadna analiza kodu ani test
+jednostkowy tego nie pokazał; pokazało dopiero podsłuchanie ramek WebSocket.
+
+Zmienne: `PROBE_APP_URL`, `PROBE_CITY`, `PROBE_PHONES`, `PROBE_QUESTIONS`,
+`PROBE_RUN_MS`, `PROBE_TARGET` (stage|prod).
+
+Sonda zakłada własne pytania, kody i konto admina, a po przebiegu kasuje wszystko
+i przywraca sesję miasta do stanu sprzed testu. Wymaga oczekującej sesji dla miasta
+testowego. Sprawdza też, czy uruchomiona aplikacja celuje w ten sam projekt Supabase
+co ona — inaczej wynik byłby bezsensowny.

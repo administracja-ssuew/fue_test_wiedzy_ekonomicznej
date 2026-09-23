@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, lazy } from "react";
-import { supabase, DEMO, logoutAdmin, submitAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers } from "./lib/supabase.js";
+import { supabase, DEMO, logoutAdmin, submitAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers, keepRealtimeAlive } from "./lib/supabase.js";
 import { getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds, advanceLeadSeconds, fallbackJitterMs } from "./lib/gameLogic.js";
 import { serverNow, startServerClock } from "./lib/serverClock.js";
 import { useModules } from "./context/ModulesContext.jsx";
@@ -105,6 +105,11 @@ export default function App() {
   // Zegar serwera — zmierz offset raz na starcie i odświeżaj okresowo, by wszystkie
   // ekrany liczyły timery z tego samego "teraz" (sync co do sekundy).
   useEffect(() => startServerClock(), []);
+
+  // Utrzymuje socket Realtime przy życiu przez cały czas trwania aplikacji — bez tego
+  // wyjście z poczekalni opróżniało listę kanałów, supabase-js rozłączał socket i
+  // uczestnik przestawał dostawać przejścia pytań. Szczegóły w lib/supabase.js.
+  useEffect(() => { keepRealtimeAlive(); }, []);
 
   useEffect(() => { screenRef.current = screen; }, [screen]);
   useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);

@@ -39,6 +39,47 @@ export function advanceLeadSeconds(curQuestion, nextQuestion) {
   return nextQuestion.module !== curQuestion?.module ? MODULE_INTRO_SECONDS : PRE_QUESTION_LEAD;
 }
 
+// ── Wcześniejsze zakończenie pytania ────────────────────────────────────────
+// Historia (23.09.2026): poprzednia wersja miała DWA wyzwalacze bez dolnej granicy
+// czasu — 8 s ciszy („plateau") albo osiągnięcie progu równego maksimum odpowiedzi
+// z wcześniejszych pytań. To zamykało pętlę dodatnią: pytanie ucięte przy 60/500
+// odpowiedziach ustawiało próg na 60, więc KAŻDE kolejne pytanie też kończyło się
+// przy 60 — 440 osób nie zdążyło odpowiedzieć na nic poza pierwszym pytaniem.
+// Symulacja tego przebiegu jest w gameLogic.test.js jako test regresyjny.
+//
+// Dlatego teraz decyzja ma twardą podłogę czasu. Podłoga jest tym, co rozrywa pętlę:
+// pytanie zawsze trwa na tyle długo, żeby wolniejsi zdążyli odpowiedzieć, więc próg
+// frekwencji sam wraca do prawdziwej liczby uczestników zamiast zostać zatruty.
+
+// Minimalny czas trwania pytania, zanim wolno je skrócić. 60% czasu modułu, ale nie
+// mniej niż 20 s — przy pytaniach obliczeniowych (90 s) to 54 s, przy terminach (30 s)
+// to 20 s. Chodzi o egzamin: szybki uczestnik nie może odbierać czasu wolniejszemu.
+export function earlySkipFloorSeconds(timePerQ) {
+  return Math.max(20, Math.round(0.6 * timePerQ));
+}
+
+// Cisza wymagana do uznania, że odpowiedzi przestały napływać. 8 s było za mało —
+// przerwa między falą szybkich a wolniejszych odpowiedziach bywa dłuższa.
+export const ANSWER_PLATEAU_MS = 12000;
+
+/**
+ * Czy wolno zakończyć pytanie przed czasem.
+ * @param total      liczba odpowiedzi na BIEŻĄCE pytanie
+ * @param expected   szacowana frekwencja (max odpowiedzi z dotychczasowych pytań)
+ * @param issued     liczba wydanych kodów (fallback, gdy brak historii)
+ * @param elapsedS   ile sekund trwa już pytanie (od q_started_at)
+ * @param timePerQ   czas modułu na pytanie
+ * @param sinceLastAnswerMs  ile ms minęło od ostatniej nowej odpowiedzi
+ */
+export function shouldEndEarly({ total, expected, issued, elapsedS, timePerQ, sinceLastAnswerMs }) {
+  if (!total) return false;
+  // Podłoga czasu — bez niej próg frekwencji potrafi się zatruć i pętla się zamyka.
+  if (elapsedS < earlySkipFloorSeconds(timePerQ)) return false;
+  const denom = expected > 0 ? expected : issued;
+  if (denom > 0 && total >= denom) return true;
+  return sinceLastAnswerMs >= ANSWER_PLATEAU_MS;
+}
+
 // Deterministyczne opóźnienie awaryjnego przejścia, wyprowadzone z kodu uczestnika.
 // Sens: gdyby admin padł, quiz nie może stanąć — ale 500 klientów nie może też ruszyć
 // naraz. Każdy czeka inną liczbę ms, więc odzywa się najwcześniejszy, a pozostali

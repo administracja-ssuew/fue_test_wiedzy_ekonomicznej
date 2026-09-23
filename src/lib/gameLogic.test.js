@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { cityInfo, projectLiveState, remainingSeconds, REVEAL_SECONDS,
   shouldAdvance, advanceLeadSeconds, fallbackJitterMs,
-  MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD } from "./gameLogic.js";
+  MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD,
+  shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS } from "./gameLogic.js";
 
 describe("cityInfo", () => {
   it("returns correct abbr for known city", () => {
@@ -204,5 +205,61 @@ describe("fallbackJitterMs", () => {
     // Sens fallbacku: NIE odzywają się wszyscy naraz. Gdyby jitter był stały,
     // wróciłby dokładnie ten stampede, który ta zmiana likwiduje.
     expect(distinct.size).toBeGreaterThan(50);
+  });
+});
+
+// ─── Wcześniejsze zakończenie pytania — regresja z 23.09.2026 ────────────────
+// Stara wersja miała dwa wyzwalacze bez dolnej granicy czasu, przez co pytanie
+// ucięte przy 60/500 odpowiedziach ustawiało próg na 60 i KAŻDE kolejne kończyło
+// się przy 60. Te testy pilnują, żeby pętla się nie zamknęła ponownie.
+
+describe("shouldEndEarly", () => {
+  const base = { total: 3, expected: 0, issued: 3, elapsedS: 60, timePerQ: 60, sinceLastAnswerMs: 0 };
+
+  it("NIE kończy pytania, dopóki nie minie podłoga czasu", () => {
+    // Wasz test: 3 telefony, wszystkie odpowiedziały w 4 sekundy.
+    expect(shouldEndEarly({ ...base, elapsedS: 4 })).toBe(false);
+    expect(shouldEndEarly({ ...base, elapsedS: 10 })).toBe(false);
+    expect(shouldEndEarly({ ...base, elapsedS: 35 })).toBe(false);
+  });
+
+  it("kończy, gdy po podłodze wszyscy odpowiedzieli", () => {
+    expect(shouldEndEarly({ ...base, elapsedS: earlySkipFloorSeconds(60) })).toBe(true);
+  });
+
+  it("nie kończy przy zerze odpowiedzi — pytanie ma dojść do końca czasu", () => {
+    expect(shouldEndEarly({ ...base, total: 0, elapsedS: 59 })).toBe(false);
+  });
+
+  it("plateau wymaga 12 s ciszy, nie 8", () => {
+    const q = { ...base, total: 60, expected: 500, issued: 500, elapsedS: 50 };
+    expect(shouldEndEarly({ ...q, sinceLastAnswerMs: 8000 })).toBe(false);
+    expect(shouldEndEarly({ ...q, sinceLastAnswerMs: ANSWER_PLATEAU_MS })).toBe(true);
+  });
+
+  it("podłoga skaluje się z czasem modułu, ale nie schodzi poniżej 20 s", () => {
+    expect(earlySkipFloorSeconds(90)).toBe(54);  // obliczenia
+    expect(earlySkipFloorSeconds(60)).toBe(36);  // logika
+    expect(earlySkipFloorSeconds(30)).toBe(20);  // terminy — podłoga minimalna
+    expect(earlySkipFloorSeconds(10)).toBe(20);
+  });
+
+  it("REGRESJA: zatruty próg nie ucina quizu 500 osób przy 60 odpowiedziach", () => {
+    // Odtworzenie przebiegu z symulacji: pierwsze pytanie ucięte przy 60/500 zatruwało
+    // expected=60 i każde następne kończyło się natychmiast po 60 odpowiedziach.
+    const poisoned = { total: 60, expected: 60, issued: 500, timePerQ: 60, sinceLastAnswerMs: 0 };
+    // Przed podłogą — cisza: 440 osób wciąż odpowiada.
+    expect(shouldEndEarly({ ...poisoned, elapsedS: 4 })).toBe(false);
+    expect(shouldEndEarly({ ...poisoned, elapsedS: 20 })).toBe(false);
+    // Podłoga 36 s daje wolniejszym czas, więc licznik zdąży urosnąć powyżej progu
+    // i sam go odtruje — to jest mechanizm rozrywający pętlę.
+    expect(shouldEndEarly({ ...poisoned, elapsedS: 30 })).toBe(false);
+  });
+
+  it("REGRESJA: pytanie 60 s nie może skończyć się po 10 s", () => {
+    // Najkrótszy możliwy przebieg: podłoga + okno reveal.
+    const floor = earlySkipFloorSeconds(60);
+    expect(floor).toBeGreaterThanOrEqual(36);
+    expect(floor + REVEAL_SECONDS).toBeGreaterThan(10);
   });
 });

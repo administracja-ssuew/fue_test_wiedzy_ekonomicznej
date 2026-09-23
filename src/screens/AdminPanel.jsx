@@ -14,7 +14,7 @@ import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
-import { shouldAdvance, advanceLeadSeconds } from "../lib/gameLogic.js";
+import { shouldAdvance, advanceLeadSeconds, shouldEndEarly } from "../lib/gameLogic.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -663,20 +663,34 @@ function SesjaTab({ city, adminId, onPodium }) {
         plAtRef.current = Date.now();
       }
 
+      const startedMsNow = s.q_started_at ? new Date(s.q_started_at).getTime() : null;
+      const tpqNow = MODULES.find((m) => m.id === q.module)?.timePerQ || 60;
+
       const stats = await getLiveAnswerSummary(s.id, q.id);
       if (stats) {
         setLiveStats(stats);
         // #3 — wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
         const total = stats.total ?? 0;
         if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
-        // Próg: frekwencja z poprzednich pytań; dla pierwszego pytania nie ma jeszcze
-        // historii, więc spadamy na liczbę wydanych kodów (a plateau i tak ratuje).
-        const denom = expectedRef.current > 0 ? expectedRef.current : participantsRef.current;
-        const countReached = denom > 0 && total >= denom;
-        const plateau = total > 0 && Date.now() - plAtRef.current >= 8000;
-        if (total > 0 && (countReached || plateau) && autoAdvancedRef.current !== idx) {
+        // Decyzja w czystej funkcji (gameLogic.shouldEndEarly) — ma test regresyjny na
+        // przebieg, w którym stary warunek ucinał 500-osobowy quiz przy 60 odpowiedziach.
+        const elapsedS = startedMsNow != null ? (serverNow() - startedMsNow) / 1000 : 0;
+        const endEarly = shouldEndEarly({
+          total,
+          expected: expectedRef.current,
+          issued: participantsRef.current,
+          elapsedS,
+          timePerQ: tpqNow,
+          sinceLastAnswerMs: Date.now() - plAtRef.current,
+        });
+        if (endEarly && autoAdvancedRef.current !== idx) {
           autoAdvancedRef.current = idx;
-          goToNextRef.current(); // cofa q_started_at → remaining=0 → reveal u wszystkich
+          // tpqNow przekazane JAWNIE — wcześniej goToNextQuestion liczyło czas modułu
+          // z `session` (stan React), a kierowca z `sessionRef`. Gdy te dwa źródła się
+          // rozjechały, admin cofał znacznik o inną liczbę sekund, niż uczestnik
+          // oczekiwał — u uczestnika nie odpalała się ŻADNA gałąź handleUpdate, więc
+          // liczył dalej stary czas i przeskakiwał dopiero przy przejściu pytania.
+          goToNextRef.current(tpqNow);
         }
       }
 
@@ -689,11 +703,9 @@ function SesjaTab({ city, adminId, onPodium }) {
       // Warunek nie zależy od liczby odpowiedzi, więc pytanie, na które NIE odpowiedział
       // NIKT (total === 0), też idzie dalej — wcześniej plateau wymagało total > 0
       // i quiz potrafił stanąć do ręcznej interwencji.
-      const startedMs = s.q_started_at ? new Date(s.q_started_at).getTime() : null;
-      const tpq = MODULES.find((m) => m.id === q.module)?.timePerQ || 60;
       const nextIdx = idx + 1;
       if (advancingRef.current || nextIdx >= cityQuestions.length) return;
-      if (!shouldAdvance(tpq, startedMs, serverNow())) return;
+      if (!shouldAdvance(tpqNow, startedMsNow, serverNow())) return;
 
       advancingRef.current = true;
       try {
@@ -924,8 +936,11 @@ function SesjaTab({ city, adminId, onPodium }) {
   // Wymusza koniec czasu bieżącego pytania u WSZYSTKICH (uczestnik, LiveView, panel)
   // przez cofnięcie q_started_at o pełen czas pytania → remaining=0 wszędzie → reveal
   // → normalny auto-advance. Reużywa istniejącego, zsynchronizowanego mechanizmu.
-  const goToNextQuestion = () => {
-    const backdated = new Date(serverNow() - curQuestionTimePerQ * 1000).toISOString();
+  // tpqOverride: czas modułu wyliczony przez kierowcę z sessionRef. Bez niego
+  // spadamy na curQuestionTimePerQ liczone ze stanu React, które bywa o tick stare.
+  const goToNextQuestion = (tpqOverride) => {
+    const tpq = tpqOverride || curQuestionTimePerQ;
+    const backdated = new Date(serverNow() - tpq * 1000).toISOString();
     upd({ status: "running", q_started_at: backdated });
     logEvent({ type: "question_skipped", sessionId: session?.id, city, actor: adminId, detail: { idx: session?.current_question_idx } });
   };

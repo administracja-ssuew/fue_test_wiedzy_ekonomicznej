@@ -165,7 +165,7 @@ Plans:
 
 **Goal:** Rozgrywka mechanicznie nie do podważenia: przebieg quizu wynika z planu zamrożonego w bazie przy starcie i zegara serwera, przejścia wykonuje baza, a odświeżenie, wygaszenie ekranu czy zamknięcie przeglądarki admina niczego nie zmieniają. Do tego płynność „jak w aplikacji" na natywnych API.
 **Research:** `.planning/research/PLYNNOSC-ROZGRYWKI.md`
-**Requirements**: TBD
+**Requirements**: P6-SC1, P6-SC2, P6-SC3, P6-SC4, P6-SC5, P6-SC6, P6-FLUID (robocze ID = kryteria sukcesu poniżej + decyzje płynności z CONTEXT)
 **Depends on:** stan faktyczny kodu z 24.09.2026 (fazy 2–5 w tym roadmapie są zrealizowane poza formalnym trackingiem — patrz STATUS.md)
 **Deadline:** wydarzenie TWE ~koniec października 2026
 **Success Criteria** (what must be TRUE):
@@ -175,10 +175,20 @@ Plans:
   4. Czas pytania na każdym kliencie pochodzi z planu sesji, nie z modułów pobranych przez klienta
   5. Poprawna odpowiedź nie trafia do klienta przed końcem czasu pytania; punkty liczone czystym zegarem serwera
   6. Każda migracja SQL jest addytywna — obecnie wdrożony frontend działa bez zmian do momentu wdrożenia nowego
-**Plans:** 0 plans
+**Plans:** 11 plans (8 fal)
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md — Logika planu w JS (plan.js + fixture'y JS↔SQL + Vitest) i filtr próbek zegara (fala 1)
+- [ ] 06-02-PLAN.md — SQL sekcje 39–40: session_plans, plan_position, v2 RPC, akcje admina, zamiatacz, pg_cron (fala 1)
+- [ ] 06-03-PLAN.md — verify-plan/verify-prod, ręczne wgranie 39–40, regresja SC6 na starym buildzie (fala 2, checkpoint)
+- [ ] 06-04-PLAN.md — Wrappery v2 + DEMO, participantState, hook useParticipantGame (fala 2)
+- [ ] 06-05-PLAN.md — App.jsx: routing uczestnika z planu, localStorage, data-fue-*; Quiz/Break/WaitingResults prezentacyjne (fala 3)
+- [ ] 06-06-PLAN.md — LiveView/embed z planu, panel admina na akcjach v2, baner zamiatacza (fala 3)
+- [ ] 06-07-PLAN.md — Płynność: Wake Lock, pasek CSS, vibrate, View Transitions, prefetch, szkielet, reduced-motion (fala 4)
+- [ ] 06-08-PLAN.md — Sonda: tryby ADMIN_EXIT/REFRESH/OFFLINE + asercja SC5, przebieg na produkcji (fala 5)
+- [ ] 06-09-PLAN.md — Bramka: wdrożenie na Vercel, sonda na wdrożeniu, realne telefony, zgoda na utwardzenie (fala 6, checkpoint)
+- [ ] 06-10-PLAN.md — SQL sekcja 41: utwardzenie starych RPC, ręczne wgranie (fala 7, checkpoint)
+- [ ] 06-11-PLAN.md — Usunięcie kodu legacy (kierowcy, projekcja z modułów) + sondy (fala 8)
 
 ---
 

@@ -1,0 +1,60 @@
+{
+  "anchorMs": 1790000000000,
+  "questions": [
+    { "id": "00000000-0000-0000-0000-000000000001", "module": 1 },
+    { "id": "00000000-0000-0000-0000-000000000002", "module": 1 },
+    { "id": "00000000-0000-0000-0000-000000000003", "module": 2 }
+  ],
+  "modules": [
+    { "id": 1, "timePerQ": 20 },
+    { "id": 2, "timePerQ": 30 }
+  ],
+  "items": [
+    { "i": 0, "id": "00000000-0000-0000-0000-000000000001", "m": 1, "tpq": 20, "lead": 10, "o": 10000, "c": 30000, "r": 36000 },
+    { "i": 1, "id": "00000000-0000-0000-0000-000000000002", "m": 1, "tpq": 20, "lead": 4, "o": 40000, "c": 60000, "r": 66000 },
+    { "i": 2, "id": "00000000-0000-0000-0000-000000000003", "m": 2, "tpq": 30, "lead": 30, "o": 96000, "c": 126000, "r": 132000 }
+  ],
+  "position": [
+    { "name": "start kotwicy — zapowiedź modułu 1", "t": 0, "pausedT": null, "expect": { "idx": 0, "phase": "intro" } },
+    { "name": "tuż przed otwarciem pytania 1", "t": 9999, "pausedT": null, "expect": { "idx": 0, "phase": "intro" } },
+    { "name": "otwarcie pytania 1", "t": 10000, "pausedT": null, "expect": { "idx": 0, "phase": "quiz" } },
+    { "name": "ostatnia ms pytania 1", "t": 29999, "pausedT": null, "expect": { "idx": 0, "phase": "quiz" } },
+    { "name": "zamknięcie pytania 1 — odsłona", "t": 30000, "pausedT": null, "expect": { "idx": 0, "phase": "reveal" } },
+    { "name": "koniec odsłony pytania 1", "t": 35999, "pausedT": null, "expect": { "idx": 0, "phase": "reveal" } },
+    { "name": "odliczanie przed pytaniem 2", "t": 36000, "pausedT": null, "expect": { "idx": 1, "phase": "countdown" } },
+    { "name": "ostatnia ms odliczania", "t": 39999, "pausedT": null, "expect": { "idx": 1, "phase": "countdown" } },
+    { "name": "otwarcie pytania 2", "t": 40000, "pausedT": null, "expect": { "idx": 1, "phase": "quiz" } },
+    { "name": "odsłona pytania 2", "t": 60000, "pausedT": null, "expect": { "idx": 1, "phase": "reveal" } },
+    { "name": "zapowiedź modułu 2", "t": 66000, "pausedT": null, "expect": { "idx": 2, "phase": "intro" } },
+    { "name": "koniec zapowiedzi modułu 2", "t": 95999, "pausedT": null, "expect": { "idx": 2, "phase": "intro" } },
+    { "name": "otwarcie pytania 3", "t": 96000, "pausedT": null, "expect": { "idx": 2, "phase": "quiz" } },
+    { "name": "odsłona pytania 3", "t": 126000, "pausedT": null, "expect": { "idx": 2, "phase": "reveal" } },
+    { "name": "koniec odsłony pytania 3", "t": 131999, "pausedT": null, "expect": { "idx": 2, "phase": "reveal" } },
+    { "name": "koniec planu", "t": 132000, "pausedT": null, "expect": { "idx": 2, "phase": "finished" } },
+    { "name": "długo po końcu planu", "t": 900000, "pausedT": null, "expect": { "idx": 2, "phase": "finished" } },
+    { "name": "pauza w pytaniu 1 — czas stoi", "t": 80000, "pausedT": 20000, "expect": { "idx": 0, "phase": "paused" } },
+    { "name": "pauza w pytaniu 2", "t": 62000, "pausedT": 62000, "expect": { "idx": 1, "phase": "paused" } }
+  ],
+  "sweep": [
+    { "name": "S1 pytanie 1 trwa — nic", "t": 20000, "row": { "status": "running", "curIdx": 0, "qStartedT": 10000, "revealedIdx": null, "pausedT": null }, "expect": { "action": "none" } },
+    { "name": "S2 tuż przed bramką odsłony — nic", "t": 31499, "row": { "status": "running", "curIdx": 0, "qStartedT": 10000, "revealedIdx": null, "pausedT": null }, "expect": { "action": "none" } },
+    { "name": "S3 bramka odsłony pytania 1", "t": 31500, "row": { "status": "running", "curIdx": 0, "qStartedT": 10000, "revealedIdx": null, "pausedT": null }, "expect": { "action": "update", "status": "running", "idx": 0, "qStartedT": 10000, "revealedIdx": 0 } },
+    { "name": "S4 przejście do pytania 2", "t": 36000, "row": { "status": "running", "curIdx": 0, "qStartedT": 10000, "revealedIdx": 0, "pausedT": null }, "expect": { "action": "update", "status": "running", "idx": 1, "qStartedT": 40000, "revealedIdx": 0 } },
+    { "name": "S5 pytanie 2 trwa — nic", "t": 50000, "row": { "status": "running", "curIdx": 1, "qStartedT": 40000, "revealedIdx": 0, "pausedT": null }, "expect": { "action": "none" } },
+    { "name": "S6 zaległość crona — skok o dwa", "t": 70000, "row": { "status": "running", "curIdx": 0, "qStartedT": 10000, "revealedIdx": null, "pausedT": null }, "expect": { "action": "update", "status": "running", "idx": 2, "qStartedT": 96000, "revealedIdx": 1 } },
+    { "name": "S7 koniec planu — wyniki", "t": 132000, "row": { "status": "running", "curIdx": 2, "qStartedT": 96000, "revealedIdx": 2, "pausedT": null }, "expect": { "action": "finish", "status": "results", "idx": 2, "qStartedT": 96000, "revealedIdx": 2 } },
+    { "name": "S8 pauza — nic", "t": 50000, "row": { "status": "paused", "curIdx": 0, "qStartedT": 10000, "revealedIdx": null, "pausedT": 20000 }, "expect": { "action": "none" } },
+    { "name": "S9 lobby — nic", "t": 1000, "row": { "status": "waiting", "curIdx": 0, "qStartedT": null, "revealedIdx": null, "pausedT": null }, "expect": { "action": "none" } },
+    { "name": "S10 pierwsze zamiecenie po starcie", "t": 1000, "row": { "status": "running", "curIdx": 0, "qStartedT": null, "revealedIdx": null, "pausedT": null }, "expect": { "action": "update", "status": "running", "idx": 0, "qStartedT": 10000, "revealedIdx": null } }
+  ],
+  "project": [
+    { "name": "P1 lobby", "status": "waiting", "hasAnchor": false, "items": "null", "t": 0, "expect": { "phase": "lobby" } },
+    { "name": "P2 stary panel bez kotwicy — legacy", "status": "running", "hasAnchor": false, "items": "full", "t": 15000, "expect": { "phase": "legacy" } },
+    { "name": "P3 kotwica przed planem — plan_loading", "status": "running", "hasAnchor": true, "items": "null", "t": 1000, "expect": { "phase": "plan_loading" } },
+    { "name": "P4 pusty plan — plan_loading", "status": "running", "hasAnchor": true, "items": "empty", "t": 1000, "expect": { "phase": "plan_loading" } },
+    { "name": "P5 pauza bez planu — plan_loading", "status": "paused", "hasAnchor": true, "items": "null", "t": 1000, "expect": { "phase": "plan_loading" } },
+    { "name": "P6 pełny plan — pytanie 1", "status": "running", "hasAnchor": true, "items": "full", "t": 15000, "expect": { "phase": "quiz", "idx": 0 } },
+    { "name": "P7 wyniki", "status": "results", "hasAnchor": true, "items": "full", "t": 200000, "expect": { "phase": "results" } },
+    { "name": "P8 zakończona", "status": "ended", "hasAnchor": true, "items": "full", "t": 200000, "expect": { "phase": "ended" } }
+  ]
+}

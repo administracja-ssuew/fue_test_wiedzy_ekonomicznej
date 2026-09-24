@@ -68,7 +68,9 @@ function initialGame(participant) {
   // właściwą fazę z zapamiętanego planu, zanim wróci snapshot (SC2 — brak pustego ekranu).
   const c = participant?.sessionId ? loadGameCache(participant.sessionId) : null;
   if (!c?.session) return EMPTY_GAME;
-  return { ...EMPTY_GAME, session: c.session, plan: c.plan ?? null };
+  // Odpowiedzi też z cache — blokada wybranej odpowiedzi widoczna od pierwszej klatki.
+  const myAnswers = c.myAnswers && typeof c.myAnswers === "object" ? c.myAnswers : {};
+  return withCorrectTotal({ ...EMPTY_GAME, session: c.session, plan: c.plan ?? null, myAnswers });
 }
 
 export default function useParticipantGame(participant) {
@@ -91,6 +93,7 @@ export default function useParticipantGame(participant) {
   const emptySentRef = useRef(new Set());     // item.id z wysłanym pustym zapisem
   const revealMissRef = useRef(new Set());    // idx, dla których dociągnięto brakujący reveal
   const planLoadRef = useRef(null);           // kotwica, dla której dociągamy plan
+  const submitsRef = useRef(new Set());       // item.id z zapisem odpowiedzi w locie
 
   // Publikacja nowego widoku. Zmiana fazy lub pytania (nie sam tik sekund) idzie przez
   // View Transitions. Pułapka 10: w React 18 setState jest asynchroniczny — bez flushSync
@@ -172,7 +175,7 @@ export default function useParticipantGame(participant) {
         if (g.session?.plan_anchor_at != null && !g.plan) needPlan = true;
       }
       commit(withCorrectTotal(g));
-      if (g.session) saveGameCache(g.session.id, { plan: g.plan, session: g.session });
+      if (g.session) saveGameCache(g.session.id, { plan: g.plan, session: g.session, myAnswers: g.myAnswers });
       // Przypinamy zawsze to, co zwrócił serwer (sam porzuca nieaktualne przypięcie, 39.6b).
       // NIE czyścimy id przy `ended` — zniknąłby ekran wyników.
       saveParticipant({ ...p, sessionId: g.session?.id ?? null });
@@ -218,9 +221,15 @@ export default function useParticipantGame(participant) {
     disposedRef.current = false;
     if (mountedCodeRef.current !== code) {
       // Inny uczestnik niż przy inicjalizacji — stan od nowa z jego cache.
+      // Bez View Transition (commit → pushView): przejście odkłada setView do asynchronicznego
+      // callbacku, a do tego czasu `view` zostaje pusty (no_session) → App pokazywał
+      // po refreshu poczekalnię zamiast bieżącej fazy (sonda 06-08, REFRESH w intro).
       mountedCodeRef.current = code;
       emptySentRef.current.clear(); revealMissRef.current.clear(); planLoadRef.current = null;
-      commit(initialGame(participantRef.current));
+      const g0 = initialGame(participantRef.current);
+      const v0 = computeView(g0);
+      gameRef.current = g0; setGame(g0);
+      viewRef.current = v0; viewKeyRef.current = viewKey(g0, v0); setView(v0);
     }
     if (!code) { setLoad("idle"); return undefined; }
     if (loadStateRef.current === "idle") setLoad("loading");
@@ -308,7 +317,7 @@ export default function useParticipantGame(participant) {
       const prevStatus = g.session.status;
       const merged = mergeSessionRow(g.session, row);
       commit({ ...g, session: merged });
-      saveGameCache(sessionId, { plan: g.plan, session: merged });
+      saveGameCache(sessionId, { plan: g.plan, session: merged, myAnswers: g.myAnswers });
       // Koniec sesji → finalne is_correct / correct_total ze snapshotu.
       if ((merged.status === "results" || merged.status === "ended") && prevStatus !== merged.status) {
         snapshotJittered({ includePlan: false }, 1000);
@@ -441,20 +450,19 @@ export default function useParticipantGame(participant) {
     const g = gameRef.current;
     if (g.session?.id !== sid) return; // sesja przełączona w międzyczasie
     const prev = g.myAnswers[qid] || {};
-    commit(withCorrectTotal({ ...g, myAnswers: { ...g.myAnswers, [qid]: { ...prev, ...patch } } }));
+    const next = withCorrectTotal({ ...g, myAnswers: { ...g.myAnswers, [qid]: { ...prev, ...patch } } });
+    commit(next);
+    saveGameCache(sid, { plan: next.plan, session: next.session, myAnswers: next.myAnswers });
   }, [commit]);
 
-  const pick = useCallback((choice) => {
-    const v = viewRef.current;
-    const g = gameRef.current;
+  // Zapis odpowiedzi z ponawianiem (sieć: do closes_at + 1,5 s; pauza: po wznowieniu).
+  // Jeden zapis w locie na pytanie. Wołane z pick() i przy restore wpisu „pending” z cache
+  // (reload w trakcie zapisu — bez tego wpis wisiałby jako „Zapisywanie…” na zawsze).
+  const runSubmit = useCallback((sid, qid, choice, fallbackClosesAt) => {
+    if (submitsRef.current.has(qid)) return;
+    submitsRef.current.add(qid);
     const p = participantRef.current;
-    if (!p || v.phase !== "quiz" || !v.item || !g.session) return false;
-    const qid = v.item.id;
-    if (g.myAnswers[qid]) return false;
-    const sid = g.session.id;
-    // Optymistyczna blokada: wybór widoczny od razu, zapis w tle.
-    setAnswer(sid, qid, { chosen: choice, status: "pending", correct: null });
-
+    const v = { closesAt: fallbackClosesAt };
     const wait = (ms) => new Promise((r) => later(r, ms));
     (async () => {
       for (;;) {
@@ -498,19 +506,55 @@ export default function useParticipantGame(participant) {
         }
         await wait(RETRY_MS);
       }
-    })();
-    return true;
+    })().finally(() => { submitsRef.current.delete(qid); });
   }, [later, setAnswer]);
 
-  const revealAns = view.idx != null ? revealAnsFor(game.session, game.reveal, view.idx) : null;
+  const pick = useCallback((choice) => {
+    const v = viewRef.current;
+    const g = gameRef.current;
+    const p = participantRef.current;
+    if (!p || v.phase !== "quiz" || !v.item || !g.session) return false;
+    const qid = v.item.id;
+    if (g.myAnswers[qid]) return false;
+    const sid = g.session.id;
+    // Optymistyczna blokada: wybór widoczny od razu, zapis w tle.
+    setAnswer(sid, qid, { chosen: choice, status: "pending", correct: null });
+    runSubmit(sid, qid, choice, v.closesAt);
+    return true;
+  }, [setAnswer, runSubmit]);
+
+  // Restore: wpisy „pending” z cache (reload w trakcie zapisu) wysyłamy ponownie.
+  // Serwer rozstrzyga: zapisany wcześniej → duplicate z oryginalnym wyborem; po terminie → failed.
+  useEffect(() => {
+    const g = gameRef.current;
+    const p = participantRef.current;
+    if (!code || !p || !g.session || !g.plan) return;
+    for (const [qid, a] of Object.entries(g.myAnswers || {})) {
+      if (a?.status !== "pending") continue;
+      const it = g.plan.find((x) => x.id === qid);
+      const closesAt = it && g.session.plan_anchor_at != null ? g.session.plan_anchor_at + it.c : 0;
+      runSubmit(g.session.id, qid, a.chosen ?? null, closesAt);
+    }
+  }, [code, runSubmit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Render między zmianą uczestnika (po refreshu App przełącza ekran na „game” i hook
+  // dostaje kod zamiast null) a efektem montażu, który wczytuje cache: stan jest jeszcze
+  // pusty i App pokazałby przez klatkę poczekalnię. Ten jeden render liczymy wprost
+  // z cache (czysto, bez zapisu stanu) — efekt montażu zaraz ustawi to samo.
+  const stale = mountedCodeRef.current !== code;
+  const outGame = stale ? initialGame(participant) : game;
+  const outView = stale ? computeView(outGame) : view;
+  const outLoad = stale ? (code ? "loading" : "idle") : loadState;
+
+  const revealAns = outView.idx != null ? revealAnsFor(outGame.session, outGame.reveal, outView.idx) : null;
 
   return {
-    loadState,
-    session: game.session,
-    plan: game.plan,
-    view,
-    myAnswers: game.myAnswers,
-    correctTotal: game.correctTotal,
+    loadState: outLoad,
+    session: outGame.session,
+    plan: outGame.plan,
+    view: outView,
+    myAnswers: outGame.myAnswers,
+    correctTotal: outGame.correctTotal,
     revealAns,
     pick,
     refresh,

@@ -46,10 +46,20 @@ export function clearParticipant() {
   }
 }
 
-export function saveGameCache(sessionId, { plan, session }) {
+// myAnswers też trafia do cache: po refreshu blokada udzielonej odpowiedzi musi być widoczna
+// od pierwszej klatki, a nie dopiero po snapshocie (SC2; sonda 06-08 złapała odblokowane
+// kafle przez ~200 ms po reloadzie). Wywołanie bez myAnswers zachowuje te z cache.
+export function saveGameCache(sessionId, { plan, session, myAnswers }) {
   if (!sessionId) return;
   try {
-    localStorage.setItem(GAME_CACHE_KEY, JSON.stringify({ sessionId, plan: plan ?? null, session: session ?? null, savedAt: Date.now() }));
+    let answers = myAnswers;
+    if (answers === undefined) {
+      const prev = readJson(localStorage, GAME_CACHE_KEY);
+      answers = prev.ok && prev.value?.sessionId === sessionId ? prev.value.myAnswers : null;
+    }
+    localStorage.setItem(GAME_CACHE_KEY, JSON.stringify({
+      sessionId, plan: plan ?? null, session: session ?? null, myAnswers: answers ?? null, savedAt: Date.now(),
+    }));
   } catch (_) { /* ~20 KB planu — przy pełnym magazynie po prostu bez cache */ }
 }
 

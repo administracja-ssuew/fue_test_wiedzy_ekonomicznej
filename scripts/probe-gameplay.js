@@ -514,6 +514,10 @@ async function main() {
     }
     const anon = createClient(URL_SB, ANON, { auth: { persistSession: false } });
     await syncClock(anon);
+    // Stan telefonów tuż przed startem — pętla próbkowania rusza dopiero po kliknięciu,
+    // więc bez tego etap „poczekalnia” byłby niewidoczny.
+    state.preStart = (await Promise.all(pages.map((x) => x.page.evaluate(READ).catch(() => ({ phase: "err" }))))).map(normPhase);
+    console.log(`  przed startem: ${state.preStart.map((p, i) => `t${i + 1} ${p.phase}`).join(", ")}`);
     console.log("▶️  START QUIZU\n");
     await admin.getByRole("button", { name: /Start quizu/ }).click({ timeout: 20000 });
     t0 = Date.now();
@@ -1050,7 +1054,7 @@ function report(samples, tpq, t0) {
     }
     console.log("\n🗺️  Pełna ścieżka wydarzenia:");
     const stages = [
-      ["poczekalnia", seen.has("lobby")],
+      ["poczekalnia", seen.has("lobby") || (state.preStart || []).every((p) => p.phase === "lobby")],
       ["zapowiedzi modułów", intros >= 5, `${intros} (oczekiwane ≥5 dla 5 modułów)`],
       ["pytania", seen.has("quiz")],
       // Z ADMIN_EXIT nie ma kto pauzować — etapy pauzy nie są wtedy oceniane.

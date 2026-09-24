@@ -180,8 +180,8 @@ Plans:
 Plans:
 - [x] 06-01-PLAN.md — Logika planu w JS (plan.js + fixture'y JS↔SQL + Vitest) i filtr próbek zegara (fala 1)
 - [x] 06-02-PLAN.md — SQL sekcje 39–40: session_plans, plan_position, v2 RPC, akcje admina, zamiatacz, pg_cron (fala 1)
-- [ ] 06-03-PLAN.md — verify-plan/verify-prod, ręczne wgranie 39–40, regresja SC6 na starym buildzie (fala 2, checkpoint)
-- [ ] 06-04-PLAN.md — Wrappery v2 + DEMO, participantState, hook useParticipantGame (fala 2)
+- [x] 06-03-PLAN.md — verify-plan/verify-prod, ręczne wgranie 39–40, regresja SC6 na starym buildzie (fala 2, checkpoint)
+- [x] 06-04-PLAN.md — Wrappery v2 + DEMO, participantState, hook useParticipantGame (fala 2)
 - [ ] 06-05-PLAN.md — App.jsx: routing uczestnika z planu, localStorage, data-fue-*; Quiz/Break/WaitingResults prezentacyjne (fala 3)
 - [ ] 06-06-PLAN.md — LiveView/embed z planu, panel admina na akcjach v2, baner zamiatacza (fala 3)
 - [ ] 06-07-PLAN.md — Płynność: Wake Lock, pasek CSS, vibrate, View Transitions, prefetch, szkielet, reduced-motion (fala 4)

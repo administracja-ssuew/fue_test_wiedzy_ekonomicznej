@@ -48,8 +48,14 @@ const SVC = STAGE ? process.env.SUPABASE_SERVICE_KEY_STAGE : process.env.SUPABAS
 const APP = process.env.PROBE_APP_URL || "http://localhost:4173";
 const CITY = process.env.PROBE_CITY || "Kraków";
 const PHONES = Math.max(1, parseInt(process.env.PROBE_PHONES || "2", 10));
-const NQ = Math.max(1, parseInt(process.env.PROBE_QUESTIONS || "3", 10));
-const RUN_MS = parseInt(process.env.PROBE_RUN_MS || "150000", 10);
+// PROBE_FULL=1 — pełna ścieżka wydarzenia: wszystkie 5 modułów, zapowiedzi modułów,
+// pauza i wznowienie, ogłoszenie wyników, ekran końcowy. Domyślnie sonda robi szybki
+// przebieg na jednym module (sensowny jako bramka przed każdym deployem).
+const FULL = process.env.PROBE_FULL === "1";
+const QPM = Math.max(1, parseInt(process.env.PROBE_QPM || "2", 10));   // pytań na moduł (full)
+const NQ = FULL ? QPM * 5 : Math.max(1, parseInt(process.env.PROBE_QUESTIONS || "3", 10));
+const TPQ_OVERRIDE = parseInt(process.env.PROBE_TPQ || "20", 10);      // czas modułu na czas testu
+const RUN_MS = parseInt(process.env.PROBE_RUN_MS || (FULL ? "540000" : "150000"), 10);
 const TAG = "[SONDA]";
 
 if (!URL_SB || !ANON || !SVC) {
@@ -69,7 +75,7 @@ const svc = createClient(URL_SB, SVC, { auth: { persistSession: false } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const projectRef = new global.URL(URL_SB).hostname.split(".")[0];
 
-const state = { adminId: null, adminEmail: null, adminPass: null, qIds: [], codes: [], sessionId: null, sessionBefore: null };
+const state = { adminId: null, adminEmail: null, adminPass: null, qIds: [], codes: [], sessionId: null, sessionBefore: null, modulesBefore: [] };
 const wsLog = [];
 const wsFrames = { n: 0 };
 
@@ -105,10 +111,17 @@ async function setup() {
   });
   if (pe) throw new Error("profile: " + pe.message);
 
-  const rows = Array.from({ length: NQ }, (_, i) => ({
-    city: CITY, module: 1, q: `${TAG} Pytanie ${i + 1}`,
-    opts: ["A", "B", "C", "D"], ans: 0, is_practice: false, sort_order: i + 1,
-  }));
+  // W trybie pełnym rozkładamy pytania na 5 modułów — dzięki temu test przechodzi
+  // przez zapowiedzi modułów i przez przerwy po module 2 i 4.
+  const rows = FULL
+    ? [1, 2, 3, 4, 5].flatMap((m) => Array.from({ length: QPM }, (_, i) => ({
+        city: CITY, module: m, q: `${TAG} M${m} Pytanie ${i + 1}`,
+        opts: ["A", "B", "C", "D"], ans: 0, is_practice: false, sort_order: i + 1,
+      })))
+    : Array.from({ length: NQ }, (_, i) => ({
+        city: CITY, module: 1, q: `${TAG} Pytanie ${i + 1}`,
+        opts: ["A", "B", "C", "D"], ans: 0, is_practice: false, sort_order: i + 1,
+      }));
   const { data: qs, error: qe } = await svc.from("questions").insert(rows).select("id");
   if (qe) throw new Error("questions: " + qe.message);
   state.qIds = qs.map((q) => q.id);
@@ -128,8 +141,21 @@ async function setup() {
   state.sessionBefore = { status: sess.status, current_question_idx: sess.current_question_idx, q_started_at: sess.q_started_at };
   await svc.from("quiz_sessions").update({ status: "waiting", current_question_idx: 0, q_started_at: null }).eq("id", sess.id);
 
-  const { data: mod } = await svc.from("modules").select("time_per_q").eq("id", 1).maybeSingle();
-  const tpq = mod?.time_per_q || 60;
+  // Czasy modułów na produkcji są różne (20/30/60/75/20), a pełny przebieg z nimi
+  // trwałby ~15 minut. Na czas testu ustawiamy jeden czas i PRZYWRACAMY oryginały
+  // w cleanup — inaczej sonda cicho zmieniłaby konfigurację wydarzenia.
+  const { data: modsBefore } = await svc.from("modules").select("id, time_per_q").order("id");
+  state.modulesBefore = modsBefore || [];
+  let tpq;
+  if (FULL) {
+    for (const m of state.modulesBefore) {
+      await svc.from("modules").update({ time_per_q: TPQ_OVERRIDE }).eq("id", m.id);
+    }
+    tpq = TPQ_OVERRIDE;
+    console.log(`  czasy modułów tymczasowo na ${TPQ_OVERRIDE}s (oryginały: ${state.modulesBefore.map((m) => m.time_per_q).join("/")})`);
+  } else {
+    tpq = state.modulesBefore.find((m) => m.id === 1)?.time_per_q || 60;
+  }
   console.log(`  pytania: ${NQ}  kody: ${state.codes.map((c) => c.code).join(", ")}`);
   console.log(`  sesja: ${state.sessionId}  czas na pytanie: ${tpq}s\n`);
   return tpq;
@@ -149,6 +175,11 @@ async function cleanup() {
     try { await svc.from("profiles").delete().eq("id", state.adminId); } catch {}
     try { await svc.auth.admin.deleteUser(state.adminId); } catch {}
   }
+  // Przywróć oryginalne czasy modułów — narzędzie testowe nie może zostawić po sobie
+  // zmienionej konfiguracji wydarzenia.
+  for (const m of state.modulesBefore || []) {
+    try { await svc.from("modules").update({ time_per_q: m.time_per_q }).eq("id", m.id); } catch {}
+  }
   const { data: leftQ } = await svc.from("questions").select("id").ilike("q", `%${TAG}%`);
   const { data: leftC } = codes.length ? await svc.from("participant_codes").select("code").in("code", codes) : { data: [] };
   const ok = (leftQ?.length ?? 0) === 0 && (leftC?.length ?? 0) === 0;
@@ -165,11 +196,14 @@ const READ = `(() => {
   const mAdmin = t.match(/Pytanie (\\d+)\\/(\\d+)/);
   if (mPart) { out.phase = "quiz"; out.q = Number(mPart[3]); }
   else if (mAdmin) { out.phase = "host"; out.q = Number(mAdmin[1]); }
-  if (/Oczekiwanie na start|Łączenie z sesją/.test(t)) out.phase = "lobby";
-  if (/START!|Start za/.test(t)) out.phase = "odliczanie";
-  if (/MODUŁ \\d+ \\//.test(t)) out.phase = "zapowiedz";
-  if (/Koniec testu|Wszystkie pytania zosta/.test(t)) out.phase = "koniec";
-  if (/Przerwa|Wstrzymano/.test(t)) out.phase = "przerwa";
+  // Uwaga: sporo napisów ma text-transform:uppercase, a innerText zwraca tekst PO
+  // transformacji — stąd wszędzie /i. Na tym już raz poległ parser panelu admina.
+  if (/Oczekiwanie na start|Łączenie z sesją/i.test(t)) out.phase = "lobby";
+  if (/START!|Start za/i.test(t)) out.phase = "odliczanie";
+  if (/Następny moduł|MODUŁ \\d+ \\//i.test(t)) out.phase = "zapowiedz";
+  if (/Przerwa|Wstrzymano/i.test(t)) out.phase = "przerwa";
+  if (/Koniec testu|Wszystkie pytania zosta/i.test(t)) out.phase = "czekam_wyniki";
+  if (/Poczekaj na ogłoszenie organizatora|poprawnych odpowiedzi/i.test(t)) out.phase = "wynik";
   if (out.phase === "quiz") {
     const svg = document.querySelector('svg[width="54"]');
     const sp = svg && svg.parentElement ? svg.parentElement.querySelector("span") : null;
@@ -202,6 +236,8 @@ async function main() {
     if (sErr) throw new Error("logowanie sondy: " + sErr.message);
 
     const ctxAdmin = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    // Pauza i ogłoszenie wyników są za confirm() — bez tego klik wisi.
+    ctxAdmin.on("page", (pg) => pg.on("dialog", (d) => d.accept().catch(() => {})));
     await ctxAdmin.addInitScript(([k, v]) => localStorage.setItem(k, v),
       [`sb-${projectRef}-auth-token`, JSON.stringify(sIn.session)]);
     const admin = await ctxAdmin.newPage();
@@ -240,6 +276,8 @@ async function main() {
 
     t0 = Date.now();
     const answered = new Set();
+    const flow = { paused: false, pausedAt: 0, resumed: false, pauseSeen: false, endPaused: false, endPausedAt: 0, announced: false };
+    globalThis.__flow = flow;
     while (Date.now() - t0 < RUN_MS) {
       const at = Date.now() - t0;
       const [a, ...ps] = await Promise.all([
@@ -259,7 +297,37 @@ async function main() {
         pages[i].page.locator("button.ans-btn").first().click({ timeout: 3000 }).catch(() => {});
       }
 
-      if (ps.length && ps.every((p) => p?.phase === "koniec")) break;
+      // ── Sterowanie pełną ścieżką ────────────────────────────────────────────
+      if (FULL) {
+        const ph = ps[0]?.phase;
+        // 1. Pauza w środku przebiegu — czy uczestnik realnie widzi "Wstrzymano"
+        //    i czy po wznowieniu wraca na to samo pytanie.
+        if (!flow.paused && ph === "quiz" && ps[0]?.q >= Math.ceil(NQ / 2)) {
+          flow.paused = true; flow.pausedAt = at;
+          console.log(`   ⏸  pauza (pytanie ${ps[0].q})`);
+          await admin.getByRole("button", { name: /Pauza/ }).click({ timeout: 10000 }).catch((e) => console.log("   ⚠️ pauza:", e.message.slice(0, 60)));
+        } else if (flow.paused && !flow.resumed && at - flow.pausedAt > 10000) {
+          flow.resumed = true;
+          flow.pauseSeen = samples.some((s) => s.at > flow.pausedAt && s.phones[0]?.phase === "przerwa");
+          console.log(`   ▶️  wznowienie (uczestnik widział przerwę: ${flow.pauseSeen ? "TAK" : "NIE"})`);
+          await admin.getByRole("button", { name: /Wznów quiz/ }).click({ timeout: 10000 }).catch((e) => console.log("   ⚠️ wznów:", e.message.slice(0, 60)));
+        }
+        // 2. Koniec pytań → "Ogłoś wyniki" jest dostępne DOPIERO po pauzie, bo przycisk
+        //    renderuje się wyłącznie przy status === "paused". To realna pułapka dla
+        //    prowadzącego: po ostatnim pytaniu sesja zostaje w "running".
+        if (ph === "czekam_wyniki" && !flow.endPaused) {
+          flow.endPaused = true; flow.endPausedAt = at;
+          console.log("   ⏸  pauza przed ogłoszeniem wyników");
+          await admin.getByRole("button", { name: /Pauza/ }).click({ timeout: 10000 }).catch(() => {});
+        } else if (flow.endPaused && !flow.announced && at - flow.endPausedAt > 3000) {
+          flow.announced = true;
+          console.log("   🏆 ogłoszenie wyników");
+          await admin.getByRole("button", { name: /Ogłoś wyniki/ }).click({ timeout: 10000 }).catch((e) => console.log("   ⚠️ ogłoszenie:", e.message.slice(0, 60)));
+        }
+      }
+
+      if (ps.length && ps.every((p) => p?.phase === "wynik")) break;
+      if (!FULL && ps.length && ps.every((p) => p?.phase === "czekam_wyniki")) break;
       await sleep(250);
     }
   } finally {
@@ -270,6 +338,17 @@ async function main() {
   await cleanup();
   console.log(failures.length ? `\n❌ SONDA: ${failures.length} PROBLEM(ÓW)\n` : "\n✅ SONDA: rozgrywka płynna\n");
   process.exit(failures.length ? 1 : 0);
+}
+
+// Ile razy telefon WSZEDŁ w daną fazę (a nie ile próbek w niej spędził).
+function countTransitions(samples, phase) {
+  let n = 0, prev = null;
+  for (const s of samples) {
+    const p = s.phones[0]?.phase;
+    if (p === phase && prev !== phase) n++;
+    prev = p;
+  }
+  return n;
 }
 
 function attachWs(page) {
@@ -296,24 +375,32 @@ function report(samples, tpq, t0) {
   console.log("═".repeat(60));
 
   // 1. czas trwania pytań (telefon 1)
-  const seg = [];
-  let cur = null;
+  // Pytanie bywa PRZERWANE pauzą albo zapowiedzią modułu i wraca na ten sam numer.
+  // Sumujemy czas widoczności per numer pytania, zamiast liczyć każdy fragment osobno —
+  // inaczej pauza generowała fałszywy alarm „pytanie trwało 0.0s".
+  const byQ = new Map();
+  let prevSeenQ = null, prevAt = null;
   for (const s of samples) {
     const p = s.phones[0];
-    if (p?.phase !== "quiz" || p.q == null) { if (cur) { seg.push(cur); cur = null; } continue; }
-    if (!cur || cur.q !== p.q) { if (cur) seg.push(cur); cur = { q: p.q, from: s.at, to: s.at }; }
-    else cur.to = s.at;
+    const isQ = p?.phase === "quiz" && p.q != null;
+    if (isQ) {
+      if (!byQ.has(p.q)) byQ.set(p.q, 0);
+      if (prevSeenQ === p.q && prevAt != null) byQ.set(p.q, byQ.get(p.q) + (s.at - prevAt));
+      prevSeenQ = p.q; prevAt = s.at;
+    } else { prevSeenQ = null; prevAt = null; }
   }
-  if (cur) seg.push(cur);
+  const seg = [...byQ.entries()].sort((a, b) => a[0] - b[0]).map(([q, ms]) => ({ q, ms }));
   console.log(`\n⏱️  Czas trwania pytań (oczekiwany ${expected}s = ${tpq}s + 6s odsłonięcia):`);
   // Ostatni odcinek pomijamy w ocenie, jeśli przebieg został ucięty limitem czasu.
-  const truncated = seg.length && seg[seg.length - 1].to >= (samples[samples.length - 1]?.at ?? 0) - 500;
+  const runEnd = samples[samples.length - 1]?.at ?? 0;
+  const lastPhase = samples[samples.length - 1]?.phones?.[0]?.phase;
+  // Ostatni odcinek pomijamy tylko wtedy, gdy przebieg urwał się W TRAKCIE pytania.
+  const truncated = lastPhase === "quiz" && runEnd >= RUN_MS - 1000;
   seg.forEach((g, i) => {
-    const d = (g.to - g.from) / 1000;
-    const last = i === seg.length - 1;
-    const skip = last && truncated;
+    const d = g.ms / 1000;
+    const skip = i === seg.length - 1 && truncated;
     const bad = !skip && Math.abs(d - expected) > 5;
-    if (bad) fail.push(`pytanie ${g.q} trwało ${d.toFixed(1)}s zamiast ~${expected}s`);
+    if (bad) fail.push(`pytanie ${g.q} było widoczne ${d.toFixed(1)}s zamiast ~${expected}s`);
     console.log(`   pyt.${g.q}: ${d.toFixed(1)}s ${skip ? "(ucięte limitem czasu — pomijam)" : bad ? "❌" : "✅"}`);
   });
 
@@ -344,12 +431,17 @@ function report(samples, tpq, t0) {
   console.log(`📱 Telefon vs telefon: maks. różnica timera ${tmax}s ${phoneBad ? "❌" : "✅"}`);
 
   // 4. zacięcia
-  let lastQ = null, lastAt = 0, stall = 0;
+  // ...ale TYLKO realne. Zapowiedź modułu (30 s), odliczanie, przerwa i ekrany końcowe
+  // to legalne stany, w których pytanie z definicji się nie zmienia. Poprzednia wersja
+  // liczyła je jako zacięcie i krzyczała 65 s po każdej przerwie.
+  const LEGIT = new Set(["zapowiedz", "odliczanie", "przerwa", "czekam_wyniki", "wynik", "lobby"]);
+  let stall = 0, spanFrom = null, spanLegit = false, prevQ = null;
   for (const s of samples) {
-    const q = s.phones[0]?.q;
-    if (q == null) continue;
-    if (q !== lastQ) { lastQ = q; lastAt = s.at; }
-    stall = Math.max(stall, s.at - lastAt);
+    const p = s.phones[0];
+    const isQ = p?.phase === "quiz" && p.q != null;
+    if (isQ && p.q !== prevQ) { prevQ = p.q; spanFrom = s.at; spanLegit = false; continue; }
+    if (isQ) { if (spanFrom != null && !spanLegit) stall = Math.max(stall, s.at - spanFrom); continue; }
+    if (LEGIT.has(p?.phase)) spanLegit = true;  // przerwa w pytaniu jest uzasadniona
   }
   const stallLimit = (expected + 8) * 1000;
   const stallBad = stall > stallLimit;
@@ -370,6 +462,44 @@ function report(samples, tpq, t0) {
   console.log(`\n🔌 Socket Realtime telefonu 1: ${opens}× otwarcie, ${closes}× zamknięcie, ${wsFrames.n} ramek`);
   console.log(`   zdarzeń quizu: ${events.length}, ostatnie w ${lastEvent ?? "—"}s (przebieg ${runS.toFixed(1)}s) ${deaf ? "❌ GŁUCHY" : "✅"}`);
   if (closes > 0) console.log(`   ⚠️  socket był zamykany ${closes}× — dozorca musiał go podnosić`);
+
+  // 6. pełna ścieżka — czy przeszliśmy przez wszystkie etapy wydarzenia
+  if (FULL) {
+    const seen = new Set(samples.flatMap((s) => s.phones.map((p) => p?.phase)).filter(Boolean));
+    const flow = globalThis.__flow || {};
+    const intros = countTransitions(samples, "zapowiedz");
+    console.log("\n🗺️  Pełna ścieżka wydarzenia:");
+    const stages = [
+      ["poczekalnia", seen.has("lobby")],
+      ["zapowiedzi modułów", intros >= 4, `${intros} (oczekiwane ≥4 dla 5 modułów)`],
+      ["pytania", seen.has("quiz")],
+      ["pauza widoczna u uczestnika", !!flow.pauseSeen],
+      ["wznowienie po pauzie", !!flow.resumed],
+      ["ekran oczekiwania na wyniki", seen.has("czekam_wyniki")],
+      ["ogłoszenie wyników", !!flow.announced],
+      ["ekran wyniku uczestnika", seen.has("wynik")],
+    ];
+    for (const [name, ok, extra] of stages) {
+      console.log(`   ${ok ? "✅" : "❌"} ${name}${extra ? "  — " + extra : ""}`);
+      if (!ok) fail.push(`etap nieosiągnięty: ${name}`);
+    }
+    console.log(`   zaobserwowane fazy: ${[...seen].join(", ")}`);
+  }
+
+  // PROBE_TRACE=1 — ślad zmian stanu. Nieoceniony, gdy metryka mówi „coś jest źle",
+  // ale nie mówi co: pokazuje, kto i kiedy się przełączył.
+  if (process.env.PROBE_TRACE === "1") {
+    console.log("\n🔍 ŚLAD (tylko zmiany):");
+    let prev = "";
+    for (const s of samples) {
+      const a = s.admin || {};
+      const line = s.phones.map((p) => `${String(p?.phase).slice(0, 9).padEnd(9)} q=${String(p?.q ?? "-").padStart(2)} t=${String(p?.timer ?? "-").padStart(2)}`).join(" | ");
+      const key = `${a.phase}|${a.q}|${line}`;
+      if (key === prev) continue;
+      prev = key;
+      console.log(`  ${String((s.at / 1000).toFixed(1)).padStart(6)}s  host[${String(a.phase).slice(0, 9).padEnd(9)} q=${String(a.q ?? "-").padStart(2)}]  ${line}`);
+    }
+  }
 
   if (fail.length) {
     console.log("\n" + "─".repeat(60));

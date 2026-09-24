@@ -42,7 +42,7 @@ Przebudowa mechaniki rozgrywki tak, żeby przebieg quizu był funkcją planu zam
 - View Transitions API, prefetch następnego pytania w oknie reveal, szkielet ekranu przy refreshu, `prefers-reduced-motion`.
 
 ### Środowisko i bezpieczeństwo wdrożenia
-- **Brak stagingu** (`iaehipybmcxrvgyfmcfr` → ENOTFOUND). Testy na PRODUKCJI (`dmoydtavstpurqebkngu`) samosprzątającymi sondami (`PROBE_CONFIRM=1`).
+- **Brak stagingu** (`iaehipybmcxrvgyfmcfr` → ENOTFOUND). Testy na PRODUKCJI (`ytbwmmqwbfcugouourih` — patrz korekta niżej) samosprzątającymi sondami (`PROBE_CONFIRM=1`).
 - W konsekwencji: **każda migracja SQL addytywna** — nowe kolumny nullable, nowe RPC pod nowymi nazwami albo kompatybilne sygnatury, zamiatacz działa tylko na sesjach posiadających plan. Obecnie wdrożony frontend (Vercel) musi działać bez zmian aż do wdrożenia nowego.
 - Migracje w `SUPABASE_FIXES.sql` jako nowe numerowane sekcje (konwencja repo). Uwaga: sekcja 37 była oznaczona jako niewgrana (STATE.md, 02.09) — sprawdzić stan przed dopisaniem nowych.
 - `pg_cron`: czyszczenie `cron.job_run_details`, minimalne logowanie dla zadania 1 s.
@@ -50,6 +50,13 @@ Przebudowa mechaniki rozgrywki tak, żeby przebieg quizu był funkcją planu zam
 ### Weryfikacja
 - Nowe tryby sondy `scripts/probe-gameplay.js`: `PROBE_ADMIN_EXIT=1`, `PROBE_REFRESH=1`, `PROBE_OFFLINE=1` (kryteria w ROADMAP.md, faza 6).
 - Testy jednostkowe Vitest dla projekcji z planu, przesunięcia planu (pauza, „Następne"), decyzji zamiatacza.
+
+### Decyzje po researchu (2026-09-24)
+- **Koniec quizu:** zamiatacz sam ustawia `status='results'` po ostatnim reveal ostatniego pytania. Podium dalej odpalane ręcznie przez admina.
+- **Przerwy po modułach 2 i 4:** NIE w planie — ręczna pauza admina jak dziś; wznowienie przesuwa plan jednym zapisem.
+- **Auto-skip:** opcjonalne wywołanie z panelu (dla TWE wyłączone).
+- **Korekta środowiska:** produkcja to `ytbwmmqwbfcugouourih` (`.env`, sekcja 38), nie `dmoydtavstpurqebkngu` (stary projekt). Sekcje 37–38 są wgrane (`npm run verify-prod` 24.09: 25 OK) → nowe migracje od sekcji **39**.
+- **Wgrywanie SQL tylko ręcznie w SQL Editor** — każdy plan z SQL ma krok `checkpoint:human-action`, po nim automatyczna weryfikacja skryptem.
 
 ### Claude's Discretion
 - Kształt planu w bazie (`jsonb` w `quiz_sessions` vs osobna tabela).

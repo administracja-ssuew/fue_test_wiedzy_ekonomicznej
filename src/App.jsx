@@ -498,8 +498,25 @@ export default function App() {
     armAdvanceFallback(curGlobalIdx, nextGlobalIdx);
   };
 
-  // Wznowienie po przerwie (admin zmienił status na "running")
-  const handleResumeFromBreak = () => {
+  // Wznowienie po przerwie (admin zmienił status na "running").
+  //
+  // ZMIERZONE sondą pełnej ścieżki (23.09): stara wersja wchodziła w LOKALNY ekran
+  // zapowiedzi modułu, którego `onStart` czyścił qStartedAtRef i pokazywał kolejne
+  // pytanie z błędnym czasem — a uczestnik czekał do 10 s (poll awaryjny), zanim stan
+  // się poprawił. W raporcie widać to było jako pytanie trwające 9,8 s zamiast 26 s.
+  // Po naprawie ten sam pomiar daje 26,7 s.
+  //
+  // Kierowcą jest admin, więc po przerwie wystarczy zsynchronizować się z bazą:
+  // pytanie ma już swój q_started_at z leadem 30 s, więc zapowiedź modułu
+  // (ModuleIntroFS) pokaże się sama i zgodnie z Live View.
+  const handleResumeFromBreak = async (s) => {
+    const sess = s?.q_started_at ? s : (participant?.city ? await getSessionForCity(participant.city) : null);
+    const questions = cityQuestionsRef.current;
+    if (sess?.q_started_at && questions.length && syncToSession(sess, questions)) {
+      setScreen("quiz");
+      return;
+    }
+    // Fallback: sesja bez q_started_at (admin jeszcze nie ruszył dalej).
     if (nextModule && nextModule <= MODULES.length) {
       setCurrentMod(nextModule); setQIdx(0); setPicked(null); setAnswered(false);
       setTimer(getModule(nextModule, MODULES).timePerQ); setScreen("module_intro");

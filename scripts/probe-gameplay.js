@@ -69,18 +69,32 @@ const SVC = STAGE ? process.env.SUPABASE_SERVICE_KEY_STAGE : process.env.SUPABAS
 
 const APP = process.env.PROBE_APP_URL || "http://localhost:4173";
 const CITY = process.env.PROBE_CITY || "Kraków";
-const PHONES = Math.max(1, parseInt(process.env.PROBE_PHONES || "2", 10));
+// Tryby z ROADMAP fazy 6 (łączą się ze sobą i z PROBE_FULL):
+//   PROBE_ADMIN_EXIT=1 (SC1) — admin zamyka przeglądarkę po starcie,
+//   PROBE_REFRESH=1    (SC2) — telefon 2 robi reload w każdej fazie,
+//   PROBE_OFFLINE=1    (SC3) — telefon 2 (albo 3, gdy razem z REFRESH) 10 s offline w pytaniu 2.
+// Telefon 1 jest zawsze referencyjny.
+const ADMIN_EXIT = process.env.PROBE_ADMIN_EXIT === "1";
+const REFRESH = process.env.PROBE_REFRESH === "1";
+const OFFLINE = process.env.PROBE_OFFLINE === "1";
+const MIN_PHONES = REFRESH && OFFLINE ? 3 : REFRESH || OFFLINE ? 2 : 1;
+const PHONES = Math.max(MIN_PHONES, parseInt(process.env.PROBE_PHONES || "2", 10));
+const REF_PI = 1;                        // telefon testowany w REFRESH (indeks 0-based)
+const OFF_PI = REFRESH ? 2 : 1;          // telefon testowany w OFFLINE
 // PROBE_FULL=1 — pełna ścieżka wydarzenia: wszystkie 5 modułów, zapowiedzi modułów,
 // pauza i wznowienie, ogłoszenie wyników, ekran końcowy. Domyślnie sonda robi szybki
 // przebieg na jednym module (sensowny jako bramka przed każdym deployem).
 const FULL = process.env.PROBE_FULL === "1";
 const QPM = Math.max(1, parseInt(process.env.PROBE_QPM || "2", 10));   // pytań na moduł (full)
-const NQ = FULL ? QPM * 5 : Math.max(1, parseInt(process.env.PROBE_QUESTIONS || "3", 10));
+// REFRESH potrzebuje 3 pytań (intro/quiz pyt.1, countdown/quiz-po-odpowiedzi pyt.2, reveal pyt.3),
+// OFFLINE — 2 (offline w pytaniu 2).
+const NQ = FULL ? QPM * 5 : Math.max(REFRESH ? 3 : OFFLINE ? 2 : 1, parseInt(process.env.PROBE_QUESTIONS || "3", 10));
 const TPQ_OVERRIDE = parseInt(process.env.PROBE_TPQ || "20", 10);      // czas modułu na czas testu
+// OFFLINE: powrót (5 s + 10 s od otwarcia pytania) musi wypaść przed terminem pytania,
+// więc czas pytania ustawiamy jawnie (domyślnie 20 s), niezależnie od konfiguracji produkcji.
+const OVERRIDE_TPQ = FULL || OFFLINE || !!process.env.PROBE_TPQ;
 const RUN_MS = parseInt(process.env.PROBE_RUN_MS || (FULL ? "540000" : "150000"), 10);
 const TAG = "[SONDA]";
-// PROBE_ADMIN_EXIT=1 (SC1): po starcie przeglądarka admina jest zamykana.
-const ADMIN_EXIT = process.env.PROBE_ADMIN_EXIT === "1";
 
 if (!URL_SB || !ANON || !SVC) {
   console.error("❌ Brak kluczy Supabase w .env (URL / ANON / SERVICE).");
@@ -136,7 +150,9 @@ async function preflight() {
 async function setup() {
   console.log(`\n🌐 Cel: ${URL_SB}  ${STAGE ? "(STAGING ✓)" : "⚠️  (PRODUKCJA)"}`);
   console.log(`🖥️  Aplikacja: ${APP}`);
-  console.log(`👥 Telefony: ${PHONES}  ·  Pytania: ${NQ}  ·  Miasto: ${CITY}\n`);
+  console.log(`👥 Telefony: ${PHONES}  ·  Pytania: ${NQ}  ·  Miasto: ${CITY}`);
+  const modes = [FULL && "FULL", ADMIN_EXIT && "ADMIN_EXIT", REFRESH && "REFRESH", OFFLINE && "OFFLINE"].filter(Boolean);
+  console.log(`🧪 Tryby: ${modes.length ? modes.join(" + ") : "podstawowy"}\n`);
   console.log("SETUP");
 
   state.adminEmail = `probe-${Date.now()}@twe.2026.fue.pl`;
@@ -200,7 +216,7 @@ async function setup() {
   const { data: modsBefore } = await svc.from("modules").select("id, time_per_q").order("id");
   state.modulesBefore = modsBefore || [];
   let tpq;
-  if (FULL) {
+  if (OVERRIDE_TPQ) {
     for (const m of state.modulesBefore) {
       await svc.from("modules").update({ time_per_q: TPQ_OVERRIDE }).eq("id", m.id);
     }
@@ -490,9 +506,26 @@ async function main() {
     await loadPlanAfterStart();
     monDone = monitorLoop(monStop);
 
+    // SC1: od tej chwili nikt nie „prowadzi” quizu z przeglądarki — przejścia pytań
+    // i przejście do wyników musi wykonać zamiatacz pg_cron według planu.
+    if (ADMIN_EXIT) {
+      await ctxAdmin.close();
+      admin = null;
+      console.log("   🚪 przeglądarka admina zamknięta po starcie");
+    }
+
     const answered = new Set();
     const noAuto = new Set();   // klucze `${telefon}:${pytanie}`, na które odpowiada scenariusz, nie pętla
     const sc5Seen = new Set();
+    const sctx = { samples, pages, noAuto };
+    if (REFRESH) {
+      noAuto.add(`${REF_PI}:1`); noAuto.add(`${REF_PI}:2`);
+      startScenario("REFRESH", () => refreshScenario(sctx));
+    }
+    if (OFFLINE) {
+      noAuto.add(`${OFF_PI}:2`);
+      startScenario("OFFLINE", () => offlineScenario(sctx));
+    }
     const flow = { paused: false, pausedAt: 0, resumed: false, pauseSeen: false, before: null, during: null, after: null };
     globalThis.__flow = flow;
     while (Date.now() - t0 < RUN_MS) {
@@ -602,13 +635,208 @@ function attachWs(page) {
       wsFrames.n++;
       const d = dec(f.payload);
       if (d.includes("quiz_event")) wsLog.push({ at: Date.now(), kind: "BROADCAST", info: "" });
-      else if (d.includes('"event":"postgres_changes"')) wsLog.push({ at: Date.now(), kind: "PG_CHANGES", info: "" });
+      // realtime-js ≥ 2.x domyślnie mówi protokołem vsn 2.0.0: ramka to tablica
+      // [join_ref, ref, topic, event, payload], więc zdarzenie ma postać ,"postgres_changes",
+      // a nie "event":"postgres_changes" (vsn 1.0.0). Obsługujemy oba formaty — inaczej
+      // zmiany wiersza sesji od zamiatacza były niewidoczne i sonda krzyczała „GŁUCHY”.
+      else if (/"event":"postgres_changes"|,"postgres_changes",/.test(d)) wsLog.push({ at: Date.now(), kind: "PG_CHANGES", info: "" });
     });
   });
 }
 
+// ─── SCENARIUSZE TRYBÓW ──────────────────────────────────────────────────────
+const modeRes = { refresh: [], offline: null, errors: [] };
+function startScenario(name, fn) {
+  const sc = { name, done: false };
+  scenarios.push(sc);
+  fn().catch((e) => { modeRes.errors.push(`${name}: ${e.message}`); console.log(`   💥 scenariusz ${name}: ${e.message}`); })
+    .finally(() => { sc.done = true; });
+}
+const rnd = (lo, hi) => lo + Math.random() * Math.max(0, hi - lo);
+const planAt = (it, key) => anchorAt(srvNow()).anchorMs + it[key];   // termin planu w czasie serwera
+async function waitSrv(target) { while (srvNow() < target) await sleep(Math.min(100, Math.max(5, target - srvNow()))); }
+async function waitSample(samples, pred, timeoutMs, afterSrv = -Infinity) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const s = samples[samples.length - 1];
+    if (s && s.srv > afterSrv && pred(s)) return s;
+    await sleep(50);
+  }
+  return null;
+}
+
+// Porównanie telefonu pi z referencyjnym (0) na próbkach z okna [from, to] (czas serwera).
+// Próbki przy granicach faz planu pomijamy — oba telefony przecinają granicę w innym ticku.
+function compareWindow(samples, pi, from, to, { lock } = {}) {
+  const r = { compared: 0, maxDiff: 0, mismatches: [] };
+  for (const s of samples) {
+    if (s.srv < from || s.srv > to) continue;
+    const a = s.phones[0], b = s.phones[pi];
+    if (a?.src !== "data" || b?.src !== "data") { r.mismatches.push(`${(s.at / 1000).toFixed(1)}s: telefon ${pi + 1} nie gotowy (${b?.phase})`); continue; }
+    if (lock && b.q === lock.q && (!b.locked || b.choice !== lock.choice)) {
+      r.mismatches.push(`${(s.at / 1000).toFixed(1)}s: odpowiedź q${lock.q} nie zablokowana (locked=${b.locked}, wybór ${b.choice} ≠ ${lock.choice})`);
+    }
+    if (nearBoundary(s.srv)) continue;
+    r.compared++;
+    if (!samePhase(a.phase, b.phase) || a.q !== b.q) { r.mismatches.push(`${(s.at / 1000).toFixed(1)}s: t1 ${a.phase} q${a.q} ≠ t${pi + 1} ${b.phase} q${b.q}`); continue; }
+    if (a.timer != null && b.timer != null) {
+      const d = Math.abs(a.timer - b.timer);
+      r.maxDiff = Math.max(r.maxDiff, d);
+      if (d > 1) r.mismatches.push(`${(s.at / 1000).toFixed(1)}s: licznik t1 ${a.timer}s ≠ t${pi + 1} ${b.timer}s`);
+    }
+  }
+  return r;
+}
+
+// Jeden reload telefonu REF_PI w bieżącej fazie + porównanie przez 2 s po gotowości.
+async function reloadAndCompare(ctx, label, lock = null) {
+  const { samples, pages } = ctx;
+  const pg = pages[REF_PI].page;
+  const before = samples[samples.length - 1]?.phones[REF_PI];
+  const res = { label, q: before?.q ?? null, phaseBefore: before?.phase, readyMs: null, maxDiff: null, compared: 0, problems: [] };
+  const tStart = srvNow();
+  console.log(`   🔄 reload telefonu ${REF_PI + 1}: ${label} (faza ${before?.phase}, q${before?.q}, licznik ${before?.timer}s)`);
+  try { await pg.reload({ waitUntil: "domcontentloaded", timeout: 10000 }); } catch (e) { res.problems.push("reload: " + e.message.slice(0, 80)); }
+  const tLoaded = srvNow();
+  const ready = await waitSample(samples, (s) => s.phones[REF_PI]?.src === "data" && s.phones[REF_PI].phase !== "loading", 3000, tLoaded);
+  (blind[REF_PI] ||= []).push([tStart, ready?.srv ?? srvNow()]);
+  if (!ready) { res.problems.push("telefon nie odzyskał fazy w 3 s po reloadzie"); modeRes.refresh.push(res); return res; }
+  res.readyMs = Math.round(ready.srv - tStart);
+  await waitSrv(ready.srv + 2000);
+  await sleep(300);   // ostatnia próbka okna musi trafić do tablicy
+  const cmp = compareWindow(samples, REF_PI, ready.srv, ready.srv + 2000, { lock });
+  res.maxDiff = cmp.maxDiff; res.compared = cmp.compared;
+  res.problems.push(...cmp.mismatches);
+  if (!cmp.compared) res.problems.push("brak porównywalnych próbek w 2 s po reloadzie");
+  modeRes.refresh.push(res);
+  return res;
+}
+
+// SC2: reload w każdej fazie: intro (pyt.1), quiz przed odpowiedzią (pyt.1), countdown (pyt.2),
+// quiz po odpowiedzi (pyt.2), reveal (pyt.3). Moment losowy w fazie, ≥ 1,5 s przed jej końcem.
+async function refreshScenario(ctx) {
+  const P = state.plan;
+  const phaseOf = (it) => (it.lead >= 10 ? "intro" : "countdown");
+  const at = async (lo, hi, label) => {
+    const now = srvNow();
+    const from = Math.max(lo, now + 300);
+    if (from > hi) { modeRes.refresh.push({ label, problems: [`okno fazy minęło przed reloadem (spóźnienie ${Math.round(from - hi)} ms)`] }); return false; }
+    await waitSrv(rnd(from, hi));
+    return true;
+  };
+  // 1. intro/zapowiedź pytania 1
+  if (await at(anchorAt(srvNow()).anchorMs + 500, planAt(P[0], "o") - 1500, `${phaseOf(P[0])} pyt.1`)) await reloadAndCompare(ctx, `${phaseOf(P[0])} pyt.1`);
+  // 2. quiz pytania 1, zanim telefon odpowiedział
+  if (await at(planAt(P[0], "o") + 500, planAt(P[0], "o") + Math.max(1000, (P[0].tpq - 8) * 1000), "quiz pyt.1 przed odpowiedzią")) {
+    await reloadAndCompare(ctx, "quiz pyt.1 przed odpowiedzią");
+  }
+  ctx.noAuto.delete(`${REF_PI}:1`);   // teraz pętla może odpowiedzieć na pytanie 1
+  // 3. odliczanie przed pytaniem 2
+  if (await at(planAt(P[0], "r") + 300, planAt(P[1], "o") - 1500, `${phaseOf(P[1])} pyt.2`)) await reloadAndCompare(ctx, `${phaseOf(P[1])} pyt.2`);
+  // 4. quiz pytania 2 po odpowiedzi: klik, czekamy na blokadę, reload — wybór ma przetrwać
+  const q2 = await waitSample(ctx.samples, (s) => s.phones[REF_PI]?.phase === "quiz" && s.phones[REF_PI]?.q === 2, 15000);
+  if (!q2) modeRes.refresh.push({ label: "quiz pyt.2 po odpowiedzi", problems: ["telefon nie wszedł w pytanie 2"] });
+  else {
+    const k = Math.floor(Math.random() * 4);
+    await ctx.pages[REF_PI].page.locator("button.ans-btn").nth(k).click({ timeout: 3000 }).catch(() => {});
+    const lockedS = await waitSample(ctx.samples, (s) => s.phones[REF_PI]?.locked && s.phones[REF_PI]?.q === 2, 3000);
+    const choice = lockedS?.phones[REF_PI]?.choice ?? null;
+    if (!lockedS || choice !== "ABCD"[k]) modeRes.refresh.push({ label: "quiz pyt.2 po odpowiedzi", problems: [`odpowiedź ${"ABCD"[k]} nie zablokowała się przed reloadem (wybór ${choice})`] });
+    else if (await at(srvNow() + 300, planAt(P[1], "c") - 5500, "quiz pyt.2 po odpowiedzi")) {
+      await reloadAndCompare(ctx, "quiz pyt.2 po odpowiedzi", { q: 2, choice });
+    }
+  }
+  // 5. odsłonięcie pytania 3
+  if (await at(planAt(P[2], "c") + 300, planAt(P[2], "r") - 1500, "reveal pyt.3")) await reloadAndCompare(ctx, "reveal pyt.3");
+}
+
+// SC3: telefon OFF_PI offline 10 s w środku pytania 2, odpowiedź klikana w trakcie offline.
+async function offlineScenario(ctx) {
+  const it = state.plan[1];
+  const page = ctx.pages[OFF_PI].page, bctx = ctx.pages[OFF_PI].ctx;
+  const res = { tpq: it.tpq, problems: [], choice: null, lockedOffline: false, variant: null, syncMs: null, maxDiffOffline: 0, maxDiffAfter: 0, dbChosen: undefined };
+  modeRes.offline = res;
+  await waitSrv(planAt(it, "o") + 5000);
+  const tOff = srvNow();
+  await bctx.setOffline(true);
+  console.log(`   📴 telefon ${OFF_PI + 1} offline (pytanie 2, ${((tOff - planAt(it, "o")) / 1000).toFixed(1)} s po otwarciu)`);
+  await sleep(2000);
+  const k = Math.floor(Math.random() * 4);
+  res.choice = "ABCD"[k];
+  await page.locator("button.ans-btn").nth(k).click({ timeout: 3000 }).catch((e) => res.problems.push("klik offline: " + e.message.slice(0, 60)));
+  const lk = await waitSample(ctx.samples, (s) => s.phones[OFF_PI]?.locked && s.phones[OFF_PI]?.q === 2, 2000);
+  res.lockedOffline = !!lk && lk.phones[OFF_PI].choice === res.choice;
+  await waitSrv(tOff + 10000);
+  const tOn = srvNow();
+  await bctx.setOffline(false);
+  const closesGate = planAt(it, "c") + 1500;
+  res.variant = tOn < closesGate ? "powrót przed terminem → zapis w bazie" : "powrót po terminie → komunikat o niezapisaniu";
+  console.log(`   📶 telefon ${OFF_PI + 1} online (${((closesGate - tOn) / 1000).toFixed(1)} s przed bramką pytania)`);
+  await waitSrv(tOn + 4000);
+  await sleep(300);
+  // przez cały czas offline: faza/pytanie/licznik zgodne z telefonem 1 (projekcja lokalna)
+  const off = compareWindow(ctx.samples, OFF_PI, tOff + 300, tOn);
+  res.maxDiffOffline = off.maxDiff;
+  if (!off.compared) res.problems.push("offline: brak porównywalnych próbek");
+  res.problems.push(...off.mismatches.map((m) => "offline " + m));
+  // ≤ 1 s po powrocie: pełna zgodność (faza, pytanie, licznik, zablokowany wybór)
+  const lock = { q: 2, choice: res.choice };
+  const aft = compareWindow(ctx.samples, OFF_PI, tOn + 1000, tOn + 4000, { lock });
+  res.maxDiffAfter = aft.maxDiff;
+  res.problems.push(...aft.mismatches.map((m) => "po powrocie " + m));
+  const firstSync = ctx.samples.find((s) => s.srv >= tOn && compareWindow([s], OFF_PI, s.srv, s.srv, { lock }).mismatches.length === 0);
+  res.syncMs = firstSync ? Math.max(0, Math.round(firstSync.srv - tOn)) : null;
+  // odpowiedź z offline
+  if (tOn < closesGate) {
+    const until = Date.now() + 8000;
+    let row = null;
+    while (Date.now() < until) {
+      const { data } = await svc.from("answers").select("chosen").eq("session_id", state.sessionId)
+        .eq("participant_code", state.codes[OFF_PI].code).eq("question_id", it.id).maybeSingle();
+      if (data) { row = data; break; }
+      await sleep(500);
+    }
+    res.dbChosen = row ? row.chosen : null;
+    if (!row) res.problems.push("odpowiedź z czasu offline nie trafiła do bazy");
+    else if (row.chosen !== k) res.problems.push(`w bazie zapisano ${row.chosen} zamiast ${k}`);
+  } else {
+    const failedShown = ctx.samples.some((s) => s.srv >= tOn && s.phones[OFF_PI]?.saveFailed);
+    if (!failedShown) res.problems.push("powrót po terminie, a telefon nie pokazał „Nie udało się zapisać odpowiedzi”");
+  }
+}
+
 // Raport trybów REFRESH / OFFLINE (dopisuje FAIL-e do `fail`).
-function reportModes(fail) { void fail; }
+function reportModes(fail) {
+  for (const e of modeRes.errors) fail.push(`scenariusz ${e}`);
+  if (REFRESH) {
+    const rs = modeRes.refresh;
+    const diffs = rs.filter((r) => r.maxDiff != null).map((r) => r.maxDiff);
+    const maxD = diffs.length ? Math.max(...diffs) : null;
+    console.log(`\n🔄 REFRESH (telefon ${REF_PI + 1} vs telefon 1) — różnica licznika po refreshu: maks. ${maxD ?? "—"}s`);
+    for (const r of rs) {
+      const ok = !r.problems.length;
+      console.log(`   ${ok ? "✅" : "❌"} ${r.label.padEnd(28)} powrót ${r.readyMs != null ? r.readyMs + " ms" : "—"}  różnica licznika po refreshu ${r.maxDiff ?? "—"}s  (${r.compared ?? 0} próbek)`);
+      for (const p of r.problems.slice(0, 4)) console.log(`      • ${p}`);
+      if (!ok) fail.push(`REFRESH ${r.label}: ${r.problems[0]}`);
+    }
+    const want = 5;
+    if (rs.length < want) fail.push(`REFRESH: wykonano ${rs.length}/${want} reloadów`);
+    if (maxD != null && maxD > 1) fail.push(`REFRESH: różnica licznika po refreshu ${maxD}s > 1s`);
+  }
+  if (OFFLINE) {
+    const o = modeRes.offline;
+    console.log(`\n📴 OFFLINE (telefon ${OFF_PI + 1}, 10 s w pytaniu 2, tpq ${o?.tpq ?? "?"}s)`);
+    if (!o) { fail.push("OFFLINE: scenariusz się nie wykonał"); return; }
+    console.log(`   wariant: ${o.variant}`);
+    console.log(`   licznik w trakcie offline: maks. różnica ${o.maxDiffOffline}s  ·  po powrocie: ${o.maxDiffAfter}s  ·  pełna zgodność ${o.syncMs != null ? o.syncMs + " ms" : "—"} po powrocie`);
+    console.log(`   odpowiedź offline ${o.choice}: blokada w UI ${o.lockedOffline ? "TAK" : "NIE"}, w bazie ${o.dbChosen === undefined ? "—" : o.dbChosen === null ? "BRAK" : "ABCD"[o.dbChosen]}`);
+    if (!o.lockedOffline) o.problems.push("wybór offline nie zablokował się w UI");
+    if (o.syncMs == null || o.syncMs > 1000) o.problems.push(`pełna zgodność po powrocie ${o.syncMs ?? "—"} ms (limit 1000)`);
+    for (const p of o.problems.slice(0, 6)) console.log(`   ❌ ${p}`);
+    if (o.problems.length) fail.push(`OFFLINE: ${o.problems[0]}`);
+    else console.log("   ✅ zgodność offline i po powrocie, odpowiedź z offline zapisana");
+  }
+}
 
 // ─── RAPORT ──────────────────────────────────────────────────────────────────
 function report(samples, tpq, t0) {
@@ -793,8 +1021,11 @@ function report(samples, tpq, t0) {
       ["poczekalnia", seen.has("lobby")],
       ["zapowiedzi modułów", intros >= 5, `${intros} (oczekiwane ≥5 dla 5 modułów)`],
       ["pytania", seen.has("quiz")],
-      ["pauza widoczna u uczestnika", !!flow.pauseSeen],
-      ["wznowienie: ta sama faza/pytanie/licznik ±1 s", pauseOk, pauseInfo.join("; ")],
+      // Z ADMIN_EXIT nie ma kto pauzować — etapy pauzy nie są wtedy oceniane.
+      ...(ADMIN_EXIT ? [] : [
+        ["pauza widoczna u uczestnika", !!flow.pauseSeen],
+        ["wznowienie: ta sama faza/pytanie/licznik ±1 s", pauseOk, pauseInfo.join("; ")],
+      ]),
       ["ekran oczekiwania na wyniki / wynik", seen.has("finished") || seen.has("results")],
       ["wyniki ustawione przez zamiatacz", !!firstRes],
       ["ekran wyniku uczestnika", seen.has("results")],

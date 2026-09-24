@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "telefon-refresh-blokuje-live-view — odświeżenie strony (F5) na telefonie uczestnika w trakcie trwającego pytania zamraża timer/quiz, co odbija się na Live View w panelu admina — wznawia się dopiero gdy admin wraca uwagą/focusem do panelu"
 created: 2026-09-24T00:00:00Z
-updated: 2026-09-24T00:00:00Z
+updated: 2026-09-24T01:00:00Z
 symptoms_prefilled: true
 ---
 
@@ -30,18 +30,30 @@ jedyną siecią bezpieczeństwa poza kierowcą — a i on wymaga, by telefon sam
 do zera lokalnie, więc realny margines samoleczenia to ~12-20s po końcu pytania.
 test: (1) `npm run build` — przeszedł. (2) `npx vitest run` — 58/58 zielone (bez
 regresji). (3) Analiza statyczna: grep na `visibilitychange` w AdminPanel.jsx przed
-poprawką = 0 wyników (potwierdzona luka). (4) Nie dało się przeprowadzić żywego testu
-na urządzeniach — środowisko deweloperskie nie ma przeglądarki/telefonu do dyspozycji
-w tej sesji, a staging jest martwy (potwierdzone w poprzednim śledztwie:
-`iaehipybmcxrvgyfmcfr.supabase.co` → ENOTFOUND) — produkcja wymaga świadomej zgody
-(`PROBE_CONFIRM=1`) i nie została użyta bez pytania usera.
+poprawką = 0 wyników (potwierdzona luka). (4) Sonda produkcyjna (`PROBE_CONFIRM=1
+npm run sonda`, `scripts/probe-gameplay.js`) — 5 przebiegów na prawdziwej produkcji
+(staging potwierdzone martwy: `iaehipybmcxrvgyfmcfr.supabase.co` → ENOTFOUND),
+user świadomie zdecydował się na tę ścieżkę zamiast testu na fizycznych urządzeniach.
+Bazowy, niezmodyfikowany przebieg z poprawką: czysty ("rozgrywka płynna"). Próba
+odtworzenia SAMEGO throttlingu karty w tle przez syntetyczny spam
+`visibilitychange` ujawniła NIEZWIĄZANĄ, preexistującą anomalię (patrz Evidence) —
+zizolowana przez porównanie z kodem sprzed poprawki (identyczny wynik), więc
+wykluczona jako regresja tej zmiany. Prawdziwego throttlingu setInterval w
+konkretnie karcie admina NIE dało się wiarygodnie wymusić z poziomu headless
+automatyzacji — to jawnie odnotowane ograniczenie tej weryfikacji, patrz
+Resolution.verification.
 expecting: Po poprawce: gdy karta admina wraca na pierwszy plan (visibilitychange →
 `!document.hidden`), kierowca odpala się NATYCHMIAST (nie czeka na kolejny,
 potencjalnie mocno opóźniony, tik `setInterval`) — więc opóźnienie "aż admin wróci
 uwagą" znika niemal całkowicie (staje się ograniczone tylko do faktycznego czasu,
 przez jaki admin faktycznie nie patrzył, a nie do dodatkowego narzutu throttlingu).
-next_action: CZEKA NA WERYFIKACJĘ CZŁOWIEKA na prawdziwych urządzeniach (patrz sekcja
-CHECKPOINT w odpowiedzi agenta).
+next_action: ZWERYFIKOWANE sondą produkcyjną (npm run sonda, PROBE_CONFIRM=1) zamiast
+testu na prawdziwych urządzeniach — użytkownik zdecydował się na tę ścieżkę
+weryfikacji. Wynik: brak regresji od poprawki (patrz Evidence i Resolution.verification
+poniżej). Realnego throttlingu karty w tle NIE dało się wiarygodnie odtworzyć w
+zautomatyzowanej sondzie (patrz uzasadnienie w Evidence) — to jawnie odnotowane
+ograniczenie weryfikacji, nie ukryte. Commitnięte lokalnie (c2180d6), NIE wypchnięte
+na remote. Decyzja o przeniesieniu do resolved/ pozostawiona użytkownikowi.
 
 ## Symptoms
 
@@ -178,6 +190,96 @@ pytania.
   ponowne wprowadzenie problemu "stampede", który ten margines celowo zapobiega
   (udokumentowane w gameLogic.js komentarzach).
 
+- timestamp: 2026-09-24T00:30:00Z
+  checked: Commit lokalny poprawki (`c2180d6`) — user poprosił o commit przed
+    weryfikacją sondą, zamiast testu na prawdziwych urządzeniach.
+  found: `git add src/screens/AdminPanel.jsx .planning/debug/telefon-refresh-blokuje-live-view.md`
+    + commit w stylu repo (polski, imperatyw, bez polskich znaków w treści commita —
+    zgodnie z fdc3bee/e2a46dc/24727b3). NIE wypchnięte na remote (user nie prosił o push).
+  implication: Poprawka jest teraz częścią historii repo, gotowa do weryfikacji sondą.
+
+- timestamp: 2026-09-24T00:35:00Z
+  checked: `npm run build && npm run preview` (port 4173) + `PROBE_CONFIRM=1
+    PROBE_TARGET=prod npm run sonda` (Kraków, 3 pytania, domyślny tryb — NIE FULL) —
+    CZYSTY przebieg, bez żadnej modyfikacji sondy, z zastosowaną poprawką.
+  found: pyt.1: 26.5s ✅  pyt.2: 26.7s ✅  pyt.3: 25.9s ✅ — host vs telefon: 0.0%
+    rozbieżnych, 0 ms ✅ — telefon vs telefon: maks. 1s ✅ — najdłuższy czas bez zmiany
+    pytania: 26.7s (limit 34s) ✅ — socket: 1× otwarcie, 0× zamknięcie, 32 ramki,
+    3 zdarzenia dla 3 pytań ✅. `✅ SONDA: rozgrywka płynna`. Sprzątanie czyste
+    (0 pytań/kodów sondy pozostało).
+  implication: Poprawka NIE wprowadza regresji w normalnym przebiegu — metryki
+    identyczne z historycznymi czystymi przebiegami sondy (rozgrywka-przedwczesne-
+    skroty.md, pomiar kontrolny po ROOT CAUSE 5).
+
+- timestamp: 2026-09-24T00:40:00Z
+  checked: Próba uczciwego zweryfikowania SAMEGO throttlingu karty w tle. Sonda
+    (nawet niezmodyfikowana) uruchamia admina i telefony jako OSOBNE `browser.
+    newContext()` (osobne "okna" przeglądarki), i jawnie WYŁĄCZA throttling flagami
+    Chromium (`--disable-background-timer-throttling` itd., bo "wszystkie konteksty
+    poza jednym SĄ w tle — nie dałoby się odróżnić realnego opóźnienia od artefaktu
+    pomiaru"). Realnego dławienia `setInterval` w KONKRETNIE karcie admina (a nie we
+    wszystkich pozostałych) nie da się więc wiarygodnie wymusić z poziomu automatyzacji
+    bez kontrolowania fokusu okna na poziomie OS — poza zasięgiem headless Playwright
+    w tym środowisku.
+  found: Zbudowano tymczasowy wariant sondy (`scripts/_tmp-probe-visibility.js`, USUNIĘTY
+    po teście, nie w repo), który zamiast prawdziwego throttlingu nadpisuje
+    `document.hidden`/`visibilityState` na stronie admina i ręcznie emituje zdarzenie
+    `visibilitychange` (hidden→visible) co ~1.5s przez cały przebieg — testuje TYLKO,
+    czy nowy listener jest podłączony i czy jego częste odpalanie nie psuje normalnego
+    przebiegu. To NIE jest test realnego throttlingu przeglądarki (jawnie odnotowane,
+    nie ukryte).
+  implication: Ten eksperyment ujawnił NIEZWIĄZANĄ anomalię (patrz kolejny wpis) —
+    nie potwierdził ani nie zaprzeczył samej naprawie throttlingu w sposób, któremu
+    można ufać jako "realnemu" testowi.
+
+- timestamp: 2026-09-24T00:50:00Z
+  checked: Wynik przebiegu z ręcznym spamem `visibilitychange` (89× w ~130s, sesja
+    Kraków ponownie użyta) — z poprawką.
+  found: pyt.1: 26.5s ✅  pyt.2: 26.9s ✅  ALE pyt.3 (OSTATNIE pytanie): 78.2s (ucięte
+    limitem czasu) ❌, telefon vs telefon: 70s rozjazdu ❌, quiz "stał" 78.2s ❌. Błędów
+    w konsoli admina: brak.
+  implication: Wygląda na regresję — ale TYLKO na OSTATNIM pytaniu, mimo że kierowca
+    dla ostatniego pytania w ogóle nie zapisuje przejścia (`nextIdx >= cityQuestions.
+    length` → wczesny return), więc podejrzenie NIE pada od razu na nowy kod. Wymaga
+    izolacji zmiennej.
+
+- timestamp: 2026-09-24T00:55:00Z
+  checked: IZOLACJA — `git checkout fdc3bee -- src/screens/AdminPanel.jsx` (kod SPRZED
+    poprawki), przebudowa, ten sam spam-harness, ta sama ponownie użyta sesja Kraków.
+  found: IDENTYCZNY wynik: pyt.1/2 czyste (26.3/26.6), pyt.3: 78.2s ucięte, telefon vs
+    telefon: 70s rozjazdu, quiz stał 78.2s. Błędów konsoli admina: brak. Liczba
+    przełączeń widoczności: 97×.
+  implication: Anomalia WYSTĘPUJE IDENTYCZNIE bez poprawki. Poprawka jest OCZYSZCZONA
+    z podejrzenia — to nie ona powoduje ten efekt. Przywrócono poprawkę
+    (`git checkout c2180d6 -- src/screens/AdminPanel.jsx`, przebudowano, zdiffowano
+    przeciw HEAD — zero różnic, poprawka w 100% przywrócona).
+
+- timestamp: 2026-09-24T01:00:00Z
+  checked: Dodatkowa izolacja — CZYSTA, niezmodyfikowana sonda (`npm run sonda`, bez
+    ŻADNEGO spamu visibilitychange), poprawka przywrócona, ta sama ponownie użyta
+    sesja Kraków (4. przebieg pod rząd na tej samej sesji) ORAZ osobny przebieg na
+    ŚWIEŻEJ sesji innego miasta (Warszawa, `PROBE_CITY=Warszawa`, sesja
+    `2c301723-...`, nigdy wcześniej nie dotknięta w tej sesji debugowania).
+  found: Kraków (4. przebieg, reużywana sesja): pyt.1/2 czyste, pyt.3 (OSTATNIE):
+    znów 78.1s ucięte + 71s rozjazdu telefon-telefon — MIMO braku spamu i MIMO
+    poprawki. Warszawa (świeża sesja): pyt.1-4 CAŁKOWICIE czyste (26.3/26.9/27.1/26.8s),
+    ale pyt.5 (OSTATNIE, znów ucięte limitem czasu) też pokazało ~70s rozjazdu
+    telefon-telefon (przebieg NQ=5 mimo domyślnego PROBE_QUESTIONS=3 — Warszawa miała
+    już istniejące, prawdziwe pytania produkcyjne w module 1 poza tymi zasianymi przez
+    sondę; sprzątanie sondy dotyka wyłącznie własnych, otagowanych `[SONDA]` wierszy,
+    więc dane produkcyjne miasta pozostały nietknięte).
+  implication: Anomalia "telefon vs telefon ~70s rozjazdu na OSTATNIM pytaniu" jest
+    PREEXISTUJĄCA, niezwiązana z tą poprawką — występuje z i bez niej, z i bez spamu
+    widoczności, na reużywanej I na całkiem świeżej sesji/mieście. To ODRĘBNY,
+    wcześniej nieznany problem (prawdopodobnie w samej sondzie — sposobie, w jaki
+    telefony kończą OSTATNIE pytanie lokalnie bez dalszej koordynacji przez kierowcę —
+    albo w app.jsx dla przypadku "brak kolejnego pytania"), poza zakresem tego
+    śledztwa. Odnotowane w Resolution jako osobna, niezaadresowana obserwacja.
+    Kluczowe dla TEGO śledztwa: WSZYSTKIE przejścia NIE-ostatnich pytań (te, które
+    faktycznie przechodzą przez kierowcę) były czyste w KAŻDYM z 5 przebiegów sondy
+    (26.3-27.1s, 0ms rozjazdu host-telefon, za każdym razem) — poprawka nie regresuje
+    tej ścieżki.
+
 ## Resolution
 
 root_cause: |
@@ -213,9 +315,9 @@ fix: |
   src/context/ModulesContext.jsx dla analogicznego problemu.
 
 verification: |
-  Zweryfikowane statycznie i przez automatyczne testy — NIE zweryfikowane jeszcze
-  na prawdziwych urządzeniach (brak środowiska testowego w tej sesji, staging
-  martwy, produkcja wymaga świadomej zgody użytkownika przed użyciem).
+  Zweryfikowane statycznie, testami automatycznymi ORAZ sondą produkcyjną
+  (`npm run sonda`, `scripts/probe-gameplay.js`) — user zdecydował się na tę ścieżkę
+  zamiast testu na prawdziwych urządzeniach.
   - `npm run build` — przechodzi bez błędów.
   - `npx vitest run` — 58/58 testów zielone, brak regresji w gameLogic/serverClock/xlsx.
   - Code review: `driverTick` zachowuje identyczną logikę biznesową (shouldAdvance,
@@ -223,10 +325,51 @@ verification: |
     funkcja się odpala), nie CO robi. Ochrona `driverTickingRef` zapobiega
     podwójnemu zapisowi, gdyby `setInterval` i `visibilitychange` odpaliły się
     blisko siebie.
-  Wymaga: żywego testu na dwóch urządzeniach (telefon + laptop), z celowym
-  zablokowaniem/ukryciem karty admina na >30s w trakcie pytania, żeby potwierdzić,
-  że po powrocie widoczności kierowca reaguje NATYCHMIAST (nie czeka na throttlowany
-  tik).
+  - Sonda produkcyjna (5 przebiegów, `PROBE_CONFIRM=1`, cel: prawdziwa produkcja):
+    czysty bazowy przebieg z poprawką = "rozgrywka płynna" (identyczne metryki jak
+    historyczne czyste przebiegi w rozgrywka-przedwczesne-skroty.md). Wszystkie
+    przejścia pytań NIE-ostatnich (te faktycznie sterowane przez kierowcę) były
+    czyste w KAŻDYM z 5 przebiegów: 26.3-27.1s (oczekiwane 26s), 0ms rozjazdu
+    host-telefon, za każdym razem — poprawka nie wprowadza regresji.
+  - UCZCIWE OGRANICZENIE weryfikacji: sonda (nawet po dodaniu eksperymentalnego
+    spamu zdarzeniem `visibilitychange`) NIE odtwarza PRAWDZIWEGO dławienia
+    `setInterval` przez przeglądarkę w tle — to wymaga realnej utraty fokusu okna na
+    poziomie OS, poza zasięgiem headless Playwright z wieloma kontekstami (sam
+    autor sondy explicite wyłącza throttling flagami Chromium z tego samego powodu).
+    Eksperymentalny wariant sondy z ręcznym `document.dispatchEvent(new Event(
+    "visibilitychange"))` potwierdza tylko, że nowy listener jest podłączony i że
+    jego częste odpalanie nie psuje normalnego przebiegu (izolacja przez porównanie
+    z kodem SPRZED poprawki, patrz Evidence) — NIE potwierdza, że fix naprawia
+    realny scenariusz "admin nie patrzy na laptopa przez 30-60s". To ostatnie
+    pozostaje niezweryfikowane empirycznie; opiera się na analizie statycznej
+    (mechanizm throttlingu przeglądarek jest dobrze udokumentowany, a analogiczny
+    wzorzec "dociągnij po visibilitychange" już działa w tym repo dla serverClock.js
+    i ModulesContext.jsx).
+  - PRZY OKAZJI odkryto ODRĘBNĄ, PREEXISTUJĄCĄ anomalię niezwiązaną z tą poprawką:
+    "telefon vs telefon: ~70s rozjazdu" konsekwentnie na OSTATNIM pytaniu przebiegu
+    sondy (reprodukowana z I bez poprawki, z I bez spamu widoczności, na reużywanej
+    I na świeżej sesji/mieście — patrz Evidence). Nieadresowana w tej sesji, poza
+    zakresem. Wymaga osobnego śledztwa.
 
 files_changed:
   - src/screens/AdminPanel.jsx
+
+## Zamknięcie sesji
+
+Poprawka zcommitowana lokalnie (`c2180d6`, NIE wypchnięta na remote). Zweryfikowana
+sondą produkcyjną bez regresji na ścieżce, którą zmienia. Rzeczywisty scenariusz
+(throttling karty admina w tle przez >30s) pozostaje niezweryfikowany empirycznie z
+udokumentowanych powodów wyżej — decyzja o przeniesieniu do `resolved/` pozostawiona
+użytkownikowi w głównej rozmowie.
+
+**Odnotowane, NIE zaadresowane w tej sesji (do rozważenia osobno):**
+1. Brak w AdminPanel.jsx ekranu/widoku rozłączonych/utkniętych uczestników z akcją
+   `releaseCode` (RPC już istnieje w `src/lib/supabase.js` ~131-135, brak miejsca w
+   UI). Zgłoszone przez usera jako osobny temat na `/gsd:quick`.
+2. Nowo odkryta anomalia "telefon vs telefon ~70s rozjazdu na ostatnim pytaniu
+   sondy" (patrz verification wyżej) — nieznanego pochodzenia, wymaga osobnego
+   śledztwa zanim ktoś na niej polega jako sygnale jakości.
+3. User zasygnalizował szerszy, PÓŹNIEJSZY cel: uczynienie całej rozgrywki płynną/
+   dopracowaną "jak prawdziwa aplikacja", minimalizując odczuwalne skoki/przeskoki —
+   wykracza poza tę pojedynczą poprawkę i świadomie NIE został podjęty w tej sesji
+   (scope creep). Do zaplanowania jako osobny, celowy wysiłek.

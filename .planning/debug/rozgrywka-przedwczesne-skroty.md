@@ -188,3 +188,52 @@ Pomiar po naprawie (`npm run sonda`, build produkcyjny, produkcja):
 
 Sonda dodana do repo jako `scripts/probe-gameplay.js` + `npm run sonda`, z progami
 i kodem wyjścia — nadaje się na bramkę przed wydarzeniem. Opis w TESTING.md.
+
+---
+
+## ROOT CAUSE 5 — ciche jazdy na zaszytych czasach modułów (24.09)
+
+Znalezione sondą pełnej ścieżki ze śladem. Na TYM SAMYM pytaniu:
+
+```
+195.3s   telefon1: quiz q=4 t=70   |   telefon2: quiz q=4 t=15
+```
+
+Czas modułu był ustawiony na 20 s. Liczba 70 pochodzi z fallbacku w
+`data/questions.js` (moduł 4 = 75 s). Telefon 1 przez **cały test** używał
+wartości awaryjnych 90/30/60/75/45 zamiast tych z bazy.
+
+`ModulesProvider` robił JEDNĄ próbę pobrania i przy niepowodzeniu milcząco
+zostawał na fallbacku — bez ponowienia i bez sygnału. `getModules()` gubił
+`error`, więc awaria sieci wyglądała identycznie jak pusta tabela.
+
+**Skutek dla wydarzenia:** uczestnik, któremu ten jeden fetch się nie uda, ma inny
+czas na odpowiedź niż reszta sali. Jego wynik przestaje być porównywalny i nikt
+tego nie widzi. To właściwe wyjaśnienie zgłoszenia „czasy rozjeżdżają się na
+telefonie i u hosta" — host był poprawny, rozjeżdżał się telefon.
+
+**Dlaczego nie wyszło wcześniej:** przy pytaniach innych niż ostatnie przejście
+wymusza admin, więc pytanie zmienia się o czasie i błąd maskuje się sam. Widać go
+tylko na WYŚWIETLANYM liczniku i na ostatnim pytaniu, gdzie nie ma już kolejnego
+przejścia — stąd „ostatnie pytanie widoczne 50,9 s zamiast 26 s" (45 s fallbacku
+modułu 5 + 6 s odsłonięcia). Wcześniejsze pomiary mierzyły widoczność pytania,
+nie wyświetlaną liczbę; metryka telefon-vs-telefon to złapała (71 s, potem 55 s),
+ale dwukrotnie zbyłem to jako artefakt selektora. Za pierwszym razem nim było,
+za drugim już nie.
+
+### Pomiar kontrolny po naprawie (pełna ścieżka, 5 modułów)
+
+```
+⏱️  pyt.1: 26.1s  pyt.2: 26.4s  pyt.3: 27.2s  pyt.4: 26.7s  pyt.5: 25.7s   ✅
+🖥️  Host vs telefon: 0.0% rozbieżnych, 0 ms                                 ✅
+📱 Telefon vs telefon: maks. różnica timera 0s   (było 55s)                 ✅
+🧊 Bez zmiany pytania: 26.7s (limit 34s)         (było 50.9s)               ✅
+🔌 Socket: 1× otwarcie, 0× zamknięcie, 76 ramek                             ✅
+🗺️  Pełna ścieżka: 8/8 etapów                                               ✅
+✅ SONDA: rozgrywka płynna
+```
+
+## Status: ROZWIĄZANE — pełna ścieżka przechodzi bez zastrzeżeń
+
+Niezweryfikowane nadal: skala (pomiar na 2 telefonach, nie 500), realne warunki
+sieciowe w auli, plan Pro (Free = 200 połączeń).

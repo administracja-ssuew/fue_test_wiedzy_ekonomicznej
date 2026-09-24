@@ -1,5 +1,6 @@
-
+import { useRef } from "react";
 import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
+import { serverNow } from "../lib/serverClock.js";
 import useAntiCheat from "../hooks/useAntiCheat.js";
 
 const W = {
@@ -36,7 +37,8 @@ const W = {
 
 // Ekran pytania — czysto prezentacyjny (Faza 6). Faza, sekundy i czas pytania (item.tpq)
 // przychodzą z projekcji zamrożonego planu (useParticipantGame); brak własnych timerów.
-// opensAt/closesAt/revealUntil są w sygnaturze dla spójności z projekcją (06-07: pasek ciągły).
+// Pasek i pierścień czasu to animacje CSS zakotwiczone w terminie otwarcia (opensAt) —
+// animuje je przeglądarka, niezależnie od zadławienia wątku JS; cyfry liczy ticker rAF hooka.
 export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt, revealUntil, picked, answerStatus, correctAns,
   qNumGlobal, totalQuestions, qNumInModule, moduleCount, correctTotal, isDesktop, isPractice, participantCode, sessionId, onPick }) {
   // All hooks must run unconditionally (Rules of Hooks) — guard comes after.
@@ -45,6 +47,17 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
     participantCode,
     sessionId,
   });
+
+  // Ujemny animation-delay liczony RAZ na (pytanie, otwarcie). Gdyby liczyć go w każdym
+  // renderze (co tik sekund), przeglądarka zaktualizowałaby opóźnienie działającej
+  // animacji przy niezmienionym czasie startu — pasek przeskakiwałby do przodu.
+  // Nowy opensAt (skip/repeat/wznowienie) = nowy klucz = restart animacji.
+  const animKey = item ? `${item.id}-${opensAt}` : "";
+  const animRef = useRef({ key: null, delay: 0 });
+  if (animRef.current.key !== animKey) {
+    animRef.current = { key: animKey, delay: opensAt != null ? -(serverNow() - opensAt) / 1000 : 0 };
+  }
+  const animDelay = animRef.current.delay;
 
   if (!item || !item.opts || !mod) return null;
 
@@ -81,12 +94,32 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
         <div style={{ position: "relative", width: 54, height: 54, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <svg width="54" height="54" style={{ position: "absolute", transform: "rotate(-90deg)" }}>
             <circle cx="27" cy="27" r={r} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="4" />
-            <circle cx="27" cy="27" r={r} fill="none" stroke={tColor} strokeWidth="4" strokeLinecap="round"
-              strokeDasharray={circ} strokeDashoffset={circ * (1 - timerPct)}
-              style={{ transition: "stroke-dashoffset .95s linear, stroke .4s" }} />
+            {/* Pierścień = animacja CSS fueRing zakotwiczona w opensAt. Inline strokeDashoffset
+                to tylko skokowy zapas dla prefers-reduced-motion (animacja ma pierwszeństwo). */}
+            <circle key={animKey} className="fue-ring" cx="27" cy="27" r={r} fill="none" stroke={tColor} strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={circ}
+              style={{
+                "--fue-circ": `${circ}px`, strokeDashoffset: circ * (1 - timerPct),
+                animationName: "fueRing", animationTimingFunction: "linear", animationFillMode: "forwards",
+                animationDuration: `${tpq}s`, animationDelay: `${animDelay}s`,
+                animationPlayState: phase === "quiz" ? "running" : "paused",
+                transition: "stroke .4s",
+              }} />
           </svg>
           <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: tColor, transition: "color .4s" }}>{timer}</span>
         </div>
+      </div>
+
+      {/* Pasek czasu — animacja CSS fueDrain (transform: scaleX) zakotwiczona w opensAt:
+          animuje kompozytor, więc jest płynna nawet przy zadławionym wątku JS. Inline
+          transform to skokowy zapas dla prefers-reduced-motion (animacja ma pierwszeństwo). */}
+      <div style={{ height: 6, background: "rgba(255,255,255,.07)", overflow: "hidden", flexShrink: 0 }}>
+        <div key={animKey} className="fue-drain" style={{
+          height: "100%", transformOrigin: "left", background: `linear-gradient(90deg,${mod.color},#F5C518)`,
+          animationName: "fueDrain", animationTimingFunction: "linear", animationFillMode: "forwards",
+          animationDuration: `${tpq}s`, animationDelay: `${animDelay}s`,
+          animationPlayState: phase === "quiz" ? "running" : "paused",
+          transform: phase === "reveal" ? "scaleX(0)" : `scaleX(${timerPct})` }} />
       </div>
 
       {/* Global progress */}
@@ -120,9 +153,18 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
             else if (!sel && ok) { bg = "#0B9E6B"; opacity = .85; }
             else                 opacity = .3;
           }
+          // Zapis w toku → wybrana odpowiedź pulsuje, aż serwer potwierdzi (saved/failed).
+          const pendingPulse = sel && !answered && answerStatus === "pending";
           return (
-            <button key={i} onClick={() => onPick(i)} className="ans-btn"
-              style={{ background: bg, border, borderRadius: 14, padding: "16px 12px", color: "#fff", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, cursor: (answered || picked !== null) ? "default" : "pointer", opacity, minHeight: 100, textAlign: "left", boxShadow: "0 4px 18px rgba(0,0,0,.35)", position: "relative", overflow: "hidden" }}
+            <button key={i} className="ans-btn"
+              onClick={() => {
+                if (answered || picked !== null) return;
+                // Optymistyczny lock-in: hook ustawia `picked` synchronicznie (ta sama klatka),
+                // krótka wibracja potwierdza dotyk tam, gdzie działa (Android; iOS — brak, bez szkody).
+                try { navigator.vibrate?.(15); } catch (_) { /* nieistotne */ }
+                onPick(i);
+              }}
+              style={{ background: bg, border, borderRadius: 14, padding: "16px 12px", color: "#fff", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, cursor: (answered || picked !== null) ? "default" : "pointer", opacity, minHeight: 100, textAlign: "left", boxShadow: "0 4px 18px rgba(0,0,0,.35)", position: "relative", overflow: "hidden", animation: pendingPulse ? "pulse 1s infinite" : undefined }}
               disabled={answered || picked !== null}>
               <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(0,0,0,.28)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{ANSWER_LABELS[i]}</div>
               <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{opt}</span>

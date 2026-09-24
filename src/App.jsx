@@ -197,6 +197,37 @@ export default function App() {
   );
   if (loading) return loadingView;
 
+  // Szkielet ekranu pytania (Faza 6 — płynność): refresh bez cache albo kotwica przed
+  // planem pokazują kształt ekranu gry zamiast pustki/spinnera. Tło = var(--fue-bg),
+  // ustawione z localStorage (BG_KEY) zanim przyjdzie snapshot. Wartość JSX, nie komponent.
+  const skelBlock = (extra) => ({ background: "rgba(255,255,255,.06)", borderRadius: 10, animation: "pulse 1.4s infinite", ...extra });
+  const QuizSkeleton = (
+    <div data-fue-skeleton="1" aria-busy="true" aria-label="Ładowanie quizu" style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif' }}>
+      <div className="fue-quiz-layout" style={{ width: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          {/* Pasek górny 54 px */}
+          <div style={{ background: "rgba(0,0,0,.45)", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={skelBlock({ width: 110, height: 16, borderRadius: 20 })} />
+              <div style={skelBlock({ width: 150, height: 14 })} />
+            </div>
+            <div style={skelBlock({ width: 54, height: 54, borderRadius: "50%", flexShrink: 0 })} />
+          </div>
+          <div style={{ height: 6, background: "rgba(255,255,255,.07)", flexShrink: 0 }} />
+          {/* Blok pytania — 2 linie */}
+          <div style={{ padding: "22px 20px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <div style={skelBlock({ width: "88%", height: 18 })} />
+            <div style={skelBlock({ width: "62%", height: 18 })} />
+          </div>
+          {/* Siatka 2×2 kafli odpowiedzi */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 14px 20px", alignContent: "start" }}>
+            {[0, 1, 2, 3].map((i) => <div key={i} style={skelBlock({ minHeight: 100, borderRadius: 14 })} />)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   // ── Routing ──────────────────────────────────────────────────────
   if (screen === "welcome")
     return <Welcome isDesktop={isDesktop} onEnterCode={() => setScreen("code_entry")} onAdminLogin={() => setScreen("admin_login")} />;
@@ -236,7 +267,8 @@ export default function App() {
 
     switch (gamePhase) {
       case "loading":
-        return loadingView; // 06-07 zamieni na szkielet ekranu
+        // Obejmuje loadState „loading” bez planu/sesji ORAZ plan_loading (mapowane wyżej).
+        return QuizSkeleton;
 
       case "lobby":
         // Lobby woła onStartQuiz(s) z wierszem wykrytej sesji — jej id jako podpowiedź

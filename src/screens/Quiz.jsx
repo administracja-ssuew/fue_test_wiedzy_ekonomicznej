@@ -1,8 +1,6 @@
 
-import { useState, useEffect } from "react";
-import { ANSWER_BG, ANSWER_LABELS, REVEAL_SECONDS } from "../lib/gameLogic.js";
+import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
 import useAntiCheat from "../hooks/useAntiCheat.js";
-import { useModules } from "../context/ModulesContext.jsx";
 
 const W = {
   wrap: {
@@ -36,37 +34,33 @@ const W = {
   ),
 };
 
-export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, answered, myPts, allAnswers, correctAns, isDesktop, isPractice, qs, totalQuestions, participantCode, sessionId, onPick }) {
+// Ekran pytania — czysto prezentacyjny (Faza 6). Faza, sekundy i czas pytania (item.tpq)
+// przychodzą z projekcji zamrożonego planu (useParticipantGame); brak własnych timerów.
+// opensAt/closesAt/revealUntil są w sygnaturze dla spójności z projekcją (06-07: pasek ciągły).
+export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt, revealUntil, picked, answerStatus, correctAns,
+  qNumGlobal, totalQuestions, qNumInModule, moduleCount, correctTotal, isDesktop, isPractice, participantCode, sessionId, onPick }) {
   // All hooks must run unconditionally (Rules of Hooks) — guard comes after.
-  const MODULES = useModules();
   const { violations, showWarning, lastType, dismiss } = useAntiCheat({
     active: true,
     participantCode,
     sessionId,
   });
 
-  // Result countdown shown after timer hits 0 — matches REVEAL_SECONDS so the
-  // "następne" number lines up with LiveView / admin and the actual advance delay.
-  const [resultSec, setResultSec] = useState(null);
-  useEffect(() => {
-    if (!answered) { setResultSec(null); return; }
-    setResultSec(REVEAL_SECONDS);
-    const t = setInterval(() => setResultSec((s) => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(t);
-  }, [answered]);
+  if (!item || !item.opts || !mod) return null;
 
-  if (!currentQ || !mod) return null;
+  const answered = phase === "reveal";
+  // Poprawny indeks WYŁĄCZNIE z serwera (revealed_* / reveal ze snapshotu). Do tego czasu
+  // w reveal pokazujemy komunikat oczekiwania zamiast kolorów (Pułapka 2).
+  const correctIdx = correctAns != null ? correctAns : null;
+  const hasReveal = answered && correctIdx != null;
 
-  // Poprawny indeks: z serwera (correctAns, sekcja 29) lub fallback currentQ.ans
-  // (tryb próbny / przed migracją). Używany tylko w reveal (answered === true).
-  const correctIdx = correctAns != null ? correctAns : currentQ.ans;
-
-  const timerPct = timer / mod.timePerQ;
+  const tpq = item.tpq || 1;
+  // W reveal secondsLeft liczy do revealUntil („następne” w pasku) — licznik pytania stoi na 0.
+  const timer = phase === "quiz" ? (secondsLeft ?? 0) : 0;
+  const timerPct = phase === "quiz" ? Math.min(1, timer / tpq) : 0;
   const r = 22, circ = 2 * Math.PI * r;
-  const tColor = timer > mod.timePerQ * 0.5 ? "#10D9A0" : timer > mod.timePerQ * 0.25 ? "#FF9A3C" : "#E8376B";
-  const total = totalQuestions?.length || qs.length * MODULES.length;
-  const qNumGlobal = (totalQuestions || []).filter((q) => q.module < currentMod).length + qIdx + 1;
-  const correctCount = (allAnswers || []).filter((a) => a.correct).length; // bez punktów — liczymy poprawne
+  const tColor = timer > tpq * 0.5 ? "#10D9A0" : timer > tpq * 0.25 ? "#FF9A3C" : "#E8376B";
+  const total = totalQuestions || 1;
 
   // Plain JSX value (not a nested component) — rendering <QuizContent /> created a
   // brand-new component type every render, remounting the whole subtree on each
@@ -82,7 +76,7 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
             </span>
             {isPractice && <span style={{ background: "rgba(16,217,160,.2)", border: "1px solid rgba(16,217,160,.4)", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700, color: "#10D9A0" }}>PRÓBA</span>}
           </div>
-          <p style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>Pytanie {qIdx + 1} / {qs.length} · #{qNumGlobal}/{total}</p>
+          <p style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>Pytanie {qNumInModule} / {moduleCount} · #{qNumGlobal}/{totalQuestions}</p>
         </div>
         <div style={{ position: "relative", width: 54, height: 54, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <svg width="54" height="54" style={{ position: "absolute", transform: "rotate(-90deg)" }}>
@@ -103,20 +97,23 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       {/* Question */}
       <div style={{ padding: "22px 20px 14px", flexShrink: 0 }}>
         <p style={{ fontSize: isDesktop ? 20 : 18, fontWeight: 700, lineHeight: 1.45, textAlign: "center" }}>
-          {currentQ.q}
+          {item.q}
         </p>
       </div>
 
       {/* Answers */}
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: "0 14px 20px", alignContent: "start" }}>
-        {currentQ.opts.map((opt, i) => {
-          const sel = picked === i, ok = i === correctIdx;
+        {item.opts.map((opt, i) => {
+          const sel = picked === i, ok = hasReveal && i === correctIdx;
           let bg = ANSWER_BG[i], opacity = 1, border = "none";
-          if (!answered && sel) {
-            // Picked but timer still running — show as locked-in (bright outline, no color change)
+          if (!hasReveal && sel) {
+            // Wybrane, a poprawna odpowiedź jeszcze nieznana — obrys „zablokowane”, bez koloru
             opacity = 1;
             border = "3px solid rgba(255,255,255,.9)";
-          } else if (answered) {
+          } else if (answered && !hasReveal) {
+            // Czas minął, czekamy na odsłonięcie z serwera — przygaś niewybrane
+            opacity = .45;
+          } else if (hasReveal) {
             // Timer ended — reveal correct/wrong
             if (sel && ok)       bg = "#0B9E6B";
             else if (sel && !ok) bg = "#C0284A";
@@ -129,16 +126,16 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
               disabled={answered || picked !== null}>
               <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(0,0,0,.28)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{ANSWER_LABELS[i]}</div>
               <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{opt}</span>
-              {!answered && sel && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 13, color: "rgba(255,255,255,.7)" }}>✔ wybrano</div>}
-              {answered && ok  && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✓</div>}
-              {answered && sel && !ok && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✗</div>}
+              {!hasReveal && sel && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 13, color: "rgba(255,255,255,.7)" }}>✔ wybrano</div>}
+              {hasReveal && ok  && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✓</div>}
+              {hasReveal && sel && !ok && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>✗</div>}
             </button>
           );
         })}
       </div>
 
       <div style={{ padding: "0 14px 10px" }}>
-        <p style={{ fontSize: 12, color: "#9B89CC", textAlign: "center" }}>Poprawne odpowiedzi: <strong style={{ color: "#10D9A0" }}>{correctCount}</strong> / {total}</p>
+        <p style={{ fontSize: 12, color: "#9B89CC", textAlign: "center" }}>Poprawne odpowiedzi: <strong style={{ color: "#10D9A0" }}>{correctTotal ?? 0}</strong> / {totalQuestions}</p>
       </div>
       {/* Rezerwa miejsca pod stały pasek potwierdzenia (żeby nie zasłaniał odpowiedzi) */}
       {picked !== null && !answered && <div style={{ height: 92, flexShrink: 0 }} />}
@@ -158,23 +155,36 @@ export default function Quiz({ currentQ, mod, currentMod, qIdx, timer, picked, a
       {/* Stały pasek potwierdzenia wyboru — zawsze widoczny u dołu (bez scrolla na mobile) */}
       {picked !== null && !answered && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.97)", borderTop: "2px solid rgba(16,217,160,.55)", padding: "12px 18px", textAlign: "center", fontFamily: '"Space Grotesk",sans-serif' }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {currentQ.opts[picked]}</p>
-          <p style={{ fontSize: 13, color: "#EDE9FE", marginTop: 3, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> — nie można jej zmienić.</p>
+          <p style={{ fontSize: 15, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {item.opts[picked]}</p>
+          {answerStatus === "failed" ? (
+            <p style={{ fontSize: 13, color: "#E8376B", marginTop: 3, fontWeight: 700 }}>⚠️ Nie udało się zapisać odpowiedzi</p>
+          ) : answerStatus === "pending" ? (
+            <p style={{ fontSize: 13, color: "#9B89CC", marginTop: 3, fontWeight: 600 }}>⏳ Zapisywanie…</p>
+          ) : (
+            <p style={{ fontSize: 13, color: "#EDE9FE", marginTop: 3, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> — nie można jej zmienić.</p>
+          )}
         </div>
       )}
 
-      {/* 2-second result bar — shown after timer hits 0 */}
-      {answered && resultSec !== null && (
+      {/* Pasek wyniku w fazie reveal — licznik „następne” = secondsLeft do revealUntil */}
+      {answered && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.96)", borderTop: "1px solid rgba(255,255,255,.1)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: '"Space Grotesk",sans-serif' }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 22 }}>✅</span>
-            <div>
-              <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 2, textTransform: "uppercase", letterSpacing: 1 }}>Poprawna odpowiedź</p>
-              <p style={{ fontSize: 15, fontWeight: 700, color: "#10D9A0" }}>{currentQ?.opts[correctIdx]}</p>
+          {hasReveal ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 22 }}>✅</span>
+              <div>
+                <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 2, textTransform: "uppercase", letterSpacing: 1 }}>Poprawna odpowiedź</p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "#10D9A0" }}>{item.opts[correctIdx]}</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div className="spinner" style={{ width: 22, height: 22, border: "3px solid rgba(107,33,232,.3)", borderTop: "3px solid #6B21E8", borderRadius: "50%" }} />
+              <p style={{ fontSize: 15, fontWeight: 700, color: "#C4B5FD" }}>Sprawdzamy odpowiedź…</p>
+            </div>
+          )}
           <div style={{ textAlign: "center" }}>
-            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 40, color: "#F5C518", lineHeight: 1 }}>{resultSec}</p>
+            <p style={{ fontFamily: '"Bebas Neue"', fontSize: 40, color: "#F5C518", lineHeight: 1 }}>{secondsLeft ?? 0}</p>
             <p style={{ fontSize: 9, color: "#9B89CC", textTransform: "uppercase", letterSpacing: 1 }}>następne</p>
           </div>
         </div>

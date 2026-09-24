@@ -1,45 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { supabase, DEMO, getSessionForCity } from "../lib/supabase.js";
+import { useState, useEffect } from "react";
 
-export default function WaitingResults({ participant, onReveal }) {
+// Ekran końca pytań — czysto prezentacyjny (Faza 6). Przejście do wyników wynika ze
+// statusu sesji w useParticipantGame (App przełącza ekran), więc bez kanału i polla.
+// eslint-disable-next-line no-unused-vars
+export default function WaitingResults({ participant }) {
   const [dots, setDots]   = useState(".");
-  const pollRef           = useRef(null);
-  const city              = participant?.city;
 
   useEffect(() => {
     const t = setInterval(() => setDots((d) => d.length >= 3 ? "." : d + "."), 600);
     return () => clearInterval(t);
   }, []);
-
-  useEffect(() => {
-    if (!city) return;
-    const check = async () => {
-      const s = await getSessionForCity(city);
-      if (s?.status === "results" || s?.status === "ended") {
-        clearInterval(pollRef.current);
-        onReveal();
-      }
-    };
-    check();
-    // Siatka bezpieczeństwa — ogłoszenie wyników przychodzi subskrypcją Realtime niżej.
-    // Poll co 3 s = 167 zapytań/s przez cały czas oczekiwania na podium przy 500 osobach.
-    pollRef.current = setInterval(check, 20000);
-    return () => clearInterval(pollRef.current);
-  }, [city]);
-
-  useEffect(() => {
-    if (DEMO || !supabase || !city) return;
-    const ch = supabase.channel(`results-${city}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "quiz_sessions", filter: `city=eq.${city}` },
-        ({ new: s }) => {
-          if (s.status === "results" || s.status === "ended") {
-            clearInterval(pollRef.current);
-            onReveal();
-          }
-        })
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [city]);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>

@@ -1,46 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { supabase, DEMO, getSessionForCity, getSessionById } from "../lib/supabase.js";
+import { useState, useEffect } from "react";
 
-// sessionId: when provided (admin_pause), poll that specific session.
-// Without it (regular break), poll any running session for the city.
-export default function Break({ participant, nextModule, isAdminPause, sessionId, onResume }) {
+// Ekran pauzy — czysto prezentacyjny (Faza 6). Wznowienie przychodzi z projekcji planu
+// w useParticipantGame (App przełącza ekran), więc bez własnego kanału i polla.
+// eslint-disable-next-line no-unused-vars
+export default function Break({ participant, nextModule, isAdminPause }) {
   const [dots, setDots] = useState(".");
-  const pollRef = useRef(null);
-  const city = participant?.city;
 
   useEffect(() => {
     const t = setInterval(() => setDots((d) => d.length >= 3 ? "." : d + "."), 600);
     return () => clearInterval(t);
   }, []);
-
-  // Siatka bezpieczeństwa, NIE główny mechanizm — wznowienie przychodzi subskrypcją
-  // Realtime w efekcie niżej. Przy 500 uczestnikach poll co 3 s to 167 zapytań/s przez
-  // całą przerwę (a przerwa po module 2 trwa realnie kilkanaście minut), w całości
-  // dublujących to, co Realtime już dostarcza. 20 s wystarcza jako zabezpieczenie
-  // na zgubione zdarzenie i schodzi do 25 zapytań/s. NIE skracać bez potrzeby.
-  useEffect(() => {
-    if (!city) return;
-    let mounted = true;
-    const check = async () => {
-      const s = sessionId ? await getSessionById(sessionId) : await getSessionForCity(city);
-      if (mounted && s?.status === "running") { clearInterval(pollRef.current); onResume(s); }
-    };
-    check();
-    pollRef.current = setInterval(check, 20000);
-    return () => { mounted = false; clearInterval(pollRef.current); };
-  }, [city, sessionId]); // eslint-disable-line
-
-  // Realtime — specific session or city-wide
-  useEffect(() => {
-    if (DEMO || !supabase || !city) return;
-    const filterStr = sessionId ? `id=eq.${sessionId}` : `city=eq.${city}`;
-    const channelKey = sessionId || city;
-    const ch = supabase.channel(`break-${channelKey}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "quiz_sessions", filter: filterStr },
-        ({ new: s }) => { if (s.status === "running") { clearInterval(pollRef.current); onResume(s); } })
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [city, sessionId]); // eslint-disable-line
 
   const isResults     = !nextModule && !isAdminPause;
   const isAdminPauseMode = isAdminPause;

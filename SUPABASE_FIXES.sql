@@ -1723,6 +1723,328 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.get_answer_summary_v2(UUID, UUID) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.get_answer_summary_v2(UUID, UUID) TO anon, authenticated;
 
+-- 39.7 — Akcje admina v2: każda to JEDNA zmiana kotwicy / pauzy pod blokadą wiersza.
+-- Wynik zawsze {ok, reason, session}. Drugi klik / drugi admin = no-op (ok:false).
+-- v_now odświeżane PO uzyskaniu blokady (czekanie na FOR UPDATE nie przesuwa terminów).
+
+-- Pauza: zamraża t (plan_paused_at). pause_elapsed_s = zgodność ze starym frontem.
+CREATE OR REPLACE FUNCTION public.admin_pause_session(p_session_id UUID)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+  s public.quiz_sessions%ROWTYPE;
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  SELECT * INTO s FROM public.quiz_sessions WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND OR s.plan_anchor_at IS NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_now := clock_timestamp();
+  IF s.status IS DISTINCT FROM 'running' OR s.plan_paused_at IS NOT NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'not running',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  UPDATE public.quiz_sessions SET
+    status          = 'paused',
+    plan_paused_at  = v_now,
+    pause_elapsed_s = FLOOR(EXTRACT(epoch FROM v_now))::INT
+  WHERE id = p_session_id;
+  RETURN json_build_object('ok', true, 'reason', NULL,
+    'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_pause_session(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_pause_session(UUID) TO authenticated;
+
+-- Wznowienie: kotwica przesunięta o długość pauzy → ta sama faza i ten sam `remaining`.
+CREATE OR REPLACE FUNCTION public.admin_resume_session(p_session_id UUID)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+  s public.quiz_sessions%ROWTYPE;
+  p RECORD;
+  v_anchor TIMESTAMPTZ;
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  SELECT * INTO s FROM public.quiz_sessions WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND OR s.plan_anchor_at IS NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_now := clock_timestamp();
+  IF s.plan_paused_at IS NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'not paused',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_anchor := s.plan_anchor_at + (v_now - s.plan_paused_at);
+  SELECT * INTO p FROM public.plan_position(
+    (SELECT sp.items FROM public.session_plans sp WHERE sp.session_id = p_session_id),
+    v_anchor, NULL, v_now);
+  IF NOT FOUND THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  UPDATE public.quiz_sessions SET
+    status               = 'running',
+    plan_anchor_at       = v_anchor,
+    plan_paused_at       = NULL,
+    pause_elapsed_s      = NULL,
+    current_question_idx = p.idx,
+    q_started_at         = p.opens_at
+  WHERE id = p_session_id;
+  RETURN json_build_object('ok', true, 'reason', NULL,
+    'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_resume_session(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_resume_session(UUID) TO authenticated;
+
+-- „⏭ Następne”: przesunięcie planu tak, by bieżące pytanie p_idx zamknęło się TERAZ
+-- (dalej normalny reveal i reszta planu). Tylko w fazie 'quiz' tego pytania.
+CREATE OR REPLACE FUNCTION public.admin_skip_question(p_session_id UUID, p_idx INT)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+  s public.quiz_sessions%ROWTYPE;
+  p RECORD;
+  v_delta INTERVAL;
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  SELECT * INTO s FROM public.quiz_sessions WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND OR s.plan_anchor_at IS NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_now := clock_timestamp();
+  IF s.status IS DISTINCT FROM 'running' OR s.plan_paused_at IS NOT NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'not running',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  SELECT * INTO p FROM public.plan_position(
+    (SELECT sp.items FROM public.session_plans sp WHERE sp.session_id = p_session_id),
+    s.plan_anchor_at, NULL, v_now);
+  -- FOUND sprawdzany osobno: odwołanie do pól nieprzypisanego RECORD rzuca błąd
+  IF NOT FOUND THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  IF p.idx IS DISTINCT FROM p_idx OR p.phase <> 'quiz' THEN
+    RETURN json_build_object('ok', false, 'reason', 'noop',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_delta := p.closes_at - v_now;
+  UPDATE public.quiz_sessions SET
+    plan_anchor_at       = s.plan_anchor_at - v_delta,
+    q_started_at         = p.opens_at - v_delta,
+    current_question_idx = p.idx
+  WHERE id = p_session_id;
+  RETURN json_build_object('ok', true, 'reason', NULL,
+    'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_skip_question(UUID, INT) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_skip_question(UUID, INT) TO authenticated;
+
+-- „🔁 Powtórz”: bieżące pytanie p_idx otwiera się od nowa TERAZ (pełny czas).
+-- Zapisane już odpowiedzi zostają (UNIQUE na answers) — powtórka dotyczy zegara.
+CREATE OR REPLACE FUNCTION public.admin_repeat_question(p_session_id UUID, p_idx INT)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+  s public.quiz_sessions%ROWTYPE;
+  p RECORD;
+  v_delta INTERVAL;
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  SELECT * INTO s FROM public.quiz_sessions WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND OR s.plan_anchor_at IS NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_now := clock_timestamp();
+  IF s.status IS DISTINCT FROM 'running' OR s.plan_paused_at IS NOT NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'not running',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  SELECT * INTO p FROM public.plan_position(
+    (SELECT sp.items FROM public.session_plans sp WHERE sp.session_id = p_session_id),
+    s.plan_anchor_at, NULL, v_now);
+  -- FOUND sprawdzany osobno: odwołanie do pól nieprzypisanego RECORD rzuca błąd
+  IF NOT FOUND THEN
+    RETURN json_build_object('ok', false, 'reason', 'no plan',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  IF p.idx IS DISTINCT FROM p_idx OR p.phase <> 'quiz' THEN
+    RETURN json_build_object('ok', false, 'reason', 'noop',
+      'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+  END IF;
+  v_delta := v_now - p.opens_at;
+  UPDATE public.quiz_sessions SET
+    plan_anchor_at       = s.plan_anchor_at + v_delta,
+    q_started_at         = v_now,
+    current_question_idx = p.idx
+  WHERE id = p_session_id;
+  RETURN json_build_object('ok', true, 'reason', NULL,
+    'session', (SELECT row_to_json(x) FROM public.quiz_sessions x WHERE x.id = p_session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_repeat_question(UUID, INT) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_repeat_question(UUID, INT) TO authenticated;
+
+-- 39.8 — Zamiatacz: przejścia wykonuje BAZA (pg_cron co 1 s, sekcja 40).
+-- Idempotentny: stan wyprowadzany z kotwicy (NIE `current_question_idx += 1`), brak
+-- zapisu, gdy nic się nie zmieniło (brak zbędnych zdarzeń Realtime). SKIP LOCKED — nie
+-- czeka na akcję admina trzymającą blokadę (złapie wiersz w następnym przebiegu).
+-- Pisze STARY kontrakt (current_question_idx, q_started_at, status) dla cache'owanych
+-- bundli PWA. Po ostatnim reveal → status='results' (decyzja „Koniec quizu”; podium
+-- dalej ręcznie z panelu).
+CREATE OR REPLACE FUNCTION public.advance_due_sessions(p_only UUID DEFAULT NULL)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_now TIMESTAMPTZ := clock_timestamp(); r RECORD; d RECORD; n INT := 0;
+BEGIN
+  FOR r IN
+    SELECT s.id, s.status, s.current_question_idx, s.q_started_at, s.plan_anchor_at, s.plan_paused_at, s.revealed_idx, sp.items
+    FROM public.quiz_sessions s JOIN public.session_plans sp ON sp.session_id = s.id
+    WHERE s.status = 'running' AND s.plan_anchor_at IS NOT NULL AND s.plan_paused_at IS NULL
+      AND (p_only IS NULL OR s.id = p_only)
+    FOR UPDATE OF s SKIP LOCKED
+  LOOP
+    SELECT * INTO d FROM public.sweep_decision(r.items, r.plan_anchor_at, r.plan_paused_at, r.status,
+                                                r.current_question_idx, r.q_started_at, r.revealed_idx, v_now);
+    IF d.action = 'none' THEN CONTINUE; END IF;
+    UPDATE public.quiz_sessions SET
+      status = d.new_status, current_question_idx = d.new_idx, q_started_at = d.new_q_started_at,
+      revealed_idx = d.new_revealed_idx,
+      revealed_ans = CASE WHEN d.new_revealed_idx IS NULL THEN NULL
+                          ELSE (SELECT q.ans FROM public.questions q WHERE q.id = (r.items->d.new_revealed_idx->>'id')::UUID) END
+    WHERE id = r.id;
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.advance_due_sessions(UUID) FROM PUBLIC, anon, authenticated;
+
+-- Zapas, gdy pg_cron nie żyje (Pułapka 9): panel admina woła co 2 s TYLKO, gdy
+-- sweeper_status() pokazuje ostatni przebieg starszy niż 5 s.
+CREATE OR REPLACE FUNCTION public.admin_sweep_session(p_session_id UUID)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  RETURN public.advance_due_sessions(p_session_id);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_sweep_session(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_sweep_session(UUID) TO authenticated;
+
+-- 39.9 — Łatki kompatybilności starych RPC (te same sygnatury, tylko CREATE OR REPLACE — bez usuwania funkcji).
+-- Dla sesji BEZ planu zachowanie identyczne jak w §26 / §29.5.
+
+-- advance_session_question: stary awaryjny kierowca (i anon) NIE ruszy sesji z planem —
+-- tam przejściami rządzi wyłącznie zamiatacz.
+CREATE OR REPLACE FUNCTION public.advance_session_question(
+  p_session_id   UUID,
+  p_expected_idx INT,
+  p_next_idx     INT,
+  p_lead_seconds INT DEFAULT 4
+)
+RETURNS TIMESTAMPTZ
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_start TIMESTAMPTZ := clock_timestamp() + (GREATEST(p_lead_seconds, 0) || ' seconds')::interval;
+BEGIN
+  UPDATE public.quiz_sessions
+  SET current_question_idx = p_next_idx, q_started_at = v_start, status = 'running'
+  WHERE id = p_session_id
+    AND current_question_idx = p_expected_idx
+    AND status = 'running'
+    AND plan_anchor_at IS NULL;
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.advance_session_question(UUID, INT, INT, INT) TO anon, authenticated;
+
+-- start_quiz_session (stary panel): czyści resztki planu, żeby wiersz wystartowany
+-- starym przyciskiem nie został podjęty przez zamiatacz. Warunek roli jak w §29.5.
+CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
+RETURNS TIMESTAMPTZ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_start TIMESTAMPTZ := clock_timestamp() + interval '10 seconds';
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  UPDATE public.quiz_sessions
+    SET status = 'running', q_started_at = v_start, current_question_idx = 0,
+        plan_anchor_at = NULL, plan_paused_at = NULL, revealed_idx = NULL, revealed_ans = NULL
+    WHERE id = p_session_id AND status = 'waiting';
+  IF FOUND THEN RETURN v_start; ELSE RETURN NULL; END IF;
+END; $$;
+GRANT EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
+-- ─── 40. pg_cron — zamiatacz co 1 s + diagnostyka (faza 6) ──
+-- PRZED wgraniem w SQL Editorze uruchom:
+--   select version();                                           -- sekundowe harmonogramy
+--                                                               -- wymagają Postgres ≥ 15.1.1.61
+--   select extversion from pg_extension where extname='pg_cron'; -- (pusto = jeszcze nie ma)
+-- Wymaga sekcji 39 (advance_due_sessions). Blok jest powtarzalny (unschedule + schedule).
+-- cron.log_run nie da się wyłączyć bez superusera → „minimalne logowanie” = sprzątanie
+-- cron.job_run_details co 10 min (≈3600 wierszy/h przy zadaniu co 1 s).
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+GRANT USAGE ON SCHEMA cron TO postgres;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA cron TO postgres;
+DO $do$ BEGIN
+  PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname IN ('fue-advance-due', 'fue-cron-cleanup');
+END $do$;
+SELECT cron.schedule('fue-advance-due', '1 seconds', $cmd$SELECT public.advance_due_sessions()$cmd$);
+SELECT cron.schedule('fue-cron-cleanup', '*/10 * * * *',
+  $cmd$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '1 hour'$cmd$);
+
+-- Diagnostyka zamiatacza — dla `npm run verify-prod` i czerwonego banera w panelu admina.
+-- Zwraca tylko booleany / harmonogram / wiek ostatniego przebiegu — nic nie ujawnia.
+CREATE OR REPLACE FUNCTION public.sweeper_status()
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog AS $$
+DECLARE
+  v_jobid    BIGINT;
+  v_active   BOOLEAN;
+  v_schedule TEXT;
+  v_end      TIMESTAMPTZ;
+  v_status   TEXT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    RETURN json_build_object('cron_installed', false, 'job_active', false, 'schedule', NULL,
+                             'last_run_age_s', NULL, 'last_status', NULL);
+  END IF;
+  SELECT j.jobid, j.active, j.schedule INTO v_jobid, v_active, v_schedule
+    FROM cron.job j WHERE j.jobname = 'fue-advance-due'
+   ORDER BY j.jobid DESC LIMIT 1;
+  IF v_jobid IS NULL THEN
+    RETURN json_build_object('cron_installed', true, 'job_active', false, 'schedule', NULL,
+                             'last_run_age_s', NULL, 'last_status', NULL);
+  END IF;
+  -- Ostatni ZAKOŃCZONY przebieg: przebieg w toku ma end_time IS NULL — sortowanie po
+  -- start_time dawałoby wiek NULL i fałszywe „zamiatacz nie żyje”.
+  SELECT d.end_time, d.status INTO v_end, v_status
+    FROM cron.job_run_details d
+   WHERE d.jobid = v_jobid AND d.end_time IS NOT NULL
+   ORDER BY d.end_time DESC
+   LIMIT 1;
+  RETURN json_build_object(
+    'cron_installed', true,
+    'job_active',     COALESCE(v_active, false),
+    'schedule',       v_schedule,
+    'last_run_age_s', CASE WHEN v_end IS NULL THEN NULL
+                           ELSE EXTRACT(epoch FROM (clock_timestamp() - v_end)) END,
+    'last_status',    v_status);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.sweeper_status() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.sweeper_status() TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

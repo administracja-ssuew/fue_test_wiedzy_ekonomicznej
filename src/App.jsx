@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useMemo, lazy } from "react";
-import { supabase, DEMO, logoutAdmin, submitAnswer, getSessionForCity, getSessionById, getCityBg, markCodeUsed, getQuestions, updateSession, advanceSessionQuestion, getParticipantAnswers, keepRealtimeAlive } from "./lib/supabase.js";
-import { getModule, REVEAL_SECONDS, MODULE_INTRO_SECONDS, remainingSeconds, advanceLeadSeconds, fallbackJitterMs } from "./lib/gameLogic.js";
-import { serverNow, startServerClock } from "./lib/serverClock.js";
+import { supabase, DEMO, logoutAdmin, getCityBg, markCodeUsed, keepRealtimeAlive } from "./lib/supabase.js";
+import { ANSWER_LABELS } from "./lib/gameLogic.js";
+import { startServerClock } from "./lib/serverClock.js";
+import { loadParticipant, saveParticipant, clearParticipant, BG_KEY } from "./lib/participantState.js";
 import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
+import useParticipantGame from "./hooks/useParticipantGame.js";
 
 import Welcome        from "./screens/Welcome.jsx";
 import Break          from "./screens/Break.jsx";
@@ -12,7 +14,6 @@ import WaitingResults from "./screens/WaitingResults.jsx";
 import CodeEntry   from "./screens/CodeEntry.jsx";
 import AdminLogin  from "./screens/AdminLogin.jsx";
 import Lobby       from "./screens/Lobby.jsx";
-import ModuleIntro from "./screens/ModuleIntro.jsx";
 import Quiz        from "./screens/Quiz.jsx";
 import Ended       from "./screens/Ended.jsx";
 import Countdown   from "./screens/Countdown.jsx";
@@ -29,52 +30,100 @@ export default function App() {
   const [screen, setScreen] = useState("welcome");
   const { user: admin, loading } = useAuth(); // admin session via Supabase Auth
 
-  // Participant (no auth — identified by code)
-  const [participant, setParticipant] = useState(null); // { code, name, surname, city }
-
-  // Quiz state
-  const [quizSession, setQuizSession]   = useState(null);
-  const [cityQuestions, setCityQuestions] = useState([]); // loaded from DB for participant's city
-  const [currentMod, setCurrentMod]     = useState(1);
-  const [qIdx, setQIdx]                 = useState(0);
-  const [timer, setTimer]               = useState(0);
-  const [picked, setPicked]             = useState(null);
-  const [answered, setAnswered]         = useState(false);
-  const answeredRef                     = useRef(false); // always-current answered (avoids stale closure in timer/timeout)
-  const [myPts, setMyPts]               = useState(0);
-  const [allAnswers, setAllAnswers]     = useState([]);
-  const [nextModule, setNextModule]     = useState(null); // module to start after break
+  // Participant (no auth — identified by code). localStorage → przeżywa refresh i
+  // zamknięcie karty; loadParticipant migruje też stary wpis sprzed fazy 6.
+  const [participant, setParticipant] = useState(() => loadParticipant()); // { code, name, surname, city, sessionId? }
   const [podStep, setPodStep]           = useState(0);
   const [podiumResults, setPodiumResults] = useState([]);
-  const [countdownNum, setCountdownNum] = useState(null); // 3/2/1/0="START!"/null=hidden
-  const [revealAns, setRevealAns]       = useState({});   // qId → poprawny indeks (z serwera, do reveal)
-
-  // Auto-break after module 2 and after module 4 (przerwy między blokami).
-  // After module 5 → waiting_results (admin reveals ranking manually)
-  const BREAK_AFTER = [2, 4];
-
-  const MODULES        = useModules(); // dynamic from DB (or hardcoded fallback)
-  const timerRef       = useRef(null);
-  const pickTime       = useRef(null);
-  const pickedRef      = useRef(null);  // always-current picked value (avoids stale closure in timer)
-  const screenRef      = useRef(screen); // always-current screen value (avoids stale closures)
-  const qStartedAtRef  = useRef(null);   // authoritative question start time (derived from DB)
-  const modTimePerQRef = useRef(60);     // always-current timePerQ for active module
-  const currentModRef      = useRef(currentMod); // always-current module (avoids stale closures in Realtime)
-  const qIdxRef            = useRef(qIdx);       // always-current qIdx (avoids stale closures in Realtime)
-  const cityQuestionsRef   = useRef([]);          // always-current questions for session event handler
-  const quizChRef          = useRef(null);        // kanał broadcast sesji (instant push przejścia pytania)
-  const advFallbackRef     = useRef(null);        // timer awaryjnego przejścia (gdy admin milczy)
+  const MODULES        = useModules(); // tylko nazwa/ikona/kolor — czasy pytań są w planie sesji
   const isDesktop = useWindowWidth() >= 900;
 
-  // Natychmiastowy push nowego stanu sesji na szybkiej ścieżce (broadcast ~50ms),
-  // gdy to UCZESTNIK przesuwa pytanie. Bez tego Live View i pozostali uczestnicy
-  // czekali na wolny postgres_changes (~0.6s)/polling → reveal „wisiał" dłużej.
-  const broadcastSession = (overrides) => {
-    if (DEMO || !supabase || !quizChRef.current || !quizSession?.id) return;
-    const payload = { ...quizSession, id: quizSession.id, city: participant?.city, status: "running", ...overrides };
-    quizChRef.current.send({ type: "broadcast", event: "quiz_event", payload });
-  };
+  // ── Gra uczestnika (Faza 6) ─────────────────────────────────────
+  // Ekran = czysta funkcja fazy z zamrożonego planu i zegara serwera. Uczestnik nie
+  // zapisuje przejść pytań i nie ma własnych timerów — tylko projekcja + wybór odpowiedzi.
+  const game = useParticipantGame(screen === "game" ? participant : null);
+  const gv = game.view;
+  const gamePlan = game.plan || [];
+  const isPracticeSession = !!game.session?.is_practice;
+  // Faza do routingu i sondy: „loading” przed pierwszym snapshotem oraz gdy kotwica
+  // przyszła przed planem (plan_loading) — nigdy komunikat legacy na starcie quizu.
+  let gamePhase = gv.phase;
+  if (game.loadState === "loading" && !game.plan && !game.session) gamePhase = "loading";
+  else if (gamePhase === "plan_loading") gamePhase = "loading";
+  else if (gamePhase === "no_session") gamePhase = "lobby";
+  else if (gamePhase === "ended" && isPracticeSession) gamePhase = "lobby"; // próba wraca do poczekalni
+  const myCurrent = gv.item ? game.myAnswers[gv.item.id] : null;
+
+  // Tło miasta z localStorage od razu — bez mignięcia domyślnego tła po refreshu.
+  useEffect(() => {
+    try {
+      const bg = localStorage.getItem(BG_KEY);
+      if (bg) document.documentElement.style.setProperty("--fue-bg", bg);
+    } catch (_) { /* nieistotne */ }
+  }, []);
+
+  // Restore uczestnika po refreshu: po rozstrzygnięciu auth (admin ma pierwszeństwo)
+  // wracamy prosto do gry — bez ponownego wpisywania kodu.
+  useEffect(() => {
+    if (loading || admin || screen !== "welcome") return;
+    if (participant) setScreen("game");
+  }, [loading]); // eslint-disable-line
+
+  // Nieprawidłowy kod (np. usunięty przez admina) → od nowa ekran kodu.
+  useEffect(() => {
+    if (screen !== "game" || game.loadState !== "invalid_code") return;
+    clearParticipant();
+    setParticipant(null);
+    setScreen("code_entry");
+  }, [screen, game.loadState]);
+
+  // Oznacz kod jako użyty w sesji — raz na parę (kod, sesja).
+  const markedRef = useRef(null);
+  useEffect(() => {
+    const sid = game.session?.id;
+    const code = participant?.code;
+    if (screen !== "game" || !sid || !code) return;
+    const key = `${code}|${sid}`;
+    if (markedRef.current === key) return;
+    markedRef.current = key;
+    markCodeUsed(code, sid);
+  }, [screen, game.session?.id, participant?.code]);
+
+  // Tło miasta: z sesji (bg / bg_mobile wg szerokości), a gdy snapshot go nie niesie —
+  // z getCityBg. Zapis do localStorage na potrzeby refreshu.
+  const sessBg = game.session?.bg ?? null;
+  const sessBgMobile = game.session?.bg_mobile ?? null;
+  useEffect(() => {
+    if (screen !== "game" || !participant?.city) return undefined;
+    let cancelled = false;
+    const apply = (raw) => {
+      if (cancelled || !raw) return;
+      const bg = isDesktop ? (raw.bg || raw.bgMobile) : (raw.bgMobile || raw.bg);
+      if (!bg) return;
+      document.documentElement.style.setProperty("--fue-bg", bg);
+      try { localStorage.setItem(BG_KEY, bg); } catch (_) { /* nieistotne */ }
+    };
+    if (sessBg || sessBgMobile) apply({ bg: sessBg, bgMobile: sessBgMobile });
+    else getCityBg(participant.city).then(apply);
+    return () => { cancelled = true; };
+  }, [screen, participant?.city, game.session?.id, sessBg, sessBgMobile, isDesktop]);
+
+  // Atrybuty dla sondy e2e (06-08): stabilny odczyt fazy bez parsowania tekstu.
+  useEffect(() => {
+    if (screen !== "game") {
+      delete document.body.dataset.fuePhase;
+      delete document.body.dataset.fueQ;
+      delete document.body.dataset.fueRemaining;
+      delete document.body.dataset.fueLocked;
+      delete document.body.dataset.fueChoice;
+      return;
+    }
+    document.body.dataset.fuePhase = gamePhase;
+    document.body.dataset.fueQ = gv.idx != null ? String(gv.idx + 1) : "";
+    document.body.dataset.fueRemaining = String(gv.secondsLeft ?? "");
+    document.body.dataset.fueLocked = myCurrent ? "1" : "0";
+    document.body.dataset.fueChoice = myCurrent?.chosen != null ? (ANSWER_LABELS[myCurrent.chosen] ?? "") : "";
+  }, [screen, gamePhase, gv.idx, gv.secondsLeft, myCurrent]);
 
   // #5 — wypchnij stan podium na Live View (projektor). Anon nie ma dostępu do
   // wyników, więc admin rozgłasza ranking + krok odsłaniania na kanale miasta.
@@ -111,526 +160,38 @@ export default function App() {
   // uczestnik przestawał dostawać przejścia pytań. Szczegóły w lib/supabase.js.
   useEffect(() => { keepRealtimeAlive(); }, []);
 
-  useEffect(() => { screenRef.current = screen; }, [screen]);
-  useEffect(() => { currentModRef.current = currentMod; }, [currentMod]);
-  useEffect(() => { qIdxRef.current = qIdx; }, [qIdx]);
-  useEffect(() => { pickedRef.current = picked; }, [picked]);
-  useEffect(() => { answeredRef.current = answered; }, [answered]);
-  useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
-
   // Auto-restore admin session: redirect to panel when Supabase session is found on page load
   useEffect(() => {
     if (!loading && admin && screen === "welcome") setScreen("admin");
   }, [loading, admin]);
 
-  // Restore participant from sessionStorage after page refresh (runs once, after auth resolves)
-  useEffect(() => {
-    if (loading || admin) return; // admin takes priority; wait for auth
-    const saved = sessionStorage.getItem("fue_participant");
-    if (!saved) return;
-    // Restore bg immediately — before the async handleCodeSuccess fetch — to avoid flash of default bg
-    const savedBg = sessionStorage.getItem("fue_bg");
-    if (savedBg) document.documentElement.style.setProperty("--fue-bg", savedBg);
-    try {
-      const p = JSON.parse(saved);
-      handleCodeSuccess(p);
-    } catch (_) {
-      sessionStorage.removeItem("fue_participant");
-      sessionStorage.removeItem("fue_bg");
-    }
-  }, [loading]); // eslint-disable-line
-
-  // Only DB questions — no hardcoded fallback
-  const activeQuestions = cityQuestions;
-  const qs       = activeQuestions.filter((q) => q.module === currentMod);
-  const currentQ = qs[qIdx];
-  const mod      = getModule(currentMod, MODULES);
-
-  // ── Helpers — synchronizacja z globalnym indeksem pytania ────────
-  const getQuestionState = (globalIdx, questions) => {
-    const q = questions[globalIdx];
-    if (!q) return null;
-    const m = getModule(q.module, MODULES);
-    if (!m) return null;
-    const modQs = questions.filter((q2) => q2.module === q.module);
-    const qIdxInMod = modQs.findIndex((q2) => q2.id === q.id);
-    return { q, mod: m, modId: q.module, qIdx: Math.max(0, qIdxInMod) };
-  };
-
-  const syncToSession = (session, questions) => {
-    if (!session?.q_started_at || !questions.length) return false;
-    const globalIdx = Math.min(session.current_question_idx || 0, questions.length - 1);
-    const state = getQuestionState(globalIdx, questions);
-    if (!state) return false;
-    const elapsed    = Math.max(0, Math.floor((serverNow() - new Date(session.q_started_at).getTime()) / 1000));
-    const remaining  = Math.max(1, state.mod.timePerQ - elapsed);
-    qStartedAtRef.current  = session.q_started_at;
-    modTimePerQRef.current = state.mod.timePerQ;
-    clearInterval(timerRef.current);
-    setCurrentMod(state.modId); setQIdx(state.qIdx);
-    setTimer(remaining); setAnswered(false); setPicked(null);
-    return true;
-  };
-
-  // ── Timer — derived from q_started_at so all clients stay in sync ──
-  useEffect(() => {
-    if (screen !== "quiz") { clearInterval(timerRef.current); return; }
-    if (!mod) return;
-    clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      const startedAt = qStartedAtRef.current;
-      if (!startedAt) {
-        // Fallback countdown (practice mode / no session)
-        setTimer((t) => {
-          if (t <= 1) { clearInterval(timerRef.current); handleTimeout(); return 0; }
-          return t - 1;
-        });
-        return;
-      }
-      // Same canonical formula AND same clock (serverNow) as the spectator projection
-      // → identyczna sekunda na każdym ekranie, niezależnie od zegara urządzenia.
-      // Tick 250 ms (jak Live View), by przeskok sekundy następował w tej samej chwili.
-      const remaining  = remainingSeconds(modTimePerQRef.current, new Date(startedAt).getTime(), serverNow());
-      setTimer(remaining);
-      if (remaining <= 0) { clearInterval(timerRef.current); handleTimeout(); }
-    }, 250);
-    return () => clearInterval(timerRef.current);
-  }, [screen, currentMod, qIdx]);
-
-  // ── Pre-question countdown (3→2→1→START), synced via q_started_at ──
-  // Whenever the active question's start is still in the future (set by
-  // advance_session_question / start_quiz_session a few seconds ahead), show the
-  // fullscreen countdown instead of the question. Driven by the same server
-  // timestamp as LiveView/admin, so the animation is time-synced on every screen.
-  // Answering is naturally blocked because <Quiz> isn't rendered meanwhile.
-  useEffect(() => {
-    if (screen !== "quiz") return;
-    const tick = () => {
-      const startedAt = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
-      const now = serverNow();
-      if (startedAt && startedAt > now) {
-        setCountdownNum(Math.max(0, Math.ceil((startedAt - now) / 1000) - 1));
-      } else {
-        setCountdownNum((n) => (n === null ? n : null));
-      }
-    };
-    tick();
-    const iv = setInterval(tick, 200);
-    return () => clearInterval(iv);
-  }, [screen, currentMod, qIdx]);
-
-  // ── Pojedynczy kanał Realtime + poll dla wszystkich zdarzeń sesji ──
-  // Łączy q-sync i session-sync w jedną subskrypcję, eliminując problem
-  // deduplikacji Supabase gdy dwa kanały mają identyczny filtr event:table:id.
-  // cityQuestionsRef zawsze ma aktualne pytania bez dodawania ich jako dep.
-  useEffect(() => {
-    if (!quizSession?.id || !participant) return;
-
-    const QUIZ_SCREENS = ["quiz", "module_intro", "admin_pause", "break", "waiting_results"];
-    const isPracticeSession = !!quizSession?.is_practice;
-
-    const handleUpdate = (s) => {
-      const cur = screenRef.current;
-
-      // Status changes take priority over question sync
-      if (s.status === "paused" && ["quiz", "module_intro"].includes(cur)) {
-        clearInterval(timerRef.current); setAnswered(true); setScreen("admin_pause"); return;
-      }
-      if (s.status === "running" && cur === "admin_pause") {
-        if (s.q_started_at) {
-          qStartedAtRef.current = s.q_started_at;
-          const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
-          setTimer(Math.max(1, modTimePerQRef.current - elapsed));
-        } else {
-          qStartedAtRef.current = null;
-          setTimer(modTimePerQRef.current || 60);
-        }
-        setPicked(null); setAnswered(false); setScreen("quiz"); return;
-      }
-      if (s.status === "ended" && QUIZ_SCREENS.includes(cur)) {
-        clearInterval(timerRef.current);
-        if (isPracticeSession) { setQuizSession(null); setCityQuestions([]); setScreen("lobby"); }
-        else { setScreen("ended"); }
-        return;
-      }
-      if (s.status === "results" && QUIZ_SCREENS.includes(cur)) {
-        clearInterval(timerRef.current); setScreen("ended"); return;
-      }
-
-      // Question advancement — only when session is running
-      if (s.status !== "running" || s.current_question_idx === undefined) return;
-      const questions = cityQuestionsRef.current;
-      if (!questions.length) return;
-      const myGlobalIdx = questions.filter((q) => q.module < currentModRef.current).length + qIdxRef.current;
-
-      // Admin "repeat question": same index but a NEW, fresh q_started_at → reset the
-      // timer and answer state on the current question. Distinguishable from a normal
-      // advance (index changes) and from resume (back-dated timestamp; handled above on
-      // the admin_pause screen). "Fresh" = started ≤2s ago, so resume never matches here.
-      if (cur === "quiz" && s.current_question_idx === myGlobalIdx && s.q_started_at &&
-          qStartedAtRef.current && s.q_started_at !== qStartedAtRef.current) {
-        const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
-        if (elapsed <= 2) {
-          qStartedAtRef.current = s.q_started_at;
-          setTimer(modTimePerQRef.current || 60);
-          setPicked(null); setAnswered(false);
-          return;
-        }
-        // Admin "Następne pytanie": q_started_at back-dated past the full time → end
-        // the question NOW. Next timer tick computes remaining=0 → handleTimeout →
-        // reveal → normal auto-advance. Synced with LiveView/admin (same timestamp).
-        if (elapsed >= (modTimePerQRef.current || 60)) {
-          qStartedAtRef.current = s.q_started_at;
-          return;
-        }
-      }
-
-      if (s.current_question_idx > myGlobalIdx) {
-        const state = getQuestionState(s.current_question_idx, questions);
-        if (state) {
-          // Pytanie ruszyło — awaryjne przejście nie jest już potrzebne.
-          clearTimeout(advFallbackRef.current);
-          const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
-          // Clamp do timePerQ: przy starcie w przyszłości (lead 4 s / 30 s) elapsed jest
-          // ujemny, więc bez tego timer pokazywałby wartość większą niż czas pytania.
-          const remaining = Math.min(state.mod.timePerQ, Math.max(1, state.mod.timePerQ - elapsed));
-          qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
-          // Do NOT clearInterval here — the timer effect handles its own lifecycle when
-          // currentMod/qIdx change. Calling clearInterval without a guaranteed re-run
-          // of the effect (when state values happen to be the same) kills the timer permanently.
-          setCurrentMod(state.modId); setQIdx(state.qIdx);
-          setTimer(remaining); setAnswered(false); setPicked(null); setScreen("quiz");
-        }
-      } else if (s.current_question_idx === myGlobalIdx && !qStartedAtRef.current && s.q_started_at) {
-        const state = getQuestionState(myGlobalIdx, questions);
-        if (state) {
-          const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
-          const remaining = Math.max(1, state.mod.timePerQ - elapsed);
-          qStartedAtRef.current = s.q_started_at; modTimePerQRef.current = state.mod.timePerQ;
-          setTimer(remaining);
-        }
-      }
-    };
-
-    if (DEMO) {
-      const poll = setInterval(async () => {
-        const s = await getSessionById(quizSession.id);
-        if (s) handleUpdate(s);
-      }, 2000);
-      return () => clearInterval(poll);
-    }
-
-    // ZMIERZONE 23.09.2026 (sonda Playwright, build produkcyjny): socket Realtime
-    // uczestnika ZAMYKAŁ SIĘ ~0,9 s po starcie quizu i nigdy nie wracał. Uczestnik
-    // żył wtedy wyłącznie z polla co 10 s — zastygał na skończonym pytaniu, a potem
-    // wskakiwał w kolejne w locie, tracąc 3 z 20 sekund. Dokładnie objaw „zatrzymuje
-    // się i przeskakuje".
-    //
-    // Mechanizm: wyjście z poczekalni odmontowuje Lobby, które woła removeChannel dla
-    // swoich kanałów; supabase-js rozłącza socket, gdy lista kanałów się opróżni, a raz
-    // rozłączony socket sam nie wraca. Kanał quizu zostawał martwy mimo poprawnej
-    // subskrypcji. Na sali to samo zrobi byle zanik wifi albo przełączenie na LTE,
-    // więc naprawa jest generyczna: kanał ma dozorcę, który go odtwarza.
-    let disposed = false;
-    let ch = null;
-
-    const connect = () => {
-      if (disposed) return;
-      // Socket mógł zostać rozłączony przez removeChannel innego ekranu — bez tego
-      // subscribe() dopiąłby się do martwego połączenia.
-      try { supabase.realtime.connect(); } catch (_) { /* nieistotne */ }
-      ch = supabase.channel(`quiz-${quizSession.id}`)
-        .on("broadcast", { event: "quiz_event" }, () => {
-          // Broadcast to tylko SYGNAŁ „stan sesji się zmienił", nie źródło prawdy — kanał
-          // jest publiczny, więc anon mógłby sfałszować payload (np. status:"ended" i wyrzucić
-          // wszystkich). Autorytatywny stan czytamy z bazy (RLS); powiadomienie zostaje szybkie.
-          getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
-        })
-        .on("postgres_changes", {
-          event: "UPDATE", schema: "public", table: "quiz_sessions",
-          filter: `id=eq.${quizSession.id}`,
-        }, ({ new: s }) => handleUpdate(s))
-        .subscribe();
-      quizChRef.current = ch;
-    };
-    connect();
-
-    // Dozorca: jeśli kanał nie jest (i nie staje się) połączony, odtwórz go i dociągnij
-    // stan z bazy, żeby nadrobić to, co przespaliśmy. 3 s to kompromis — szybciej niż
-    // poll awaryjny, a przy 500 uczestnikach to i tak tylko sprawdzenie pola w pamięci.
-    const watchdog = setInterval(() => {
-      if (disposed) return;
-      const st = ch?.state;
-      if (st === "joined" || st === "joining") return;
-      try { supabase.removeChannel(ch); } catch (_) { /* nieistotne */ }
-      connect();
-      getSessionById(quizSession.id).then((s) => { if (s) handleUpdate(s); });
-    }, 3000);
-
-    const poll = setInterval(async () => {
-      const s = await getSessionById(quizSession.id);
-      if (s) handleUpdate(s);
-    }, 10000); // pure safety-net — broadcast + Realtime are the fast path. Longer
-               // interval keeps DB load low at 500 concurrent participants.
-    return () => {
-      disposed = true;
-      try { supabase.removeChannel(ch); } catch (_) { /* nieistotne */ }
-      quizChRef.current = null;
-      clearInterval(watchdog); clearInterval(poll); clearTimeout(advFallbackRef.current);
-    };
-  }, [quizSession?.id, participant?.code]);
-
-  // ── Quiz logic ───────────────────────────────────────────────────
-
-  // Zapis odpowiedzi z walidacją SERWEROWĄ (submit_answer liczy is_correct z ans).
-  // Jedno źródło: lokalna tablica wyników + poprawna odpowiedź do reveal — z wyniku
-  // serwera (a nie z currentQ.ans, którego anon już nie dostaje). Dedupe po qId.
-  const recordAnswer = async (chosen) => {
-    const q = currentQ;
-    if (!q || !participant || !quizSession) return;
-    // clientCorrect tylko jako fallback, gdy sekcja 29 nie wgrana (ans wtedy obecne).
-    const clientCorrect = q.ans != null ? (chosen !== null && chosen === q.ans) : null;
-    const responseTimeS = chosen !== null ? (mod.timePerQ - pickTime.current) : null;
-    const r = await submitAnswer({
-      sessionId: quizSession.id, participantCode: participant.code,
-      participantName: `${participant.name} ${participant.surname}`, city: participant.city,
-      questionId: q.id, module: currentMod, chosen, clientCorrect, responseTimeS,
-    });
-    const ca = r.correctAns ?? (q.ans ?? null);
-    if (ca != null) setRevealAns((m) => ({ ...m, [q.id]: ca }));
-    setAllAnswers((prev) => prev.some((a) => a.qId === q.id)
-      ? prev
-      : [...prev, { qId: q.id, module: currentMod, picked: chosen, correct: !!r.isCorrect, pts: 0 }]);
-  };
-
-  // Called when timer hits 0 — reveals correct answer to participant
-  const handleTimeout = () => {
-    clearInterval(timerRef.current);
-    if (answeredRef.current) return;
-    // Brak wyboru → zapisz pustą odpowiedź (serwer policzy is_correct=false) i pobierz
-    // poprawną odp. do reveal. Wybrane odpowiedzi zapisał już handlePick (recordAnswer).
-    if (pickedRef.current === null) recordAnswer(null);
-    setAnswered(true); // reveal correct/wrong colors — wait before advancing
-    setTimeout(advanceQuestion, REVEAL_SECONDS * 1000);
-  };
-
-  // User clicks an answer — lock in choice but DON'T reveal yet (timer still runs)
-  const handlePick = (i) => {
-    if (picked !== null || answered) return; // already picked or revealed
-    pickTime.current = timer;
-    setPicked(i);
-    recordAnswer(i); // zapis serwerowy + poprawna odp. do reveal (odpowiedź ostateczna)
-  };
-
-  // Awaryjne przejście pytania, gdyby admin przestał sterować (zamknięta karta, padnięty
-  // laptop). Odpala się z deterministycznym opóźnieniem wyprowadzonym z kodu uczestnika,
-  // więc odzywa się najwcześniejszy z sali, a pozostali anulują timer, gdy zobaczą jego
-  // zapis. Przy normalnym przebiegu admin przesuwa pytanie zanim którykolwiek wystartuje
-  // → do bazy nie idzie ani jedno zapytanie z 500 telefonów.
-  const armAdvanceFallback = (expectedIdx, nextIdx) => {
-    clearTimeout(advFallbackRef.current);
-    if (DEMO || !quizSession?.id) return;
-    const sessionId = quizSession.id;
-    advFallbackRef.current = setTimeout(async () => {
-      const s = await getSessionById(sessionId);
-      // Admin (albo szybszy uczestnik) już przesunął — nic nie robimy.
-      if (!s || s.status !== "running" || s.current_question_idx !== expectedIdx) return;
-      const questions = cityQuestionsRef.current;
-      const lead = advanceLeadSeconds(questions[expectedIdx], questions[nextIdx]);
-      const { startedAt } = await advanceSessionQuestion(sessionId, expectedIdx, nextIdx, lead);
-      if (startedAt) broadcastSession({ current_question_idx: nextIdx, q_started_at: startedAt });
-    }, fallbackJitterMs(participant?.code));
-  };
-
-  // Po zakończeniu okna reveal. UWAGA: uczestnik NIE zapisuje już przejścia do bazy —
-  // kierowcą jest admin (AdminPanel driver co 1 s). Uczestnik wyłącznie reaguje na nowe
-  // q_started_at w handleUpdate. Dzięki temu znika zarówno pik ~2000 zapytań na przejście,
-  // jak i błysk następnego pytania: qIdx zmienia się dopiero razem z przyszłym
-  // q_started_at, więc `counting` jest prawdziwe już w pierwszym renderze.
-  const advanceQuestion = async () => {
-    const nextIdx       = qIdx + 1;
-    const atModuleEnd   = nextIdx >= qs.length;
-    const nextMod       = currentMod + 1;
-    const curGlobalIdx  = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
-    const nextGlobalIdx = curGlobalIdx + 1;
-
-    // DEMO: jedna przeglądarka, brak admina-kierowcy → zachowaj samodzielne przejście.
-    if (DEMO || !quizSession) {
-      if (!atModuleEnd) {
-        modTimePerQRef.current = mod.timePerQ;
-        if (quizSession) {
-          const { startedAt } = await advanceSessionQuestion(quizSession.id, curGlobalIdx, nextGlobalIdx);
-          qStartedAtRef.current = startedAt || new Date().toISOString();
-        } else {
-          qStartedAtRef.current = new Date().toISOString();
-        }
-        const startedMs = new Date(qStartedAtRef.current).getTime();
-        setCountdownNum(startedMs > serverNow() ? Math.max(0, Math.ceil((startedMs - serverNow()) / 1000) - 1) : null);
-        setQIdx(nextIdx); setTimer(mod.timePerQ); setPicked(null); setAnswered(false); setScreen("quiz");
-        return;
-      }
-      if (BREAK_AFTER.includes(currentMod)) {
-        setNextModule(nextMod <= MODULES.length ? nextMod : null);
-        setPicked(null); setAnswered(false); setScreen("break"); return;
-      }
-      if (nextMod <= MODULES.length) {
-        setCurrentMod(nextMod); setQIdx(0); setPicked(null); setAnswered(false);
-        setTimer(getModule(nextMod, MODULES).timePerQ); setScreen("module_intro"); return;
-      }
-      setScreen("waiting_results"); return;
-    }
-
-    // Przerwa po module 2 i 4 — ekran lokalny, wznawia admin (status paused → running).
-    // NIE zapisujemy status:"paused" do bazy: robiłby to każdy uczestnik osobno.
-    if (atModuleEnd && BREAK_AFTER.includes(currentMod)) {
-      setNextModule(nextMod <= MODULES.length ? nextMod : null);
-      setPicked(null); setAnswered(false); setScreen("break");
-      return;
-    }
-
-    // Koniec ostatniego pytania testu → czekamy na ogłoszenie wyników przez admina.
-    if (nextGlobalIdx >= activeQuestions.length) { setScreen("waiting_results"); return; }
-
-    // Zwykłe przejście — także przez granicę modułu. Nie ruszamy qIdx: zrobi to
-    // handleUpdate, gdy przyjdzie nowe q_started_at. Pierwsze pytanie modułu dostaje
-    // od admina lead 30 s, więc zapowiedź modułu (ModuleIntroFS) pokaże się sama,
-    // zsynchronizowana z Live View — lokalny ekran module_intro nie jest już potrzebny.
-    armAdvanceFallback(curGlobalIdx, nextGlobalIdx);
-  };
-
-  // Wznowienie po przerwie (admin zmienił status na "running").
-  //
-  // ZMIERZONE sondą pełnej ścieżki (23.09): stara wersja wchodziła w LOKALNY ekran
-  // zapowiedzi modułu, którego `onStart` czyścił qStartedAtRef i pokazywał kolejne
-  // pytanie z błędnym czasem — a uczestnik czekał do 10 s (poll awaryjny), zanim stan
-  // się poprawił. W raporcie widać to było jako pytanie trwające 9,8 s zamiast 26 s.
-  // Po naprawie ten sam pomiar daje 26,7 s.
-  //
-  // Kierowcą jest admin, więc po przerwie wystarczy zsynchronizować się z bazą:
-  // pytanie ma już swój q_started_at z leadem 30 s, więc zapowiedź modułu
-  // (ModuleIntroFS) pokaże się sama i zgodnie z Live View.
-  const handleResumeFromBreak = async (s) => {
-    const sess = s?.q_started_at ? s : (participant?.city ? await getSessionForCity(participant.city) : null);
-    const questions = cityQuestionsRef.current;
-    if (sess?.q_started_at && questions.length && syncToSession(sess, questions)) {
-      setScreen("quiz");
-      return;
-    }
-    // Fallback: sesja bez q_started_at (admin jeszcze nie ruszył dalej).
-    if (nextModule && nextModule <= MODULES.length) {
-      setCurrentMod(nextModule); setQIdx(0); setPicked(null); setAnswered(false);
-      setTimer(getModule(nextModule, MODULES).timePerQ); setScreen("module_intro");
-    } else {
-      setScreen("ended"); // moduł 5 = ogłoszenie wyników
-    }
-  };
-
-  // Participant validates code → enters lobby
-  const handleCodeSuccess = async (participantData) => {
-    sessionStorage.setItem("fue_participant", JSON.stringify(participantData));
-    setParticipant(participantData);
-    const session = await getSessionForCity(participantData.city);
-    if (session) {
-      setQuizSession(session);
-      await markCodeUsed(participantData.code, session.id);
-    }
-    // Apply city-specific background (mobile vs desktop variant) and cache for refresh
-    const bgRaw = session ? { bg: session.bg, bgMobile: session.bg_mobile } : await getCityBg(participantData.city);
-    const bg = isDesktop ? (bgRaw.bg || bgRaw.bgMobile) : (bgRaw.bgMobile || bgRaw.bg);
-    if (bg) {
-      document.documentElement.style.setProperty("--fue-bg", bg);
-      sessionStorage.setItem("fue_bg", bg);
-    }
-    setScreen("lobby");
-  };
-
-  // Called by Lobby when session goes "running" (first join or reconnect)
-  const startQuiz = async (session) => {
-    setQuizSession(session);
-
-    // Re-mark code as used in case the participant joined before a session existed
-    if (participant?.code && session?.id) {
-      markCodeUsed(participant.code, session.id);
-    }
-
-    // Apply bg when quiz starts — re-check in case bg was set after lobby was entered
-    const bgRaw2 = session ? { bg: session.bg, bgMobile: session.bg_mobile } : await getCityBg(session?.city);
-    const bg2 = isDesktop ? (bgRaw2.bg || bgRaw2.bgMobile) : (bgRaw2.bgMobile || bgRaw2.bg);
-    if (bg2) {
-      document.documentElement.style.setProperty("--fue-bg", bg2);
-      sessionStorage.setItem("fue_bg", bg2);
-    }
-
-    const dbQs = session?.city ? await getQuestions(session.city) : [];
-
-    // Brak pytań — pokaż komunikat zamiast pustego ekranu
-    if (dbQs.length === 0) {
-      setScreen("no_questions");
-      return;
-    }
-
-    setCityQuestions(dbQs);
-
-    // Rebuild local score from DB so a refresh mid-quiz doesn't reset the displayed
-    // total (answers are persisted server-side). A genuinely fresh start returns [] → 0.
-    const priorAnswers = session?.id && participant?.code
-      ? await getParticipantAnswers(session.id, participant.code)
-      : [];
-    setAllAnswers(priorAnswers);
-    setMyPts(priorAnswers.reduce((sum, a) => sum + (a.pts || 0), 0));
-
-    // Ustal moduł/pytanie z sesji ZANIM pokażemy ekran odliczania — dzięki temu
-    // zapowiedź modułu (qIdx===0) pokazuje właściwy moduł, także przy reconnekcie
-    // w trakcie późniejszego modułu (a nie zawsze "Moduł 1").
-    const synced = !!(session?.q_started_at && syncToSession(session, dbQs));
-
-    // Ekran odliczania, gdy q_started_at jest w przyszłości. Start modułu ma lead
-    // 30 s (ekran zapowiedzi modułu); zwykłe pytanie 4 s (3-2-1). Reconnect/refresh
-    // ma q_started_at w przeszłości → od razu pytanie.
-    const qStartedAtMs = session?.q_started_at ? new Date(session.q_started_at).getTime() : null;
-    if (qStartedAtMs && qStartedAtMs > serverNow()) {
-      setScreen("countdown");
-      await new Promise((resolve) => {
-        const tick = () => {
-          const msLeft = qStartedAtMs - serverNow();
-          if (msLeft > 0) setCountdownNum(Math.max(0, Math.ceil(msLeft / 1000) - 1));
-        };
-        tick();
-        const iv = setInterval(() => {
-          const msLeft = qStartedAtMs - serverNow();
-          if (msLeft <= 0) { clearInterval(iv); setCountdownNum(null); resolve(); }
-          else tick();
-        }, 100);
-      });
-    }
-
-    if (synced) { setScreen("quiz"); return; }
-
-    // Fallback — sesja bez q_started_at (edge case: admin nie kliknął start)
-    setCurrentMod(1); setQIdx(0);
-    setPicked(null); setAnswered(false); setTimer(MODULES[0]?.timePerQ ?? 60);
-    setScreen("module_intro");
-  };
-
   const handleAdminLogout = async () => { await logoutAdmin(); setScreen("welcome"); };
+
+  // Kod poprawny → zapamiętaj uczestnika i wejdź do gry (faza z hooka: lobby/quiz/…).
+  const handleCodeSuccess = (p) => {
+    saveParticipant(p);
+    setParticipant(p);
+    setScreen("game");
+  };
+
   const resetApp = () => {
-    sessionStorage.removeItem("fue_participant");
-    sessionStorage.removeItem("fue_bg");
+    clearParticipant();
     document.documentElement.style.removeProperty("--fue-bg");
-    setScreen("welcome"); setParticipant(null); setMyPts(0);
-    setAllAnswers([]); setQuizSession(null); setCityQuestions([]); setNextModule(null);
+    setParticipant(null);
+    setScreen("welcome");
   };
 
   // ── Standalone live view ─────────────────────────────────────────
   if (liveParams) return <LiveView city={liveParams.city} />;
 
   // ── Loading ──────────────────────────────────────────────────────
-  if (loading) return (
+  const loadingView = (
     <div style={{ minHeight: "100vh", background: "#070215", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="spinner" style={{ width: 40, height: 40, border: "3px solid rgba(107,33,232,.3)", borderTop: "3px solid #6B21E8", borderRadius: "50%" }} />
       <p style={{ color: "#9B89CC", fontSize: 14 }}>Ładowanie…</p>
     </div>
   );
+  if (loading) return loadingView;
 
   // ── Routing ──────────────────────────────────────────────────────
   if (screen === "welcome")
@@ -642,28 +203,8 @@ export default function App() {
   if (screen === "admin_login")
     return <AdminLogin onBack={() => setScreen("welcome")} onSuccess={(u) => setScreen("admin")} />;
 
-  if (screen === "break")
-    return <Break participant={participant} nextModule={nextModule} onResume={handleResumeFromBreak} />;
-
-  // Admin manually paused mid-quiz — participant waits
-  if (screen === "admin_pause")
-    return <Break participant={participant} nextModule={currentMod} isAdminPause sessionId={quizSession?.id} onResume={(s) => {
-      if (s?.q_started_at) {
-        qStartedAtRef.current = s.q_started_at;
-        const elapsed = Math.max(0, Math.floor((serverNow() - new Date(s.q_started_at).getTime()) / 1000));
-        setTimer(Math.max(1, modTimePerQRef.current - elapsed));
-      } else {
-        qStartedAtRef.current = null;
-        setTimer(modTimePerQRef.current || 60);
-      }
-      setPicked(null); setAnswered(false); setScreen("quiz");
-    }} />;
-
-  if (screen === "waiting_results")
-    return <WaitingResults participant={participant} onReveal={() => setScreen("ended")} />;
-
   if (screen === "practice")
-    return <Practice city={participant?.city} onBack={() => setScreen(participant ? "lobby" : "welcome")} />;
+    return <Practice city={participant?.city} onBack={() => setScreen(participant ? "game" : "welcome")} />;
 
   if (screen === "no_questions") return (
     <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", textAlign: "center", padding: 32 }}>
@@ -674,66 +215,81 @@ export default function App() {
           Administrator nie wgrał jeszcze pytań dla Twojego miasta ({participant?.city}).<br />
           Skontaktuj się z organizatorem.
         </p>
-        <button onClick={() => setScreen("lobby")} style={{ background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.15)", borderRadius: 12, padding: "12px 28px", color: "#C4B5FD", cursor: "pointer", fontFamily: '"Space Grotesk"', fontSize: 14 }}>
+        <button onClick={() => setScreen("game")} style={{ background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.15)", borderRadius: 12, padding: "12px 28px", color: "#C4B5FD", cursor: "pointer", fontFamily: '"Space Grotesk"', fontSize: 14 }}>
           ← Wróć do poczekalni
         </button>
       </div>
     </div>
   );
 
-  if (screen === "countdown")
-    return qIdx === 0
-      ? <ModuleIntroFS mod={mod} secondsLeft={countdownNum} />
-      : <Countdown num={countdownNum} />;
+  // ── Gra uczestnika: switch po fazie z planu ──────────────────────
+  if (screen === "game") {
+    if (!participant) return loadingView;
+    const mId = gv.item?.m;
+    const mod = mId != null
+      ? (MODULES.find((m) => m.id === mId) || { id: mId, name: `Moduł ${mId}`, icon: "📘", color: "#6B21E8" })
+      : null;
 
-  if (screen === "lobby")
-    return <Lobby participant={participant} isDesktop={isDesktop} isPractice={!!quizSession?.is_practice} onStartQuiz={startQuiz} onPractice={() => setScreen("practice")} />;
+    switch (gamePhase) {
+      case "loading":
+        return loadingView; // 06-07 zamieni na szkielet ekranu
 
-  if (screen === "module_intro")
-    return <ModuleIntro currentMod={currentMod} questionCount={qs.length} onStart={async () => {
-      const timePerQ  = mod?.timePerQ || 60;
-      modTimePerQRef.current = timePerQ;
-      setTimer(timePerQ);
-      setScreen("quiz");
-      if (!quizSession) {
-        // Brak sesji (praktyka solo) — lokalny znacznik w zupełności wystarcza.
-        qStartedAtRef.current = new Date().toISOString();
-        return;
+      case "lobby":
+        // Lobby woła onStartQuiz(s) z wierszem wykrytej sesji — jej id jako podpowiedź
+        // omija przypięte id zakończonej sesji (np. po próbie).
+        return <Lobby participant={participant} isDesktop={isDesktop} isPractice={isPracticeSession}
+          onStartQuiz={(s) => game.refresh(s?.id)} onPractice={() => setScreen("practice")} />;
+
+      case "intro":
+        return <ModuleIntroFS mod={mod} secondsLeft={gv.secondsLeft} />;
+
+      case "countdown":
+        return <Countdown num={Math.max(0, gv.secondsLeft - 1)} />;
+
+      case "quiz":
+      case "reveal":
+        return <Quiz item={gv.item} mod={mod} phase={gv.phase} secondsLeft={gv.secondsLeft}
+          opensAt={gv.opensAt} closesAt={gv.closesAt} revealUntil={gv.revealUntil}
+          picked={myCurrent?.chosen ?? null} answerStatus={myCurrent?.status ?? null}
+          correctAns={gv.phase === "reveal" ? game.revealAns : null}
+          qNumGlobal={gv.idx + 1} totalQuestions={gamePlan.length}
+          qNumInModule={1 + gamePlan.filter((x) => x.m === gv.item.m && x.i < gv.item.i).length}
+          moduleCount={gamePlan.filter((x) => x.m === gv.item.m).length}
+          correctTotal={game.correctTotal} isDesktop={isDesktop} isPractice={isPracticeSession}
+          participantCode={participant.code} sessionId={game.session?.id} onPick={game.pick} />;
+
+      case "paused":
+        return <Break participant={participant} nextModule={gv.item?.m} isAdminPause />;
+
+      case "finished":
+        return <WaitingResults participant={participant} />;
+
+      case "results":
+      case "ended": {
+        const allAnswers = Object.entries(game.myAnswers).map(([qId, a]) => ({
+          qId, module: gamePlan.find((x) => x.id === qId)?.m, picked: a.chosen, correct: a.correct === true, pts: 0,
+        }));
+        return <Ended participant={participant} myPts={0} allAnswers={allAnswers} isPractice={isPracticeSession} onGoHome={resetApp} />;
       }
-      const globalIdx = activeQuestions.filter((q) => q.module < currentMod).length + qIdx;
-      if (DEMO) {
-        const { startedAt } = await advanceSessionQuestion(quizSession.id, globalIdx - 1, globalIdx, MODULE_INTRO_SECONDS);
-        qStartedAtRef.current = startedAt || new Date().toISOString();
-        const ms = new Date(qStartedAtRef.current).getTime();
-        if (ms > serverNow()) setCountdownNum(Math.max(0, Math.ceil((ms - serverNow()) / 1000) - 1));
-        return;
-      }
-      // Produkcja: ten ekran jest już tylko awaryjny (sesja bez q_started_at, tzn. admin
-      // nie kliknął jeszcze „Start quizu"). Wcześniej KAŻDY uczestnik zapisywał tu
-      // przejście po lokalnym odliczaniu 3 s — czyli drugi stampede 500 wywołań, przy
-      // każdym starcie modułu. Teraz czekamy na admina, a fallback z jitterem ratuje
-      // sytuację tylko wtedy, gdy admin naprawdę milczy.
-      qStartedAtRef.current = null;
-      armAdvanceFallback(globalIdx - 1, globalIdx);
-    }} />;
 
-  // Pre-question overlay: start jest w przyszłości. Dla pierwszego pytania modułu
-  // (qIdx===0, lead 30 s) pokazujemy zapowiedź modułu; w innym wypadku 3→2→1→START.
-  // #4 — `counting` liczone SYNCHRONICZNIE z qStartedAtRef w renderze (nie z 200ms
-  // efektu countdownNum), żeby pytanie nie mignęło o klatkę po zmianie pytania.
-  const cdMs = qStartedAtRef.current ? new Date(qStartedAtRef.current).getTime() : null;
-  const counting = screen === "quiz" && cdMs != null && cdMs > serverNow();
-  const cdShow = countdownNum != null ? countdownNum : (counting ? Math.max(0, Math.ceil((cdMs - serverNow()) / 1000) - 1) : 0);
-  if (counting)
-    return qIdx === 0
-      ? <ModuleIntroFS mod={mod} secondsLeft={cdShow} />
-      : <Countdown num={cdShow} />;
+      case "legacy":
+        // Świadoma decyzja: nowy klient nie odtwarza starej maszyny stanów.
+        return (
+          <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", textAlign: "center", padding: 32 }}>
+            <div>
+              <div style={{ fontSize: 52, marginBottom: 16 }}>⚠️</div>
+              <h2 style={{ fontFamily: '"Bebas Neue"', fontSize: 36, letterSpacing: 1, color: "#F5C518", marginBottom: 12 }}>Sesja z poprzedniej wersji</h2>
+              <p style={{ color: "#9B89CC", fontSize: 15, lineHeight: 1.7, maxWidth: 380, margin: "0 auto" }}>
+                Ten quiz został uruchomiony w starszej wersji panelu. Organizator musi zakończyć sesję i uruchomić ją ponownie z odświeżonego panelu.
+              </p>
+            </div>
+          </div>
+        );
 
-  if (screen === "quiz" && currentQ && mod && !counting)
-    return <Quiz isDesktop={isDesktop} currentMod={currentMod} qIdx={qIdx} timer={timer} mod={mod} currentQ={currentQ} qs={qs} totalQuestions={activeQuestions} answered={answered} picked={picked} myPts={myPts} allAnswers={allAnswers} correctAns={revealAns[currentQ?.id] ?? null} isPractice={!!quizSession?.is_practice} participantCode={participant?.code} sessionId={quizSession?.id} onPick={handlePick} />;
-
-  if (screen === "ended")
-    return <Ended participant={participant} myPts={myPts} allAnswers={allAnswers} isPractice={!!quizSession?.is_practice} onGoHome={resetApp} />;
+      default:
+        return loadingView;
+    }
+  }
 
   if (screen === "admin")
     return <AdminPanel admin={admin} isDesktop={isDesktop} onLogout={handleAdminLogout} onPodium={(results) => { setPodiumResults(results); setPodStep(0); setScreen("podium"); }} />;

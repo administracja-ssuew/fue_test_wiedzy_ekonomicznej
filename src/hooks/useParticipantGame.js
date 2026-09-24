@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { DEMO, supabase, getParticipantState, submitAnswerV2 } from "../lib/supabase.js";
 import { projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow, addClockSample } from "../lib/serverClock.js";
@@ -39,6 +40,29 @@ function viewKey(g, v) {
   return `${g.session?.id ?? ""}|${v.phase}|${v.idx ?? ""}|${v.secondsLeft ?? ""}|${v.opensAt ?? ""}`;
 }
 
+// View Transitions tylko gdy przeglądarka je ma, karta jest widoczna i użytkownik nie
+// prosi o ograniczenie ruchu (prefers-reduced-motion). Brak = zwykła zmiana stanu.
+function canViewTransition() {
+  if (typeof document === "undefined" || typeof window === "undefined") return false;
+  if (!("startViewTransition" in document) || document.hidden) return false;
+  try {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
+  } catch (_) { /* brak matchMedia — traktujemy jak brak ograniczeń */ }
+  return true;
+}
+
+// URL-e obrazków z wartości CSS tła (np. `url("…") center/cover, linear-gradient(…)`).
+function bgImageUrls(...values) {
+  const out = [];
+  for (const v of values) {
+    if (typeof v !== "string" || !v.includes("url(")) continue;
+    const re = /url\(\s*(['"]?)(.*?)\1\s*\)/g;
+    let m;
+    while ((m = re.exec(v)) !== null) if (m[2]) out.push(m[2]);
+  }
+  return out;
+}
+
 function initialGame(participant) {
   // Inicjalizacja SYNCHRONICZNA z cache: po refreshu pierwsza klatka pokazuje już
   // właściwą fazę z zapamiętanego planu, zanim wróci snapshot (SC2 — brak pustego ekranu).
@@ -68,14 +92,33 @@ export default function useParticipantGame(participant) {
   const revealMissRef = useRef(new Set());    // idx, dla których dociągnięto brakujący reveal
   const planLoadRef = useRef(null);           // kotwica, dla której dociągamy plan
 
+  // Publikacja nowego widoku. Zmiana fazy lub pytania (nie sam tik sekund) idzie przez
+  // View Transitions. Pułapka 10: w React 18 setState jest asynchroniczny — bez flushSync
+  // przeglądarka zrobiłaby zrzut „po” przed renderem (brak animacji / mignięcie).
+  // Callback przejścia odpala się asynchronicznie, więc ustawia NAJNOWSZY widok z refa —
+  // widok podmieniony w międzyczasie nie zostanie nadpisany starszym.
+  const pushView = useCallback((v, k) => {
+    const prev = viewRef.current;
+    viewKeyRef.current = k;
+    viewRef.current = v;
+    const structural = prev?.phase !== v.phase || prev?.idx !== v.idx;
+    if (structural && canViewTransition()) {
+      try {
+        document.startViewTransition(() => flushSync(() => setView(viewRef.current)));
+        return;
+      } catch (_) { /* przejście niedostępne — zwykła zmiana stanu */ }
+    }
+    setView(v);
+  }, []);
+
   const commit = useCallback((next) => {
     gameRef.current = next;
     setGame(next);
     // Natychmiastowe przeliczenie widoku (nie czekamy na kolejną klatkę rAF).
     const v = computeView(next);
     const k = viewKey(next, v);
-    if (k !== viewKeyRef.current) { viewKeyRef.current = k; viewRef.current = v; setView(v); }
-  }, []);
+    if (k !== viewKeyRef.current) pushView(v, k);
+  }, [pushView]);
 
   const setLoad = useCallback((s) => { loadStateRef.current = s; setLoadState(s); }, []);
 
@@ -205,7 +248,8 @@ export default function useParticipantGame(participant) {
 
   // ── Ticker rAF ─────────────────────────────────────────────────────────────
   // Faza z projekcji planu co klatkę, ale setView TYLKO przy zmianie klucza
-  // (faza | idx | sekundy | otwarcie) — nie 60 renderów na sekundę.
+  // (faza | idx | sekundy | otwarcie) — nie 60 renderów na sekundę. Zmiana fazy/pytania
+  // przechodzi przez View Transitions (pushView), sam tik sekund — zwykłe setView.
   useEffect(() => {
     const raf = typeof requestAnimationFrame === "function"
       ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
@@ -215,12 +259,32 @@ export default function useParticipantGame(participant) {
       const g = gameRef.current;
       const v = computeView(g);
       const k = viewKey(g, v);
-      if (k !== viewKeyRef.current) { viewKeyRef.current = k; viewRef.current = v; setView(v); }
+      if (k !== viewKeyRef.current) pushView(v, k);
       id = raf(tick);
     };
     id = raf(tick);
     return () => caf(id);
-  }, []);
+  }, [pushView]);
+
+  // ── Prefetch ───────────────────────────────────────────────────────────────
+  // Treść WSZYSTKICH pytań (q/opts) przychodzi w planie ze snapshotu i leży w cache
+  // localStorage, więc następne pytanie jest lokalnie dostępne na długo przed otwarciem —
+  // osobne pobieranie pytań byłoby zbędnym ruchem (×500 telefonów). Jedyne, co jeszcze
+  // może dociągać się z sieci w chwili zmiany ekranu, to grafika tła sesji: wczytujemy ją
+  // z wyprzedzeniem raz na sesję, żeby pierwszy ekran modułu nie mrugał pustym tłem.
+  const prefetchedRef = useRef(null);
+  const bgSessionId = game.session?.id ?? null;
+  const bgDesktop = game.session?.bg ?? null;
+  const bgMobile = game.session?.bg_mobile ?? null;
+  useEffect(() => {
+    if (!bgSessionId || prefetchedRef.current === bgSessionId) return;
+    const urls = bgImageUrls(bgDesktop, bgMobile);
+    if (!urls.length || typeof Image === "undefined") return;
+    prefetchedRef.current = bgSessionId;
+    for (const url of urls) {
+      try { const img = new Image(); img.decoding = "async"; img.src = url; } catch (_) { /* nieistotne */ }
+    }
+  }, [bgSessionId, bgDesktop, bgMobile]);
 
   // ── Kanał Realtime (sygnał) + dozorca + siatka bezpieczeństwa ───────────────
   const sessionId = game.session?.id ?? null;

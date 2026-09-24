@@ -7,6 +7,7 @@ import { useModules } from "./context/ModulesContext.jsx";
 import useWindowWidth from "./hooks/useWindowWidth.js";
 import useAuth from "./hooks/useAuth.js";
 import useParticipantGame from "./hooks/useParticipantGame.js";
+import useWakeLock from "./hooks/useWakeLock.js";
 
 import Welcome        from "./screens/Welcome.jsx";
 import Break          from "./screens/Break.jsx";
@@ -53,6 +54,9 @@ export default function App() {
   else if (gamePhase === "no_session") gamePhase = "lobby";
   else if (gamePhase === "ended" && isPracticeSession) gamePhase = "lobby"; // próba wraca do poczekalni
   const myCurrent = gv.item ? game.myAnswers[gv.item.id] : null;
+
+  // Ekran telefonu nie gaśnie w poczekalni i przez całą rozgrywkę (ponawiane po powrocie karty).
+  useWakeLock(screen === "game" && ["lobby", "no_session", "plan_loading", "intro", "countdown", "quiz", "reveal", "paused", "finished"].includes(gv.phase));
 
   // Tło miasta z localStorage od razu — bez mignięcia domyślnego tła po refreshu.
   useEffect(() => {

@@ -30,6 +30,9 @@ button { cursor: pointer; }
 @keyframes watermarkB { 0%,35%{opacity:0} 45%,90%{opacity:.055} 100%{opacity:0} }
 @keyframes cdnum { 0%{transform:scale(2.2);opacity:0;filter:blur(12px)} 18%{transform:scale(1);opacity:1;filter:blur(0)} 72%{transform:scale(1);opacity:1;filter:blur(0)} 100%{transform:scale(.6);opacity:0;filter:blur(6px)} }
 @keyframes cdring { 0%{transform:scale(.4);opacity:.8} 100%{transform:scale(2.4);opacity:0} }
+/* Faza 6 — pasek i pierścień czasu zakotwiczone w terminie (ujemny animation-delay) */
+@keyframes fueDrain { from { transform: scaleX(1) } to { transform: scaleX(0) } }
+@keyframes fueRing  { from { stroke-dashoffset: 0 } to { stroke-dashoffset: var(--fue-circ) } }
 
 .su { animation: su .35s ease both; }
 .pi { animation: pi .45s cubic-bezier(.34,1.56,.64,1) both; }
@@ -73,4 +76,15 @@ button { cursor: pointer; }
   .fue-quiz-main { flex: 1; }
   .fue-quiz-sidebar { display: none; }
   .fue-page-wide { padding: 0 40px; }
+}
+
+/* Faza 6 — View Transitions przy zmianie fazy/pytania (krótko, bez rozpraszania) */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
+
+/* Faza 6 — prefers-reduced-motion wyłącza wszystkie animacje (pasek/pierścień czasu
+   stoją, cyfry liczy dalej JS; przejścia bez animacji) */
+@media (prefers-reduced-motion: reduce) {
+  .fue-drain, .fue-ring { animation: none !important; }
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }

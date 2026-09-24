@@ -483,6 +483,20 @@ async function main() {
       // (z sessionId przypiętym przez aplikację), a nie świeże „wejście z kodem”.
       await ctx.addInitScript((p) => { if (!localStorage.getItem("fue_participant")) localStorage.setItem("fue_participant", p); },
         JSON.stringify({ code: c.code, name: c.name, surname: c.surname, city: c.city, sessionId: null }));
+      // Historia KAŻDEJ zmiany data-fue-phase (MutationObserver) — próbkowanie co 250 ms
+      // gubi jednoklatkowe mignięcia (np. poczekalnia tuż po refreshu), a to realny błąd UX.
+      await ctx.addInitScript(() => {
+        window.__fuePhases = [];
+        new MutationObserver((ms) => {
+          for (const m of ms) {
+            const d = m.target?.dataset;
+            if (m.target === document.body && d?.fuePhase) {
+              window.__fuePhases.push({ t: Date.now(), phase: d.fuePhase, q: d.fueQ ? Number(d.fueQ) : null, locked: d.fueLocked === "1", choice: d.fueChoice || null });
+            }
+          }
+        // `document`, nie documentElement — ten ostatni nie istnieje jeszcze w chwili init scriptu.
+        }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-fue-phase", "data-fue-q", "data-fue-locked"] });
+      });
       const p = await ctx.newPage();
       // Podsłuch WebSocket na PIERWSZYM telefonie — to jedyny sposób, żeby odróżnić
       // "aplikacja nie zareagowała" od "zdarzenie w ogóle nie dotarło".
@@ -707,6 +721,23 @@ async function reloadAndCompare(ctx, label, lock = null) {
   const cmp = compareWindow(samples, REF_PI, ready.srv, ready.srv + 2000, { lock });
   res.maxDiff = cmp.maxDiff; res.compared = cmp.compared;
   res.problems.push(...cmp.mismatches);
+  // Każda faza wystawiona po reloadzie (poza „loading”) musi zgadzać się z telefonem
+  // referencyjnym z tej samej chwili — łapie mignięcia krótsze niż tick próbkowania.
+  const hist = await pg.evaluate("window.__fuePhases || []").catch(() => []);
+  for (const h of hist) {
+    const srv = h.t + state.clockOff;
+    if (h.phase === "loading" || srv > ready.srv + 2000) continue;
+    // Udzielona przed reloadem odpowiedź musi być zablokowana od pierwszej klatki po reloadzie.
+    if (lock && h.q === lock.q && (!h.locked || h.choice !== lock.choice)) {
+      res.problems.push(`mignięcie odblokowanej odpowiedzi q${lock.q} ${Math.round(srv - tStart)} ms po reloadzie (${h.phase}, wybór ${h.choice})`);
+    }
+    if (nearBoundary(srv)) continue;
+    const ref = samples.reduce((best, s) => (Math.abs(s.srv - srv) < Math.abs((best?.srv ?? Infinity) - srv) ? s : best), null)?.phones[0];
+    if (ref?.src === "data" && !samePhase(ref.phase, h.phase)) {
+      res.problems.push(`mignięcie fazy „${h.phase}” ${Math.round(srv - tStart)} ms po reloadzie (telefon 1: ${ref.phase})`);
+    }
+  }
+  res.phaseSeq = hist.map((h) => h.phase).filter((p, i, a) => p !== a[i - 1]).join("→");
   if (!cmp.compared) res.problems.push("brak porównywalnych próbek w 2 s po reloadzie");
   modeRes.refresh.push(res);
   return res;
@@ -816,6 +847,7 @@ function reportModes(fail) {
     for (const r of rs) {
       const ok = !r.problems.length;
       console.log(`   ${ok ? "✅" : "❌"} ${r.label.padEnd(28)} powrót ${r.readyMs != null ? r.readyMs + " ms" : "—"}  różnica licznika po refreshu ${r.maxDiff ?? "—"}s  (${r.compared ?? 0} próbek)`);
+      if (r.phaseSeq) console.log(`      fazy po reloadzie: ${r.phaseSeq}`);
       for (const p of r.problems.slice(0, 4)) console.log(`      • ${p}`);
       if (!ok) fail.push(`REFRESH ${r.label}: ${r.problems[0]}`);
     }

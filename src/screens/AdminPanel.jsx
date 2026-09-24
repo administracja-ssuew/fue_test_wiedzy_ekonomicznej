@@ -641,91 +641,118 @@ function SesjaTab({ city, adminId, onPodium }) {
   // Dedicated fast (1s) poll of JUST the answer counter so the admin's live banner
   // is second-accurate during a question — matches the LiveView/embed cadence.
   // The heavier participants/violations bundle above stays at 3s to keep DB load low.
+  //
+  // ZNALEZISKO (24.09.2026, telefon-refresh-blokuje-live-view): ten interwał jest
+  // JEDYNYM miejscem, które zapisuje przejście pytania do bazy (KIEROWCA niżej).
+  // Przeglądarka dławi setInterval w karcie w tle/nieaktywnej (aż do 1 tiku/minutę
+  // po dłuższym czasie ukrycia) — bez obsługi tego admin patrzący w telefon
+  // uczestnika (drugie urządzenie, więc karta laptopa nie jest aktywna) zamraża CAŁĄ
+  // rozgrywkę dla wszystkich, dopóki sam nie wróci uwagą do panelu. Ten sam wzorzec
+  // (dociągnij natychmiast po powrocie widoczności) jest już w serverClock.js i
+  // ModulesContext.jsx — tu brakowało go dla kierowcy.
+  const driverTickingRef = useRef(false);
   useEffect(() => {
     clearInterval(liveStatsRef.current);
     if (session?.status !== "running") return;
     plTotalRef.current = -1; plAtRef.current = Date.now(); // reset plateau przy (re)starcie (pauza-safe)
-    liveStatsRef.current = setInterval(async () => {
-      const s = sessionRef.current;
-      const idx = s?.current_question_idx ?? 0;
-      const q = cityQuestions[idx];
-      if (!s?.id || !q?.id || s.status !== "running") return;
 
-      // Zmiana pytania — zamknij poprzednie i zaktualizuj oszacowanie frekwencji.
-      // Ostatni total poprzedniego pytania to najlepsza miara, ilu uczestników REALNIE
-      // odpowiada. participants.length liczy wydane kody, więc kody-widma (ktoś dołączył
-      // i zamknął przeglądarkę) trwale zawyżały próg i „wszyscy odpowiedzieli" nie
-      // odpalało się nigdy — trzeba było czekać na plateau. [[auto-skip-widma-plateau]]
-      if (driverIdxRef.current !== idx) {
-        if (plTotalRef.current > expectedRef.current) expectedRef.current = plTotalRef.current;
-        driverIdxRef.current = idx;
-        plTotalRef.current = -1;
-        plAtRef.current = Date.now();
-      }
-
-      const startedMsNow = s.q_started_at ? new Date(s.q_started_at).getTime() : null;
-      const tpqNow = MODULES.find((m) => m.id === q.module)?.timePerQ || 60;
-
-      const stats = await getLiveAnswerSummary(s.id, q.id);
-      if (stats) {
-        setLiveStats(stats);
-        // #3 — wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
-        const total = stats.total ?? 0;
-        if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
-        // Decyzja w czystej funkcji (gameLogic.shouldEndEarly) — ma test regresyjny na
-        // przebieg, w którym stary warunek ucinał 500-osobowy quiz przy 60 odpowiedziach.
-        const elapsedS = startedMsNow != null ? (serverNow() - startedMsNow) / 1000 : 0;
-        const endEarly = shouldEndEarly({
-          total,
-          expected: expectedRef.current,
-          issued: participantsRef.current,
-          elapsedS,
-          timePerQ: tpqNow,
-          sinceLastAnswerMs: Date.now() - plAtRef.current,
-        });
-        if (endEarly && autoAdvancedRef.current !== idx) {
-          autoAdvancedRef.current = idx;
-          // tpqNow przekazane JAWNIE — wcześniej goToNextQuestion liczyło czas modułu
-          // z `session` (stan React), a kierowca z `sessionRef`. Gdy te dwa źródła się
-          // rozjechały, admin cofał znacznik o inną liczbę sekund, niż uczestnik
-          // oczekiwał — u uczestnika nie odpalała się ŻADNA gałąź handleUpdate, więc
-          // liczył dalej stary czas i przeskakiwał dopiero przy przejściu pytania.
-          goToNextRef.current(tpqNow);
-        }
-      }
-
-      // ── KIEROWCA PRZEJŚCIA PYTANIA ──────────────────────────────────────────
-      // Od 09.2026 to admin zapisuje przejście, nie uczestnicy. Wcześniej robił to
-      // KAŻDY z 500 telefonów w tym samym ticku 250 ms — ~500 wywołań RPC
-      // serializowanych na blokadzie jednego wiersza plus ~1500 zapytań pochodnych,
-      // na każde z 58 pytań. Uczestnik ma teraz wyłącznie reagować na q_started_at.
-      //
-      // Warunek nie zależy od liczby odpowiedzi, więc pytanie, na które NIE odpowiedział
-      // NIKT (total === 0), też idzie dalej — wcześniej plateau wymagało total > 0
-      // i quiz potrafił stanąć do ręcznej interwencji.
-      const nextIdx = idx + 1;
-      if (advancingRef.current || nextIdx >= cityQuestions.length) return;
-      if (!shouldAdvance(tpqNow, startedMsNow, serverNow())) return;
-
-      advancingRef.current = true;
+    const driverTick = async () => {
+      if (driverTickingRef.current) return; // nie nakładaj wywołań (setInterval + visibilitychange)
+      driverTickingRef.current = true;
       try {
-        const lead = advanceLeadSeconds(q, cityQuestions[nextIdx]);
-        const { startedAt } = await advanceSessionQuestion(s.id, idx, nextIdx, lead);
-        if (startedAt) {
-          const next = { ...sessionRef.current, current_question_idx: nextIdx, q_started_at: startedAt, status: "running" };
-          sessionRef.current = next;
-          setSession(next);
-          // Instant push — Live View i uczestnicy dostają zmianę w ~50 ms zamiast czekać
-          // na postgres_changes. Payload to tylko sygnał; klient i tak czyta stan z bazy.
-          if (!DEMO && supabase && quizBcChRef.current) {
-            quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: next });
+        const s = sessionRef.current;
+        const idx = s?.current_question_idx ?? 0;
+        const q = cityQuestions[idx];
+        if (!s?.id || !q?.id || s.status !== "running") return;
+
+        // Zmiana pytania — zamknij poprzednie i zaktualizuj oszacowanie frekwencji.
+        // Ostatni total poprzedniego pytania to najlepsza miara, ilu uczestników REALNIE
+        // odpowiada. participants.length liczy wydane kody, więc kody-widma (ktoś dołączył
+        // i zamknął przeglądarkę) trwale zawyżały próg i „wszyscy odpowiedzieli" nie
+        // odpalało się nigdy — trzeba było czekać na plateau. [[auto-skip-widma-plateau]]
+        if (driverIdxRef.current !== idx) {
+          if (plTotalRef.current > expectedRef.current) expectedRef.current = plTotalRef.current;
+          driverIdxRef.current = idx;
+          plTotalRef.current = -1;
+          plAtRef.current = Date.now();
+        }
+
+        const startedMsNow = s.q_started_at ? new Date(s.q_started_at).getTime() : null;
+        const tpqNow = MODULES.find((m) => m.id === q.module)?.timePerQ || 60;
+
+        const stats = await getLiveAnswerSummary(s.id, q.id);
+        if (stats) {
+          setLiveStats(stats);
+          // #3 — wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
+          const total = stats.total ?? 0;
+          if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
+          // Decyzja w czystej funkcji (gameLogic.shouldEndEarly) — ma test regresyjny na
+          // przebieg, w którym stary warunek ucinał 500-osobowy quiz przy 60 odpowiedziach.
+          const elapsedS = startedMsNow != null ? (serverNow() - startedMsNow) / 1000 : 0;
+          const endEarly = shouldEndEarly({
+            total,
+            expected: expectedRef.current,
+            issued: participantsRef.current,
+            elapsedS,
+            timePerQ: tpqNow,
+            sinceLastAnswerMs: Date.now() - plAtRef.current,
+          });
+          if (endEarly && autoAdvancedRef.current !== idx) {
+            autoAdvancedRef.current = idx;
+            // tpqNow przekazane JAWNIE — wcześniej goToNextQuestion liczyło czas modułu
+            // z `session` (stan React), a kierowca z `sessionRef`. Gdy te dwa źródła się
+            // rozjechały, admin cofał znacznik o inną liczbę sekund, niż uczestnik
+            // oczekiwał — u uczestnika nie odpalała się ŻADNA gałąź handleUpdate, więc
+            // liczył dalej stary czas i przeskakiwał dopiero przy przejściu pytania.
+            goToNextRef.current(tpqNow);
           }
         }
+
+        // ── KIEROWCA PRZEJŚCIA PYTANIA ──────────────────────────────────────────
+        // Od 09.2026 to admin zapisuje przejście, nie uczestnicy. Wcześniej robił to
+        // KAŻDY z 500 telefonów w tym samym ticku 250 ms — ~500 wywołań RPC
+        // serializowanych na blokadzie jednego wiersza plus ~1500 zapytań pochodnych,
+        // na każde z 58 pytań. Uczestnik ma teraz wyłącznie reagować na q_started_at.
+        //
+        // Warunek nie zależy od liczby odpowiedzi, więc pytanie, na które NIE odpowiedział
+        // NIKT (total === 0), też idzie dalej — wcześniej plateau wymagało total > 0
+        // i quiz potrafił stanąć do ręcznej interwencji.
+        const nextIdx = idx + 1;
+        if (advancingRef.current || nextIdx >= cityQuestions.length) return;
+        if (!shouldAdvance(tpqNow, startedMsNow, serverNow())) return;
+
+        advancingRef.current = true;
+        try {
+          const lead = advanceLeadSeconds(q, cityQuestions[nextIdx]);
+          const { startedAt } = await advanceSessionQuestion(s.id, idx, nextIdx, lead);
+          if (startedAt) {
+            const next = { ...sessionRef.current, current_question_idx: nextIdx, q_started_at: startedAt, status: "running" };
+            sessionRef.current = next;
+            setSession(next);
+            // Instant push — Live View i uczestnicy dostają zmianę w ~50 ms zamiast czekać
+            // na postgres_changes. Payload to tylko sygnał; klient i tak czyta stan z bazy.
+            if (!DEMO && supabase && quizBcChRef.current) {
+              quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: next });
+            }
+          }
+        } finally {
+          advancingRef.current = false;
+        }
       } finally {
-        advancingRef.current = false;
+        driverTickingRef.current = false;
       }
-    }, 1000);
-    return () => clearInterval(liveStatsRef.current);
+    };
+
+    liveStatsRef.current = setInterval(driverTick, 1000);
+    // Dociągnij natychmiast, gdy karta wraca na pierwszy plan — bez tego trzeba
+    // czekać na kolejny (być może mocno opóźniony przez throttling karty w tle) tik.
+    const onVisible = () => { if (!document.hidden) driverTick(); };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(liveStatsRef.current);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [session?.status, cityQuestions, MODULES]);
 
   // Realtime Presence — count participants actually on the lobby screen

@@ -941,3 +941,343 @@ export async function getEventLog(sessionId) {
     .limit(200);
   return data || [];
 }
+
+// ─── Faza 6: rozgrywka z planu (RPC v2) ───────────────────────────────────────
+// Serwer jest jedynym źródłem prawdy: plan sesji zamrażany przy starcie, pozycja
+// liczona z kotwicy i zegara serwera. Wrappery nigdy nie rzucają — konwencja repo
+// { data, error }. DEMO buduje ten sam plan lokalnie (plan.js), więc tryb bez kluczy
+// Supabase przechodzi dokładnie tę samą ścieżkę uczestnika co produkcja.
+
+import {
+  buildPlanItems, planPosition, isRevealed, resumeAnchor, skipAnchor, repeatAnchor,
+  answerResponseMs, toMs, REVEAL_GATE_MS,
+} from "./plan.js";
+
+const isMissingFn = (e) => e && (e.code === "PGRST202" || /Could not find the function/i.test(e.message || ""));
+const DEMO_CITIES = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
+const iso = (ms) => (ms == null ? null : new Date(ms).toISOString());
+
+// DEMO: znajdź sesję po id we wszystkich kluczach `fue_session_${city}${suffix}`.
+function demoFindSession(sessionId) {
+  for (const city of DEMO_CITIES) {
+    for (const suffix of ["", "_practice"]) {
+      const key = `fue_session_${city}${suffix}`;
+      const s = JSON.parse(localStorage.getItem(key) || "null");
+      if (s?.id === sessionId) return { key, s };
+    }
+  }
+  return null;
+}
+
+function demoPlan(sessionId) {
+  try { return JSON.parse(localStorage.getItem(`fue_plan_${sessionId}`) || "null"); } catch { return null; }
+}
+
+function demoQuestionsSorted(city) {
+  const qs = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
+  return [...qs].sort((a, b) =>
+    (a.module - b.module) || ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || String(a.id).localeCompare(String(b.id)));
+}
+
+// DEMO: q_started_at / current_question_idx jako lustro pozycji (dla starych ekranów).
+function demoSyncRow(s, items, nowMs) {
+  const pos = planPosition(items, toMs(s.plan_anchor_at), toMs(s.plan_paused_at), nowMs);
+  if (!pos) return s;
+  return { ...s, current_question_idx: pos.idx, q_started_at: iso(pos.opensAt) };
+}
+
+export async function startQuizSessionV2(sessionId) {
+  if (DEMO) {
+    const found = demoFindSession(sessionId);
+    if (!found) return { ok: false, reason: "not found", session: null, error: null };
+    const { key, s } = found;
+    if (s.status !== "waiting") return { ok: false, reason: "not waiting", session: s, error: null };
+    const qs = demoQuestionsSorted(s.city);
+    if (!qs.length) return { ok: false, reason: "no questions", session: s, error: null };
+    const items = buildPlanItems(qs, await getModules());
+    localStorage.setItem(`fue_plan_${sessionId}`, JSON.stringify(items));
+    const anchor = Date.now();
+    const next = {
+      ...s, status: "running", current_question_idx: 0,
+      plan_anchor_at: iso(anchor), plan_paused_at: null, revealed_idx: null, revealed_ans: null,
+      q_started_at: iso(anchor + items[0].o),
+    };
+    localStorage.setItem(key, JSON.stringify(next));
+    return { ok: true, reason: null, session: next, error: null };
+  }
+  await supabase.auth.getSession();
+  const { data, error } = await supabase.rpc("start_quiz_session_v2", { p_session_id: sessionId });
+  if (error) {
+    if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: "Na bazie brak sekcji 39 (start_quiz_session_v2) — wgraj SQL." };
+    return { ok: false, reason: null, session: null, error: error.message };
+  }
+  return { ok: !!data?.ok, reason: data?.reason ?? null, session: data?.session ?? null, error: null };
+}
+
+export async function getSessionPlan(sessionId) {
+  if (!sessionId) return null;
+  if (DEMO) return demoPlan(sessionId);
+  const { data, error } = await supabase.from("session_plans").select("items").eq("session_id", sessionId).maybeSingle();
+  if (error || !data) return null;
+  return data.items || null;
+}
+
+// DEMO: ten sam kształt JSON co get_participant_state (39.6b), łącznie z regułą
+// porzucenia przypiętej zakończonej sesji, gdy miasto ma nowszą niezakończoną.
+// Kod walidowany tak jak validateParticipantCode w DEMO (lista `fue_codes`).
+function demoParticipantState(rawCode, sessionId, includePlan) {
+  const nowMs = Date.now();
+  const code = String(rawCode || "").trim().toUpperCase();
+  const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+  const entry = codes.find((c) => c.code === code);
+  if (!entry) return { server_now: nowMs, error: "invalid code" };
+  const city = entry.city;
+  const cands = ["", "_practice"]
+    .map((suf) => JSON.parse(localStorage.getItem(`fue_session_${city}${suf}`) || "null"))
+    .filter(Boolean);
+
+  let s = null;
+  if (sessionId) {
+    s = cands.find((x) => x.id === sessionId) || null;
+    if (s && (s.status === "results" || s.status === "ended")) {
+      const newer = cands.some((n) => n.status !== "ended" && n.id !== s.id
+        && (toMs(n.created_at) ?? 0) > (toMs(s.created_at) ?? 0));
+      if (newer) s = null;
+    }
+  }
+  if (!s) {
+    const rank = { running: 0, paused: 1, waiting: 2 };
+    s = cands.filter((x) => x.status !== "ended")
+      .sort((a, b) => ((rank[a.status] ?? 3) - (rank[b.status] ?? 3)) || ((toMs(b.created_at) ?? 0) - (toMs(a.created_at) ?? 0)))[0] || null;
+  }
+  if (!s) {
+    return { server_now: nowMs, error: null, session: null, position: null, plan: null, my_answers: [], reveal: null, correct_total: 0 };
+  }
+
+  const anchorMs = toMs(s.plan_anchor_at);
+  const pausedMs = toMs(s.plan_paused_at);
+  const items = anchorMs != null ? demoPlan(s.id) : null;
+  const final = s.status === "results" || s.status === "ended";
+  const qs = JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
+  const qById = (id) => qs.find((q) => q.id === id);
+
+  let position = null;
+  let plan = null;
+  let reveal = null;
+  if (items?.length) {
+    const pos = planPosition(items, anchorMs, pausedMs, nowMs);
+    if (pos) {
+      position = { idx: pos.idx, phase: pos.phase, opens_at: pos.opensAt, closes_at: pos.closesAt, reveal_until: pos.revealUntil };
+    }
+    if (includePlan) {
+      // Plan BEZ `ans` — poprawność tylko przez reveal.
+      plan = items.map((it) => {
+        const q = qById(it.id);
+        return { ...it, q: q?.q ?? "(pytanie usunięte)", opts: q?.opts ?? [] };
+      });
+    }
+    let rev = null;
+    if (final) rev = items.length - 1;
+    else if (pos) rev = isRevealed(pos.item, anchorMs, pausedMs, nowMs) ? pos.idx : (pos.idx > 0 ? pos.idx - 1 : null);
+    if (rev != null) reveal = { idx: rev, ans: qById(items[rev].id)?.ans ?? null };
+  }
+
+  const mine = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+    .filter((a) => a.sessionId === s.id && a.participantCode === code);
+  let correctTotal = 0;
+  const myAnswers = mine.map((a) => {
+    const it = items?.find((x) => x.id === a.questionId);
+    const open = final || (it && anchorMs != null && isRevealed(it, anchorMs, pausedMs, nowMs));
+    if (open && a.isCorrect === true) correctTotal++;
+    return { question_id: a.questionId, chosen: a.chosen, is_correct: open ? !!a.isCorrect : null };
+  });
+
+  return {
+    server_now: nowMs,
+    error: null,
+    session: {
+      id: s.id, city: s.city, status: s.status, is_practice: !!s.is_practice,
+      bg: s.bg ?? null, bg_mobile: s.bg_mobile ?? null, name: s.name ?? null,
+      plan_anchor_at: anchorMs, plan_paused_at: pausedMs,
+    },
+    position, plan, my_answers: myAnswers, reveal, correct_total: correctTotal,
+  };
+}
+
+// Jeden snapshot stanu uczestnika. t0/t1 wokół wywołania → próbka zegara (server_now).
+export async function getParticipantState(code, { sessionId = null, includePlan = true } = {}) {
+  const t0 = Date.now();
+  if (DEMO) {
+    const data = demoParticipantState(code, sessionId, includePlan);
+    return { data, error: null, t0, t1: Date.now() };
+  }
+  const { data, error } = await supabase.rpc("get_participant_state", {
+    p_code: code, p_session_id: sessionId, p_include_plan: includePlan,
+  });
+  const t1 = Date.now();
+  if (error) {
+    return { data: null, error: isMissingFn(error) ? "Na bazie brak sekcji 39 (get_participant_state) — wgraj SQL." : error.message, t0, t1 };
+  }
+  return { data, error: null, t0, t1 };
+}
+
+// Zapis odpowiedzi. Odpowiedź serwera NIE niesie poprawności (SC5) — kolor poprawnej
+// odpowiedzi przychodzi wyłącznie z reveal / revealed_*.
+export async function submitAnswerV2({ sessionId, participantCode, participantName, questionId, chosen }) {
+  if (DEMO) {
+    const found = demoFindSession(sessionId);
+    const items = demoPlan(sessionId);
+    if (!found || !items?.length || found.s.plan_anchor_at == null) {
+      return { accepted: false, duplicate: false, chosen: null, error: "session has no plan", retryable: false };
+    }
+    const { s } = found;
+    if (s.plan_paused_at != null || s.status === "paused") {
+      return { accepted: false, duplicate: false, chosen: null, error: "session paused", retryable: true };
+    }
+    if (s.status !== "running") return { accepted: false, duplicate: false, chosen: null, error: "session not running", retryable: false };
+    const item = items.find((x) => x.id === questionId);
+    if (!item) return { accepted: false, duplicate: false, chosen: null, error: "question not in plan", retryable: false };
+    const nowMs = Date.now();
+    const anchorMs = toMs(s.plan_anchor_at);
+    if (nowMs < anchorMs + item.o) return { accepted: false, duplicate: false, chosen: null, error: "question not started", retryable: false };
+    if (chosen != null && nowMs > anchorMs + item.c + REVEAL_GATE_MS) {
+      return { accepted: false, duplicate: false, chosen: null, error: "time is up", retryable: false };
+    }
+    const code = String(participantCode || "").trim().toUpperCase();
+    const prev = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .find((a) => a.sessionId === sessionId && a.participantCode === code && a.questionId === questionId);
+    if (prev) return { accepted: true, duplicate: true, chosen: prev.chosen ?? null, error: null, retryable: false };
+    const q = JSON.parse(localStorage.getItem(`fue_questions_${s.city}`) || "[]").find((x) => x.id === questionId);
+    const rtMs = answerResponseMs(item, anchorMs, nowMs, chosen);
+    await saveAnswer({
+      sessionId, participantCode: code, participantName, city: s.city, questionId, module: item.m,
+      chosen, isCorrect: chosen != null && q?.ans === chosen, points: 0, responseTimeS: Math.floor(rtMs / 1000),
+    });
+    return { accepted: true, duplicate: false, chosen, error: null, retryable: false };
+  }
+  const { data, error } = await supabase.rpc("submit_answer_v2", {
+    p_session_id: sessionId, p_code: participantCode, p_name: participantName,
+    p_question_id: questionId, p_chosen: chosen,
+  });
+  if (error) {
+    const msg = error.message || "";
+    // Sieć / timeout (brak kodu PostgREST) albo pauza → warto ponowić w oknie odpowiedzi.
+    const retryable = (!error.code && /fetch|network|timeout|Failed/i.test(msg)) || /session paused/i.test(msg);
+    return { accepted: false, duplicate: false, chosen: null, error: msg, retryable };
+  }
+  return { accepted: !!data?.accepted, duplicate: !!data?.duplicate, chosen: data?.chosen ?? null, error: null, retryable: false };
+}
+
+// Licznik odpowiedzi + bramkowana poprawność (correct/ans dopiero po closes + 1,5 s).
+export async function getAnswerSummaryV2(sessionId, questionId) {
+  if (DEMO) {
+    const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
+    const found = demoFindSession(sessionId);
+    const items = demoPlan(sessionId);
+    const item = items?.find((x) => x.id === questionId);
+    const s = found?.s;
+    const open = !!s && (s.status === "results" || s.status === "ended"
+      || (!!item && s.plan_anchor_at != null && isRevealed(item, toMs(s.plan_anchor_at), toMs(s.plan_paused_at), Date.now())));
+    const q = open ? JSON.parse(localStorage.getItem(`fue_questions_${s.city}`) || "[]").find((x) => x.id === questionId) : null;
+    return { total: raw.length, correct: open ? raw.filter((a) => a.isCorrect).length : null, ans: open ? (q?.ans ?? null) : null };
+  }
+  const { data, error } = await supabase.rpc("get_answer_summary_v2", { p_session_id: sessionId, p_question_id: questionId });
+  if (error) {
+    if (isMissingFn(error)) return getLiveAnswerSummary(sessionId, questionId);
+    return { total: 0, correct: null, ans: null };
+  }
+  return { total: data?.total || 0, correct: data?.correct ?? null, ans: data?.ans ?? null };
+}
+
+// DEMO: wspólny szkielet akcji admina — przesunięcie kotwicy na wierszu w localStorage.
+function demoAdminAction(sessionId, fn) {
+  const found = demoFindSession(sessionId);
+  if (!found) return { ok: false, reason: "not found", session: null, error: null };
+  const { key, s } = found;
+  const items = demoPlan(sessionId);
+  if (!items?.length || s.plan_anchor_at == null) return { ok: false, reason: "no plan", session: s, error: null };
+  const res = fn(s, items, Date.now());
+  if (!res.next) return { ok: false, reason: res.reason, session: s, error: null };
+  localStorage.setItem(key, JSON.stringify(res.next));
+  return { ok: true, reason: null, session: res.next, error: null };
+}
+
+async function adminRpc(name, args) {
+  await supabase.auth.getSession();
+  const { data, error } = await supabase.rpc(name, args);
+  if (error) {
+    if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: `Na bazie brak sekcji 39 (${name}) — wgraj SQL.` };
+    return { ok: false, reason: null, session: null, error: error.message };
+  }
+  return { ok: !!data?.ok, reason: data?.reason ?? null, session: data?.session ?? null, error: null };
+}
+
+export async function adminPauseSession(sessionId) {
+  if (DEMO) {
+    return demoAdminAction(sessionId, (s, items, nowMs) => {
+      if (s.status !== "running" || s.plan_paused_at != null) return { reason: "not running" };
+      return { next: { ...s, status: "paused", plan_paused_at: iso(nowMs) } };
+    });
+  }
+  return adminRpc("admin_pause_session", { p_session_id: sessionId });
+}
+
+export async function adminResumeSession(sessionId) {
+  if (DEMO) {
+    return demoAdminAction(sessionId, (s, items, nowMs) => {
+      if (s.plan_paused_at == null) return { reason: "not paused" };
+      const anchor = resumeAnchor(toMs(s.plan_anchor_at), toMs(s.plan_paused_at), nowMs);
+      const next = { ...s, status: "running", plan_anchor_at: iso(anchor), plan_paused_at: null };
+      return { next: demoSyncRow(next, items, nowMs) };
+    });
+  }
+  return adminRpc("admin_resume_session", { p_session_id: sessionId });
+}
+
+export async function adminSkipQuestion(sessionId, idx) {
+  if (DEMO) {
+    return demoAdminAction(sessionId, (s, items, nowMs) => {
+      if (s.status !== "running" || s.plan_paused_at != null) return { reason: "noop" };
+      const anchor = skipAnchor(items, toMs(s.plan_anchor_at), nowMs, idx);
+      if (anchor == null) return { reason: "noop" };
+      return { next: demoSyncRow({ ...s, plan_anchor_at: iso(anchor) }, items, nowMs) };
+    });
+  }
+  return adminRpc("admin_skip_question", { p_session_id: sessionId, p_idx: idx });
+}
+
+export async function adminRepeatQuestion(sessionId, idx) {
+  if (DEMO) {
+    return demoAdminAction(sessionId, (s, items, nowMs) => {
+      if (s.status !== "running" || s.plan_paused_at != null) return { reason: "noop" };
+      const anchor = repeatAnchor(items, toMs(s.plan_anchor_at), nowMs, idx);
+      if (anchor == null) return { reason: "noop" };
+      return { next: demoSyncRow({ ...s, plan_anchor_at: iso(anchor) }, items, nowMs) };
+    });
+  }
+  return adminRpc("admin_repeat_question", { p_session_id: sessionId, p_idx: idx });
+}
+
+export async function getSweeperStatus() {
+  if (DEMO) return { cron_installed: true, job_active: true, last_run_age_s: 0, last_status: "succeeded" };
+  const { data, error } = await supabase.rpc("sweeper_status");
+  if (error) return null;
+  return data ?? null;
+}
+
+export async function adminSweepSession(sessionId) {
+  if (DEMO) {
+    const found = demoFindSession(sessionId);
+    const items = demoPlan(sessionId);
+    if (found && items?.length && found.s.plan_anchor_at != null && found.s.status === "running") {
+      const { key, s } = found;
+      const pos = planPosition(items, toMs(s.plan_anchor_at), toMs(s.plan_paused_at), Date.now());
+      if (pos?.phase === "finished") localStorage.setItem(key, JSON.stringify({ ...s, status: "results" }));
+    }
+    return { error: null };
+  }
+  await supabase.auth.getSession();
+  const { error } = await supabase.rpc("admin_sweep_session", { p_session_id: sessionId });
+  return { error: error?.message || null };
+}

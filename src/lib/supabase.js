@@ -763,14 +763,34 @@ export { DEFAULT_BG };
 
 import { MODULES as FALLBACK_MODULES } from "../data/questions.js";
 
-export async function getModules() {
+// Zwraca { modules, fromDb } — rozróżnienie KRYTYCZNE dla uczciwości testu.
+// ZMIERZONE 24.09.2026 sondą pełnej ścieżki: telefon, któremu ten jeden fetch się
+// nie udał, przez CAŁY test używał zaszytych w kodzie czasów awaryjnych
+// (90/30/60/75/45 s) zamiast tych z bazy (20 s). Na tym samym pytaniu jeden
+// uczestnik odliczał od 70, drugi od 15 — i nic tego nigdy nie korygowało, bo
+// stary getModules() gubił `error`, więc awaria sieci wyglądała identycznie jak
+// pusta tabela. Wywołujący nie miał czym odróżnić „baza nie odpowiedziała" od
+// „modułów naprawdę nie ma", więc nie mógł ponowić próby.
+export async function fetchModules() {
   if (DEMO) {
     const cached = localStorage.getItem("fue_modules");
-    return cached ? JSON.parse(cached) : FALLBACK_MODULES;
+    return { modules: cached ? JSON.parse(cached) : FALLBACK_MODULES, fromDb: true };
   }
-  const { data } = await supabase.from("modules").select("*").order("sort_order");
-  if (!data || !data.length) return FALLBACK_MODULES;
-  return data.map((m) => ({ id: m.id, name: m.name, icon: m.icon, color: m.color, timePerQ: m.time_per_q, desc: m.description || "" }));
+  const { data, error } = await supabase.from("modules").select("*").order("sort_order");
+  if (error) {
+    console.error("[fetchModules] nie udało się pobrać modułów:", error.message);
+    return { modules: FALLBACK_MODULES, fromDb: false };
+  }
+  if (!data.length) return { modules: FALLBACK_MODULES, fromDb: true }; // tabela naprawdę pusta
+  return {
+    modules: data.map((m) => ({ id: m.id, name: m.name, icon: m.icon, color: m.color, timePerQ: m.time_per_q, desc: m.description || "" })),
+    fromDb: true,
+  };
+}
+
+export async function getModules() {
+  const { modules } = await fetchModules();
+  return modules;
 }
 
 export async function addModule({ id, name, icon, color, timePerQ, desc }) {

@@ -78,6 +78,7 @@ const projectRef = new global.URL(URL_SB).hostname.split(".")[0];
 const state = { adminId: null, adminEmail: null, adminPass: null, qIds: [], codes: [], sessionId: null, sessionBefore: null, modulesBefore: [] };
 const wsLog = [];
 const wsFrames = { n: 0 };
+const consoleLog = [];
 
 // ─── SETUP ───────────────────────────────────────────────────────────────────
 async function preflight() {
@@ -259,7 +260,7 @@ async function main() {
       const p = await ctx.newPage();
       // Podsłuch WebSocket na PIERWSZYM telefonie — to jedyny sposób, żeby odróżnić
       // "aplikacja nie zareagowała" od "zdarzenie w ogóle nie dotarło".
-      if (pages.length === 0) attachWs(p);
+      if (pages.length === 0) { attachWs(p); attachConsole(p); }
       await p.goto(APP, { waitUntil: "domcontentloaded" });
       pages.push({ code: c.code, page: p });
     }
@@ -338,6 +339,19 @@ async function main() {
   await cleanup();
   console.log(failures.length ? `\n❌ SONDA: ${failures.length} PROBLEM(ÓW)\n` : "\n✅ SONDA: rozgrywka płynna\n");
   process.exit(failures.length ? 1 : 0);
+}
+
+// Błędy z konsoli telefonu. Bez tego diagnoza kończyła się na wnioskowaniu: widać
+// było ROZJAZD timerów, ale nie POWÓD (nieudane pobranie konfiguracji modułów,
+// wyjątek w pętli ponowień). Te linie zamieniają domysł w dowód.
+function attachConsole(page) {
+  page.on("console", (m) => {
+    if (m.type() !== "error" && m.type() !== "warning") return;
+    const t = m.text();
+    if (/fetchModules|ModulesProvider|modules|Supabase|realtime|Failed to fetch|NetworkError/i.test(t))
+      consoleLog.push({ at: Date.now(), kind: m.type(), text: t.slice(0, 160) });
+  });
+  page.on("pageerror", (e) => consoleLog.push({ at: Date.now(), kind: "pageerror", text: String(e?.message || e).slice(0, 160) }));
 }
 
 // Ile razy telefon WSZEDŁ w daną fazę (a nie ile próbek w niej spędził).
@@ -454,13 +468,22 @@ function report(samples, tpq, t0) {
   const events = wsLog.filter((w) => w.kind === "BROADCAST" || w.kind === "PG_CHANGES");
   const lastEvent = events.length ? ((events[events.length - 1].at - t0) / 1000).toFixed(1) : null;
   const runS = samples.length ? samples[samples.length - 1].at / 1000 : 0;
-  // Jeśli ostatnie zdarzenie Realtime przyszło długo przed końcem przebiegu,
-  // telefon był głuchy i jechał na pollu awaryjnym — dokładnie ten błąd z 23.09.
-  const deaf = lastEvent != null && runS - Number(lastEvent) > expected + 10;
-  if (deaf) fail.push(`socket uczestnika zamilkł na ${(runS - Number(lastEvent)).toFixed(0)}s przed końcem`);
+  // Porównujemy liczbę zdarzeń z liczbą PRZEJŚĆ pytania, a nie z końcem przebiegu.
+  // Poprzednia wersja liczyła ciszę do końca uruchomienia i krzyczała „GŁUCHY" po
+  // ostatnim pytaniu, gdzie admin świadomie już nie przesuwa — czyli fałszywie.
+  // Głuchy telefon ma sygnaturę inną: przejść było więcej niż odebranych zdarzeń.
+  const deaf = seg.length > 0 && events.length < seg.length;
+  if (deaf) fail.push(`telefon nie odebrał zdarzeń dla wszystkich przejść (${events.length} zdarzeń / ${seg.length} pytań)`);
   if (!events.length) fail.push("telefon nie odebrał ŻADNEGO zdarzenia Realtime");
   console.log(`\n🔌 Socket Realtime telefonu 1: ${opens}× otwarcie, ${closes}× zamknięcie, ${wsFrames.n} ramek`);
-  console.log(`   zdarzeń quizu: ${events.length}, ostatnie w ${lastEvent ?? "—"}s (przebieg ${runS.toFixed(1)}s) ${deaf ? "❌ GŁUCHY" : "✅"}`);
+  console.log(`   zdarzeń quizu: ${events.length} dla ${seg.length} pytań, ostatnie w ${lastEvent ?? "—"}s (przebieg ${runS.toFixed(1)}s) ${deaf ? "❌ GŁUCHY" : "✅"}`);
+
+  if (consoleLog.length) {
+    console.log("\n🧯 Błędy z konsoli telefonu 1 (istotne):");
+    for (const c of consoleLog.slice(0, 12)) console.log(`   ${((c.at - t0) / 1000).toFixed(1)}s  [${c.kind}] ${c.text}`);
+    if (consoleLog.some((c) => /fetchModules|ModulesProvider/i.test(c.text)))
+      fail.push("konfiguracja modułów nie została pobrana — czasy pytań mogą być błędne");
+  }
   if (closes > 0) console.log(`   ⚠️  socket był zamykany ${closes}× — dozorca musiał go podnosić`);
 
   // 6. pełna ścieżka — czy przeszliśmy przez wszystkie etapy wydarzenia

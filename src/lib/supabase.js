@@ -781,6 +781,14 @@ export async function fetchModules() {
     console.error("[fetchModules] nie udało się pobrać modułów:", error.message);
     return { modules: FALLBACK_MODULES, fromDb: false };
   }
+  // `data` MUSI być sprawdzone na null. Bez tego `data.length` rzuca TypeError wewnątrz
+  // pętli ponowień w ModulesProvider, ponowienie nigdy nie następuje i uczestnik cicho
+  // zostaje na czasach awaryjnych — czyli dokładnie ten błąd, który ta funkcja naprawia.
+  // Zgubiłem ten warunek w pierwszej wersji naprawy (24.09); sonda to wychwyciła.
+  if (!data) {
+    console.error("[fetchModules] brak danych i brak błędu — traktuję jak awarię");
+    return { modules: FALLBACK_MODULES, fromDb: false };
+  }
   if (!data.length) return { modules: FALLBACK_MODULES, fromDb: true }; // tabela naprawdę pusta
   return {
     modules: data.map((m) => ({ id: m.id, name: m.name, icon: m.icon, color: m.color, timePerQ: m.time_per_q, desc: m.description || "" })),

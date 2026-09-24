@@ -29,7 +29,14 @@ export function ModulesProvider({ children }) {
 
     const attempt = async (i) => {
       if (cancelled || doneRef.current) return;
-      const { modules: m, fromDb } = await fetchModules();
+      // try/catch jest tu KONIECZNE, nie ostrożnościowe: rzucony wyjątek zabijał całą
+      // pętlę ponowień i uczestnik zostawał na czasach awaryjnych bez żadnego sygnału.
+      let fromDb = false, m = null;
+      try {
+        ({ modules: m, fromDb } = await fetchModules());
+      } catch (e) {
+        console.error("[ModulesProvider] próba pobrania modułów rzuciła wyjątek:", e?.message || e);
+      }
       if (cancelled) return;
       if (fromDb) {
         doneRef.current = true;

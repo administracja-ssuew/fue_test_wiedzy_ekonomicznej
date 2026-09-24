@@ -161,6 +161,25 @@ Plans:
 
 **Total: 45/45 requirements mapped** (37 v1 unique IDs + expanded from STRUCT-01–06, AUTH-01–07, SESS-01–05, DB-01–05, RT-01–06, ANS-01–04, LB-01–05, Q-01–04, HIST-01–02)
 
+### Phase 6: Rozgrywka autorytatywna serwera i plynnosc jak w aplikacji
+
+**Goal:** Rozgrywka mechanicznie nie do podważenia: przebieg quizu wynika z planu zamrożonego w bazie przy starcie i zegara serwera, przejścia wykonuje baza, a odświeżenie, wygaszenie ekranu czy zamknięcie przeglądarki admina niczego nie zmieniają. Do tego płynność „jak w aplikacji" na natywnych API.
+**Research:** `.planning/research/PLYNNOSC-ROZGRYWKI.md`
+**Requirements**: TBD
+**Depends on:** stan faktyczny kodu z 24.09.2026 (fazy 2–5 w tym roadmapie są zrealizowane poza formalnym trackingiem — patrz STATUS.md)
+**Deadline:** wydarzenie TWE ~koniec października 2026
+**Success Criteria** (what must be TRUE):
+  1. Admin zamyka przeglądarkę po starcie quizu, a wszystkie pytania i przejście do wyników odbywają się w zaplanowanych czasach na każdym telefonie (sonda `PROBE_ADMIN_EXIT=1`)
+  2. Odświeżenie telefonu w dowolnej fazie (odliczanie, pytanie, reveal, zapowiedź modułu) przywraca tę samą fazę i licznik z różnicą ≤ 1 s względem innego telefonu; udzielona odpowiedź pozostaje zablokowana (sonda `PROBE_REFRESH=1`)
+  3. 10 s bez sieci w środku pytania → po powrocie od razu właściwa faza (sonda `PROBE_OFFLINE=1`)
+  4. Czas pytania na każdym kliencie pochodzi z planu sesji, nie z modułów pobranych przez klienta
+  5. Poprawna odpowiedź nie trafia do klienta przed końcem czasu pytania; punkty liczone czystym zegarem serwera
+  6. Każda migracja SQL jest addytywna — obecnie wdrożony frontend działa bez zmian do momentu wdrożenia nowego
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 6 to break down)
+
 ---
 
 *Last updated: 2026-04-23 — Plan 01-03 complete*

@@ -111,6 +111,10 @@ Plan: 1 of 4
 
 None — Phase 1 can start immediately.
 
+### Roadmap Evolution
+
+- Phase 6 added (2026-09-24): Rozgrywka autorytatywna serwera i płynność jak w aplikacji. Decyzje: punkty czystym zegarem serwera; „⏭ Następne" zostaje jako przesunięcie planu; testy na produkcji z samosprzątającymi sondami (staging nie istnieje) → migracje wyłącznie addytywne; termin ~koniec października 2026.
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Directory |

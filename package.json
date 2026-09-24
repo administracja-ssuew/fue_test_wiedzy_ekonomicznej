@@ -16,6 +16,7 @@
     "seed-admins": "vite-node scripts/seed-admins.js",
     "seed-questions": "vite-node scripts/seed-questions.js",
     "verify-prod": "vite-node scripts/verify-prod.js",
+    "verify-plan": "vite-node scripts/verify-plan.js",
     "verify-mark": "vite-node scripts/verify-mark.js",
     "verify-realtime": "vite-node scripts/verify-realtime.js",
     "verify-clock": "vite-node scripts/verify-clock.js",

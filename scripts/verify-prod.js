@@ -2,7 +2,9 @@
  * FUE Quiz — weryfikacja PRODUKCJI (read-only)
  *
  * Sprawdza z perspektywy ANON, czy na produkcyjnej bazie są wgrane funkcje z
- * SUPABASE_FIXES.sql (sekcje 16–24) oraz czy sekcja 23 faktycznie blokuje anona.
+ * SUPABASE_FIXES.sql (sekcje 16–40) oraz czy funkcje admina faktycznie blokują anona.
+ * Sekcje 16–38 = kontrakt obecnie wdrożonego frontu (nie ruszać); sekcje 39–40 =
+ * plan sesji, RPC v2, zamiatacz pg_cron (żywotność przez sweeper_status).
  * Woła RPC z nieistniejącymi UUID/kodami → żadnego zapisu (UPDATE-y nie trafiają
  * w żaden wiersz). Bezpieczne do uruchomienia na produkcji.
  *
@@ -153,6 +155,88 @@ async function main() {
 
       if (pub.participant_codes) note("participant_codes wciąż w publikacji", "→ sekcja 37.1 (nieszkodliwe, ale zbędne)");
       else                       ok("participant_codes POZA publikacją", "sekcja 37.1 ✓");
+    }
+  }
+
+  console.log("\n🧭 SEKCJE 39–40 (plan sesji, zamiatacz, v2):\n");
+  {
+    const now = new Date().toISOString();
+    const items = [{ i: 0, id: DUMMY, m: 1, tpq: 20, lead: 10, o: 10000, c: 30000, r: 36000 }];
+
+    // Funkcje dostępne dla anona — mają istnieć.
+    {
+      const { error } = await callRpc("plan_position", { p_items: items, p_anchor: now, p_paused_at: null, p_at: now });
+      if (isMissing(error)) bad("plan_position — BRAK", "→ sekcja 39");
+      else if (error)       bad("plan_position — błąd", error.message);
+      else                  ok("plan_position — istnieje", "sekcja 39");
+    }
+    {
+      const { error } = await callRpc("sweep_decision", {
+        p_items: items, p_anchor: now, p_paused_at: null, p_status: "waiting",
+        p_cur_idx: null, p_q_started: null, p_revealed_idx: null, p_at: now,
+      });
+      if (isMissing(error)) bad("sweep_decision — BRAK", "→ sekcja 39");
+      else if (error)       bad("sweep_decision — błąd", error.message);
+      else                  ok("sweep_decision — istnieje", "sekcja 39");
+    }
+    {
+      const { data, error } = await callRpc("get_participant_state", { p_code: "PROBE-0000" });
+      if (isMissing(error)) bad("get_participant_state — BRAK", "→ sekcja 39");
+      else if (!error && data?.error === "invalid code" && Number(data?.server_now) > 0)
+        ok("get_participant_state — istnieje", `sekcja 39 (server_now=${data.server_now})`);
+      else bad("get_participant_state — nieoczekiwana odpowiedź", error?.message || JSON.stringify(data));
+    }
+    {
+      const { error } = await callRpc("submit_answer_v2", { p_session_id: DUMMY, p_code: "PROBE-0000", p_name: "x", p_question_id: DUMMY, p_chosen: 0 });
+      // kod nie istnieje → 'invalid code' = funkcja ISTNIEJE
+      if (isMissing(error)) bad("submit_answer_v2 — BRAK", "→ sekcja 39");
+      else ok("submit_answer_v2 — istnieje", `sekcja 39${error ? ` (${error.message})` : ""}`);
+    }
+    {
+      const { error } = await callRpc("get_answer_summary_v2", { p_session_id: DUMMY, p_question_id: DUMMY });
+      if (isMissing(error)) bad("get_answer_summary_v2 — BRAK", "→ sekcja 39");
+      else ok("get_answer_summary_v2 — istnieje", "sekcja 39");
+    }
+
+    // Tabela planu i kolumny planu w quiz_sessions.
+    {
+      const { error } = await anon.from("session_plans").select("session_id").limit(1);
+      if (error) bad("session_plans — błąd/BRAK", `${error.message} → sekcja 39`);
+      else       ok("session_plans — anon czyta plan", "bez ans (sekcja 39)");
+    }
+    {
+      const { error } = await anon.from("quiz_sessions").select("plan_anchor_at,plan_paused_at,revealed_idx,revealed_ans").limit(1);
+      if (error) bad("quiz_sessions — kolumny planu BRAK", `${error.message} → sekcja 39`);
+      else       ok("quiz_sessions — kolumny planu", "sekcja 39");
+    }
+
+    // Anon ZABLOKOWANY na akcjach admina i zamiataczu.
+    for (const [name, args] of [
+      ["start_quiz_session_v2",  { p_session_id: DUMMY }],
+      ["admin_pause_session",    { p_session_id: DUMMY }],
+      ["admin_resume_session",   { p_session_id: DUMMY }],
+      ["admin_skip_question",    { p_session_id: DUMMY, p_idx: 0 }],
+      ["admin_repeat_question",  { p_session_id: DUMMY, p_idx: 0 }],
+      ["admin_sweep_session",    { p_session_id: DUMMY }],
+      ["advance_due_sessions",   {}],
+    ]) {
+      const { error } = await callRpc(name, args);
+      if (isDenied(error))       ok(`${name} — anon ZABLOKOWANY`, "(sekcja 39 OK)");
+      else if (isMissing(error)) bad(`${name} — BRAK`, "→ sekcja 39");
+      else                       bad(`${name} — anon MA DOSTĘP`, "⚠️ GRANT źle wgrany — dziura!");
+    }
+
+    // Żywotność zamiatacza (sekcja 40).
+    {
+      const { data: st, error } = await callRpc("sweeper_status", {});
+      if (isMissing(error))              bad("sweeper_status — BRAK", "→ sekcja 40");
+      else if (error)                    bad("sweeper_status — błąd", error.message);
+      else if (!st?.cron_installed)      bad("pg_cron nie zainstalowany", "→ sekcja 40");
+      else if (!st?.job_active)          bad("zadanie fue-advance-due nieaktywne", "→ sekcja 40 / cron.job");
+      else if (st.last_status === "failed") bad("zamiatacz — ostatni przebieg FAILED", "sprawdź cron.job_run_details");
+      else if (st.last_run_age_s == null || Number(st.last_run_age_s) > 5)
+        bad("zamiatacz nie żyje", `ostatni przebieg ${st.last_run_age_s == null ? "—" : Number(st.last_run_age_s).toFixed(1)} s temu`);
+      else ok("zamiatacz żyje", `ostatni przebieg ${Number(st.last_run_age_s).toFixed(1)} s temu, harmonogram '${st.schedule}'`);
     }
   }
 

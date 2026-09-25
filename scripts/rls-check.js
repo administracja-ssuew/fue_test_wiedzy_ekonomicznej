@@ -159,7 +159,8 @@ async function checks() {
     const { data, error } = await anon.rpc("submit_answer", {
       p_session_id: st.sessionId, p_code: st.code, p_name: "Rls Check", p_question_id: st.qId2, p_chosen: 1,
     });
-    expect("submit_answer: zła odp. → is_correct=false (serwer)", !error && data?.is_correct === false, error ? error.message : JSON.stringify(data));
+    // Po sekcji 41 poprawność wraca dopiero po bramce (czas pytania + 1,5 s) — przed nią NULL.
+    expect("submit_answer: zła odp. → is_correct false/NULL (serwer, bramka §41)", !error && data && (data.is_correct === false || data.is_correct === null), error ? error.message : JSON.stringify(data));
     // potwierdź w bazie, że wiersz NIE jest 'poprawny' (mimo prób forge'a w teście 7)
     const { data: dbRow } = await service.from("answers").select("is_correct").eq("session_id", st.sessionId).eq("participant_code", st.code).eq("question_id", st.qId2).maybeSingle();
     expect("w bazie is_correct=false (brak forge)", dbRow?.is_correct === false, `is_correct=${dbRow?.is_correct}`);

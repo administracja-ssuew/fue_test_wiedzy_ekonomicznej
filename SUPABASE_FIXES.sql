@@ -2045,6 +2045,238 @@ END; $$;
 REVOKE EXECUTE ON FUNCTION public.sweeper_status() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.sweeper_status() TO anon, authenticated;
 
+-- ─── 41. UTWARDZENIE STARYCH RPC — po wdrożeniu frontu fazy 6 ──
+-- Wgrywać DOPIERO po wdrożeniu nowego frontu (06-09: fue-quiz.vercel.app, commit 0f6c512)
+-- i zielonej sondzie. Wymaga sekcji 39 (submit_answer_v2, get_answer_summary_v2,
+-- session_plans, kolumny plan_anchor_at / plan_paused_at / revealed_*).
+-- Zamyka ostatnie wycieki poprawności w STARYCH RPC (Pułapka 1) i blokuje starą ścieżkę
+-- sterowania sesjami z planem. Wszystko to CREATE OR REPLACE z IDENTYCZNĄ sygnaturą
+-- i typem zwrotu — bez DROP, więc stary bundle w cache telefonu nie dostaje PGRST202.
+-- Skutek dla starego bundla: tylko kosmetyka — brak koloru poprawnej w reveal
+-- (App.jsx:399 starego bundla ma fallback, który dla anona i tak daje NULL).
+-- Nowy front (ścieżka v2) z tych funkcji nie korzysta poza:
+--   • update_quiz_session_admin ze statusem 'results' / 'ended' (przepuszczane),
+--   • get_admin_answer_summary w panelu (sesja z planem → get_answer_summary_v2).
+
+-- 41.1 — submit_answer: poprawność dopiero po bramce (closes_at + 1,5 s).
+-- Sesja z planem → zapis przez submit_answer_v2 (aktywne pytanie z planu i zegara bazy),
+-- odpowiedź bez poprawności. Sesja bez planu → walidacja i zapis jak w §36, ale
+-- is_correct / correct_ans tylko gdy minęło q_started_at + tpq + 1,5 s (w praktyce:
+-- pusty zapis po czasie — wybór po bramce i tak jest odrzucany jako 'time is up').
+CREATE OR REPLACE FUNCTION public.submit_answer(
+  p_session_id UUID, p_code TEXT, p_name TEXT, p_question_id UUID, p_chosen INT
+) RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_ans INT; v_module INT; v_city TEXT; v_started TIMESTAMPTZ; v_is_correct BOOLEAN; v_rt_ms INT;
+  v_status TEXT; v_cur_idx INT; v_tpq INT; v_gidx INT; v_name TEXT; v_gate TIMESTAMPTZ;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.quiz_sessions WHERE id = p_session_id AND plan_anchor_at IS NOT NULL) THEN
+    PERFORM public.submit_answer_v2(p_session_id, p_code, p_name, p_question_id, p_chosen);
+    RETURN json_build_object('is_correct', NULL, 'correct_ans', NULL);
+  END IF;
+  IF NOT public.code_exists(p_code) THEN RAISE EXCEPTION 'invalid code'; END IF;
+  v_name := left(COALESCE(p_name, ''), 120);
+  SELECT ans, module, city INTO v_ans, v_module, v_city FROM public.questions WHERE id = p_question_id;
+  IF v_ans IS NULL THEN RAISE EXCEPTION 'invalid question'; END IF;
+  SELECT status, q_started_at, current_question_idx
+    INTO v_status, v_started, v_cur_idx
+    FROM public.quiz_sessions WHERE id = p_session_id;
+  IF v_status IS DISTINCT FROM 'running' THEN RAISE EXCEPTION 'session not running'; END IF;
+  -- globalny indeks pytania w obrębie miasta (identyczna kolejność jak get_quiz_questions)
+  SELECT o.tpq, o.gidx INTO v_tpq, v_gidx FROM (
+    SELECT q.id, COALESCE(m.time_per_q, 60) AS tpq,
+           row_number() OVER (ORDER BY q.module, q.sort_order, q.id) - 1 AS gidx
+    FROM public.questions q LEFT JOIN public.modules m ON m.id = q.module
+    WHERE q.is_practice = false AND q.city = v_city
+  ) o WHERE o.id = p_question_id;
+  IF v_gidx IS DISTINCT FROM v_cur_idx THEN RAISE EXCEPTION 'question not active'; END IF;
+  IF v_started IS NULL OR clock_timestamp() < v_started THEN RAISE EXCEPTION 'question not started'; END IF;
+  IF p_chosen IS NOT NULL
+     AND clock_timestamp() > v_started + (v_tpq || ' seconds')::interval + interval '1.5 seconds' THEN
+    RAISE EXCEPTION 'time is up';
+  END IF;
+  v_rt_ms := GREATEST(0, EXTRACT(epoch FROM (clock_timestamp() - v_started)) * 1000)::INT;
+  v_is_correct := (p_chosen IS NOT NULL AND p_chosen = v_ans);
+  INSERT INTO public.answers (session_id, participant_code, participant_name, city, question_id, module, chosen, is_correct, points, response_time_s, response_time_ms)
+  VALUES (p_session_id, p_code, v_name, v_city, p_question_id, v_module, p_chosen, v_is_correct, 0,
+          CASE WHEN v_rt_ms IS NOT NULL THEN (v_rt_ms / 1000) ELSE NULL END, v_rt_ms)
+  ON CONFLICT (session_id, participant_code, question_id) DO NOTHING;
+  v_gate := v_started + (v_tpq || ' seconds')::interval + interval '1.5 seconds';
+  RETURN json_build_object(
+    'is_correct',  CASE WHEN clock_timestamp() >= v_gate THEN v_is_correct END,
+    'correct_ans', CASE WHEN clock_timestamp() >= v_gate THEN v_ans END);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.submit_answer(UUID, TEXT, TEXT, UUID, INT) TO anon, authenticated;
+
+-- 41.2 — get_participant_answers: is_correct = NULL dla pytań jeszcze nieodsłoniętych.
+-- Odsłonięte = sesja results/ended, ALBO (z planem) t_eff ≥ c + 1500 dla pozycji pytania
+-- w planie (t_eff uwzględnia pauzę — jak get_participant_state), ALBO (bez planu) pytanie
+-- już minęło lub minął jego czas + 1,5 s (kolejność i tpq jak w §29.4).
+CREATE OR REPLACE FUNCTION public.get_participant_answers(p_session_id UUID, p_code TEXT)
+RETURNS TABLE (
+  question_id UUID,
+  module      INT,
+  chosen      INT,
+  is_correct  BOOLEAN,
+  points      INT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  WITH s AS (
+    SELECT qs.status, qs.city, qs.plan_anchor_at, qs.q_started_at, qs.current_question_idx,
+           EXTRACT(epoch FROM (COALESCE(qs.plan_paused_at, clock_timestamp()) - qs.plan_anchor_at)) * 1000 AS t_ms
+    FROM public.quiz_sessions qs WHERE qs.id = p_session_id
+  ),
+  pi AS (
+    SELECT (e->>'id')::UUID AS qid, (e->>'c')::BIGINT AS c
+    FROM public.session_plans sp, jsonb_array_elements(sp.items) e
+    WHERE sp.session_id = p_session_id
+  ),
+  o AS (
+    SELECT q.id, COALESCE(m.time_per_q, 60) AS tpq,
+           row_number() OVER (ORDER BY q.module, q.sort_order, q.id) - 1 AS gidx
+    FROM public.questions q
+    LEFT JOIN public.modules m ON m.id = q.module
+    WHERE q.is_practice = false AND q.city = (SELECT s.city FROM s)
+  )
+  SELECT a.question_id, a.module, a.chosen,
+         CASE WHEN s.status IN ('results','ended')
+                OR (s.plan_anchor_at IS NOT NULL AND pi.c IS NOT NULL AND s.t_ms >= pi.c + 1500)
+                OR (s.plan_anchor_at IS NULL AND o.gidx IS NOT NULL AND (
+                         o.gidx < s.current_question_idx
+                      OR (o.gidx = s.current_question_idx
+                          AND s.q_started_at IS NOT NULL
+                          AND clock_timestamp() >= s.q_started_at + (o.tpq || ' seconds')::interval
+                                                   + interval '1.5 seconds')))
+              THEN a.is_correct ELSE NULL END,
+         a.points
+  FROM public.answers a
+  CROSS JOIN s
+  LEFT JOIN pi ON pi.qid = a.question_id
+  LEFT JOIN o  ON o.id   = a.question_id
+  WHERE a.session_id = p_session_id AND a.participant_code = p_code;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_participant_answers(UUID, TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_participant_answers(UUID, TEXT) TO anon, authenticated;
+
+-- 41.3 — get_admin_answer_summary: {total, correct, ans} z bramkowaną poprawnością.
+-- Sesja z planem → get_answer_summary_v2 (bramka planu; admin bez bramki).
+-- Brak pętli: get_answer_summary_v2 woła tę funkcję TYLKO dla sesji bez planu, a ta
+-- deleguje TYLKO przy plan_anchor_at IS NOT NULL.
+-- Sesja bez planu → jak §29.4, ale 'correct' bramkowane tym samym warunkiem co 'ans',
+-- a bramka to czas pytania + 1,5 s (okno, w którym submit_answer jeszcze przyjmuje
+-- wybór). Rola admina widzi 'correct' bez bramki (licznik na żywo w panelu); 'ans'
+-- zostaje bramkowane jak dotąd (admin ma ans z get_quiz_questions).
+CREATE OR REPLACE FUNCTION public.get_admin_answer_summary(p_session_id UUID, p_question_id UUID)
+RETURNS JSON LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  s         public.quiz_sessions%ROWTYPE;
+  v_found   BOOLEAN;
+  v_admin   BOOLEAN;
+  v_ans     INT;
+  v_tpq     INT;
+  v_gidx    INT;
+  v_total   INT;
+  v_correct INT;
+  v_open    BOOLEAN;
+BEGIN
+  SELECT * INTO s FROM public.quiz_sessions WHERE id = p_session_id;
+  v_found := FOUND;
+  IF v_found AND s.plan_anchor_at IS NOT NULL THEN
+    RETURN public.get_answer_summary_v2(p_session_id, p_question_id);
+  END IF;
+
+  v_admin := COALESCE(public.get_my_role(), '') IN ('city_admin','superadmin');
+  SELECT COUNT(*)::INT, COUNT(*) FILTER (WHERE a.is_correct = true)::INT
+    INTO v_total, v_correct
+    FROM public.answers a
+   WHERE a.session_id = p_session_id AND a.question_id = p_question_id;
+
+  IF v_found THEN
+    SELECT o.ans, o.tpq, o.gidx INTO v_ans, v_tpq, v_gidx FROM (
+      SELECT q.id, q.ans, COALESCE(m.time_per_q, 60) AS tpq,
+             row_number() OVER (ORDER BY q.module, q.sort_order, q.id) - 1 AS gidx
+      FROM public.questions q
+      LEFT JOIN public.modules m ON m.id = q.module
+      WHERE q.is_practice = false AND q.city = s.city
+    ) o WHERE o.id = p_question_id;
+  END IF;
+
+  v_open := COALESCE(
+       s.status IN ('ended','results')
+    OR v_gidx < s.current_question_idx
+    OR ( v_gidx = s.current_question_idx
+         AND s.q_started_at IS NOT NULL
+         AND clock_timestamp() >= s.q_started_at + (v_tpq || ' seconds')::interval
+                                  + interval '1.5 seconds' ),
+    false);
+
+  RETURN json_build_object(
+    'total',   COALESCE(v_total, 0),
+    'correct', CASE WHEN v_open OR v_admin THEN COALESCE(v_correct, 0) ELSE NULL END,
+    'ans',     CASE WHEN v_open THEN v_ans ELSE NULL END);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_admin_answer_summary(UUID, UUID) TO anon, authenticated;
+
+-- 41.4 — update_quiz_session_admin: sesja z planem nie da się sterować starym kontraktem.
+-- Odrzucane dla sesji z planem: status running/paused, q_started_at, current_question_idx,
+-- pause_elapsed_s (to robią admin_* v2 i zamiatacz). Przepuszczane: status results/ended
+-- (nowy panel: „🏆 Ogłoś wyniki”, „⏹ Zakończ”). status 'waiting' czyści resztki planu.
+-- COALESCE na roli: stary wzorzec `get_my_role() NOT IN (...)` przepuszczał NULL.
+CREATE OR REPLACE FUNCTION public.update_quiz_session_admin(p_session_id UUID, p_data JSONB)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_has_plan BOOLEAN;
+  v_status   TEXT := p_data->>'status';
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  SELECT (plan_anchor_at IS NOT NULL) INTO v_has_plan FROM public.quiz_sessions WHERE id = p_session_id;
+  IF COALESCE(v_has_plan, false) AND (
+       p_data ? 'q_started_at'
+    OR p_data ? 'current_question_idx'
+    OR p_data ? 'pause_elapsed_s'
+    OR v_status IN ('running','paused')) THEN
+    RAISE EXCEPTION 'session has plan — use admin_* v2 actions (reload admin panel)';
+  END IF;
+  UPDATE public.quiz_sessions SET
+    status               = CASE WHEN p_data ? 'status'               THEN p_data->>'status'                      ELSE status               END,
+    q_started_at         = CASE WHEN p_data ? 'q_started_at'         THEN (p_data->>'q_started_at')::TIMESTAMPTZ  ELSE q_started_at         END,
+    pause_elapsed_s      = CASE WHEN p_data ? 'pause_elapsed_s'      THEN (p_data->>'pause_elapsed_s')::INT       ELSE pause_elapsed_s      END,
+    current_question_idx = CASE WHEN p_data ? 'current_question_idx' THEN (p_data->>'current_question_idx')::INT  ELSE current_question_idx END,
+    plan_anchor_at       = CASE WHEN v_status = 'waiting' THEN NULL ELSE plan_anchor_at END,
+    plan_paused_at       = CASE WHEN v_status = 'waiting' THEN NULL ELSE plan_paused_at END,
+    revealed_idx         = CASE WHEN v_status = 'waiting' THEN NULL ELSE revealed_idx   END,
+    revealed_ans         = CASE WHEN v_status = 'waiting' THEN NULL ELSE revealed_ans   END
+  WHERE id = p_session_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.update_quiz_session_admin(UUID, JSONB) TO authenticated;
+
+-- 41.5a — start_quiz_session (stary panel): start BEZ planu wyłączony.
+-- Nowy panel (06-06) woła wyłącznie start_quiz_session_v2. Stara karta panelu otwarta
+-- między wdrożeniem frontu a tą sekcją mogła uruchomić sesję bez planu, której nowy
+-- klient nie odtworzy (ekran „legacy”) — po sekcji 41 jest to niemożliwe, a stary panel
+-- pokaże treść wyjątku (alert). Ciało NIE aktualizuje sesji. Sygnatura bez zmian.
+CREATE OR REPLACE FUNCTION public.start_quiz_session(p_session_id UUID)
+RETURNS TIMESTAMPTZ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  RAISE EXCEPTION 'Nieaktualny panel admina — przeładuj stronę (Ctrl+F5) i uruchom quiz ponownie. Start bez planu jest wyłączony (faza 6).';
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.start_quiz_session(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.start_quiz_session(UUID) TO authenticated;
+
+-- 41.5 — znacznik wgrania sekcji 41 (dla `npm run verify-prod`).
+CREATE OR REPLACE FUNCTION public.schema_marker_41()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_41() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_41() TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

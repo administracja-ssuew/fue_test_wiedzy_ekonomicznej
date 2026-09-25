@@ -2,9 +2,10 @@
  * FUE Quiz — weryfikacja PRODUKCJI (read-only)
  *
  * Sprawdza z perspektywy ANON, czy na produkcyjnej bazie są wgrane funkcje z
- * SUPABASE_FIXES.sql (sekcje 16–40) oraz czy funkcje admina faktycznie blokują anona.
+ * SUPABASE_FIXES.sql (sekcje 16–41) oraz czy funkcje admina faktycznie blokują anona.
  * Sekcje 16–38 = kontrakt obecnie wdrożonego frontu (nie ruszać); sekcje 39–40 =
- * plan sesji, RPC v2, zamiatacz pg_cron (żywotność przez sweeper_status).
+ * plan sesji, RPC v2, zamiatacz pg_cron (żywotność przez sweeper_status); sekcja 41 =
+ * utwardzenie starych RPC (znacznik schema_marker_41 + stare sygnatury, SC6).
  * Woła RPC z nieistniejącymi UUID/kodami → żadnego zapisu (UPDATE-y nie trafiają
  * w żaden wiersz). Bezpieczne do uruchomienia na produkcji.
  *
@@ -237,6 +238,33 @@ async function main() {
       else if (st.last_run_age_s == null || Number(st.last_run_age_s) > 5)
         bad("zamiatacz nie żyje", `ostatni przebieg ${st.last_run_age_s == null ? "—" : Number(st.last_run_age_s).toFixed(1)} s temu`);
       else ok("zamiatacz żyje", `ostatni przebieg ${Number(st.last_run_age_s).toFixed(1)} s temu, harmonogram '${st.schedule}'`);
+    }
+  }
+
+  console.log("\n🔐 SEKCJA 41 (utwardzenie starych RPC):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_41", {});
+    if (isMissing(error))      bad("schema_marker_41 — BRAK", "→ uruchom sekcję 41 (po wdrożeniu frontu!)");
+    else if (error)            bad("schema_marker_41 — błąd", error.message);
+    else if (data === true)    ok("schema_marker_41 — sekcja 41 wgrana", "stare RPC utwardzone");
+    else                       bad("schema_marker_41 — nieoczekiwana odpowiedź", JSON.stringify(data));
+
+    // SC6: stare sygnatury NADAL istnieją (stary bundle w cache nie dostaje PGRST202).
+    for (const [name, args] of [
+      ["submit_answer",            { p_session_id: DUMMY, p_code: "PROBE-0000", p_name: "x", p_question_id: DUMMY, p_chosen: 0 }],
+      ["get_participant_answers",  { p_session_id: DUMMY, p_code: "PROBE-0000" }],
+      ["get_admin_answer_summary", { p_session_id: DUMMY, p_question_id: DUMMY }],
+    ]) {
+      const { error: e } = await callRpc(name, args);
+      if (isMissing(e)) bad(`${name} — BRAK (stara sygnatura)`, "⚠️ SC6 — stary bundle dostanie PGRST202");
+      else              ok(`${name} — stara sygnatura istnieje`, "sekcja 41 / SC6");
+    }
+    // start_quiz_session: funkcja MA istnieć (błąd inny niż PGRST202); anon i tak odmowa.
+    {
+      const { error: e } = await callRpc("start_quiz_session", { p_session_id: DUMMY });
+      if (isMissing(e)) bad("start_quiz_session — BRAK (stara sygnatura)", "⚠️ SC6 — stary panel dostanie PGRST202");
+      else if (!e)      bad("start_quiz_session — anon bez błędu", "⚠️ oczekiwana odmowa");
+      else              ok("start_quiz_session — stara sygnatura istnieje", `sekcja 41 (${e.code || e.message})`);
     }
   }
 

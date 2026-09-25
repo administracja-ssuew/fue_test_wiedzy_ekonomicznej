@@ -165,7 +165,7 @@ Plans:
 
 **Goal:** Rozgrywka mechanicznie nie do podważenia: przebieg quizu wynika z planu zamrożonego w bazie przy starcie i zegara serwera, przejścia wykonuje baza, a odświeżenie, wygaszenie ekranu czy zamknięcie przeglądarki admina niczego nie zmieniają. Do tego płynność „jak w aplikacji" na natywnych API.
 **Research:** `.planning/research/PLYNNOSC-ROZGRYWKI.md`
-**Requirements**: P6-SC1, P6-SC2, P6-SC3, P6-SC4, P6-SC5, P6-SC6, P6-FLUID (robocze ID = kryteria sukcesu poniżej + decyzje płynności z CONTEXT)
+**Requirements**: P6-SC1, P6-SC2, P6-SC3, P6-SC4, P6-SC5, P6-SC6, P6-FLUID (robocze ID = kryteria sukcesu poniżej + decyzje płynności z CONTEXT); luki z weryfikacji: P6-GAP-REVEAL10, P6-GAP-PAUSE, P6-GAP-BREAKS, P6-GAP-ENDSCREEN, P6-GAP-HISTXLSX, P6-GAP-DENOM, P6-GAP-FLAKY
 **Depends on:** stan faktyczny kodu z 24.09.2026 (fazy 2–5 w tym roadmapie są zrealizowane poza formalnym trackingiem — patrz STATUS.md)
 **Deadline:** wydarzenie TWE ~koniec października 2026
 **Success Criteria** (what must be TRUE):
@@ -175,7 +175,7 @@ Plans:
   4. Czas pytania na każdym kliencie pochodzi z planu sesji, nie z modułów pobranych przez klienta
   5. Poprawna odpowiedź nie trafia do klienta przed końcem czasu pytania; punkty liczone czystym zegarem serwera
   6. Każda migracja SQL jest addytywna — obecnie wdrożony frontend działa bez zmian do momentu wdrożenia nowego
-**Plans:** 11 plans (8 fal)
+**Plans:** 17 plans (8 fal + 4 fale domknięcia luk G1–G7)
 
 Plans:
 - [x] 06-01-PLAN.md — Logika planu w JS (plan.js + fixture'y JS↔SQL + Vitest) i filtr próbek zegara (fala 1)
@@ -189,6 +189,14 @@ Plans:
 - [x] 06-09-PLAN.md — Bramka: wdrożenie na Vercel, sonda na wdrożeniu, realne telefony, zgoda na utwardzenie (fala 6, checkpoint)
 - [x] 06-10-PLAN.md — SQL sekcja 41: utwardzenie starych RPC, ręczne wgranie (fala 7, checkpoint)
 - [x] 06-11-PLAN.md — Usunięcie kodu legacy (kierowcy, projekcja z modułów) + sondy (fala 8)
+
+Gap closure (luki G1–G7 z 06-VERIFICATION.md):
+- [ ] 06-12-PLAN.md — Model planu: reveal 11,5 s (10 s widoczności) + przerwy planowe po modułach 2 i 4; SQL sekcja 42, verify-plan, DEMO (fala G1, checkpoint SQL)
+- [ ] 06-13-PLAN.md — Diagnoza G2/G7: sonda PROBE_PAUSE_PHASE=reveal|countdown, PROBE_TRACE (VT, zegar, snapshot vs Realtime), seria ≥ 5 przebiegów, 06-DIAG (fala G1, checkpoint prod)
+- [ ] 06-14-PLAN.md — Wyniki: mianownik z planu i brak odpowiedzi = błędna (SQL sekcja 43), resultsXlsx.js + XLSX w Historii (fala G2, checkpoint SQL)
+- [ ] 06-15-PLAN.md — Ekrany: „Przerwa – Moduł X” na telefonie i projektorze, jeden ekran „Koniec testu” z wynikiem z planu (fala G2)
+- [ ] 06-16-PLAN.md — Naprawy G2/G7 wg 06-DIAG (świeżość snapshotu, View Transitions, auto-skrót, pauza bez confirm) + panel przerwy planowej i testy regresyjne (fala G3)
+- [ ] 06-17-PLAN.md — Bramka: sondy zamykające (5× podstawowa, ADMIN_EXIT, pauza, FULL), wdrożenie, test na telefonach (fala G4, checkpoint)
 
 ---
 

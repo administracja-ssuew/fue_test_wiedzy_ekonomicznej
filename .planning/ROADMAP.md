@@ -187,7 +187,7 @@ Plans:
 - [x] 06-07-PLAN.md — Płynność: Wake Lock, pasek CSS, vibrate, View Transitions, prefetch, szkielet, reduced-motion (fala 4)
 - [x] 06-08-PLAN.md — Sonda: tryby ADMIN_EXIT/REFRESH/OFFLINE + asercja SC5, przebieg na produkcji (fala 5)
 - [x] 06-09-PLAN.md — Bramka: wdrożenie na Vercel, sonda na wdrożeniu, realne telefony, zgoda na utwardzenie (fala 6, checkpoint)
-- [ ] 06-10-PLAN.md — SQL sekcja 41: utwardzenie starych RPC, ręczne wgranie (fala 7, checkpoint)
+- [x] 06-10-PLAN.md — SQL sekcja 41: utwardzenie starych RPC, ręczne wgranie (fala 7, checkpoint)
 - [ ] 06-11-PLAN.md — Usunięcie kodu legacy (kierowcy, projekcja z modułów) + sondy (fala 8)
 
 ---

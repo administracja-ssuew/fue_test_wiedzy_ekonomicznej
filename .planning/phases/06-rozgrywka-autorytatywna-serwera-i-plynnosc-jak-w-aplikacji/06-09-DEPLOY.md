@@ -1,19 +1,20 @@
 # Faza 6 / Plan 09 — Bramka wdrożenia nowego frontu (DEPLOY)
 
-**Status:** oczekuje na wdrożenie przez użytkownika (Task 1, checkpoint human-action)
+**Status:** front wdrożony, sondy na wdrożeniu zielone. Czeka na test na telefonach i zgodę (Task 3, checkpoint human-verify).
 **Przygotowano:** 2026-09-25
 
 ## Commit do wdrożenia
 
-- **Ostatnia zmiana frontu (src/, public/, index.html, vite.config.js, package*.json, vercel.json):** `1c340e4` (fix(06-08): refresh bez mignięcia poczekalni i z blokadą odpowiedzi od pierwszej klatki)
-- **Wdrażany commit (HEAD `main` w chwili pushu):** commit, który dodaje ten plik i `scripts/check-planless.js`. Względem `1c340e4` zmienia tylko dokumentację i skrypty, bundle jest identyczny. Dokładny hash wdrożenia wpisać po wdrożeniu.
-- **Origin:** `origin/main` = `fdc3bee` (2026-09-24). Push na `main` wyśle wszystkie lokalne commity fazy 6 (17 z nich zmienia front).
-- **Sposób wdrożenia:** push na `main` → Vercel (integracja z GitHub, `vercel.json`: `npm run build` → `dist/`) buduje produkcję automatycznie. Wdrożenie to decyzja użytkownika.
+- **Wdrożony commit:** `0f6c512` (HEAD `main`). Push `fdc3bee..0f6c512` wykonał orkiestrator na prośbę użytkownika 2026-09-25.
+- **Ostatnia zmiana frontu (src/, public/, index.html, vite.config.js, package*.json, vercel.json):** `1c340e4` (fix(06-08): refresh bez mignięcia poczekalni i z blokadą odpowiedzi od pierwszej klatki). Po nim są tylko zmiany w dokumentacji i skryptach.
+- **Push:** 44 commity fazy 6, z czego 17 zmienia front. Poprzedni `origin/main` = `fdc3bee` (2026-09-24).
+- **Sposób wdrożenia:** push na `main` → Vercel (integracja z GitHub, `vercel.json`: `npm run build` → `dist/`) buduje produkcję automatycznie.
 - **NIE wdrażać w trakcie wydarzenia:** Service Worker (`registerType: autoUpdate`) przełącza bundle na telefonach w trakcie gry.
 
 ## URL
 
-_(do uzupełnienia po wdrożeniu: produkcyjny URL + potwierdzenie statusu „Ready” na Vercel)_
+- **Produkcja:** https://fue-quiz.vercel.app/
+- **Potwierdzenie, że wdrożenie jest aktywne (2026-09-25 ~09:15 UTC):** `index.html` na produkcji ładuje `/assets/index-CyWam0UR.js`. To ta sama nazwa (hash treści) co w lokalnym `dist/` zbudowanym z `1c340e4`+. Bundle zawiera znaczniki v2: `get_participant_state`, `submit_answer_v2`, `data-fue-phase`. Status „Ready” wynika z tego, że Vercel serwuje nowy bundle; użytkownik nie potwierdził go osobno.
 
 ## Sesje bez planu (przed wdrożeniem / po wdrożeniu)
 
@@ -22,12 +23,24 @@ Kontrola: `npx vite-node scripts/check-planless.js` (produkcja `ytbwmmqwbfcugouo
 | Moment | Data (UTC) | Kod | Wynik |
 |---|---|---|---|
 | Przed wdrożeniem | 2026-09-25 09:11 | **0** | ✅ brak sesji running/paused bez planu |
-| Po wdrożeniu | _(Task 2)_ | | |
-| Po sondach | _(Task 2)_ | | |
+| Po wdrożeniu | 2026-09-25 09:16 | **0** | ✅ brak sesji running/paused bez planu |
+| Po sondach | 2026-09-25 10:08 | **0** | ✅ brak sesji running/paused bez planu |
 
 ## Sonda na wdrożeniu
 
-_(Task 2: `npm run verify-prod`; sonda podstawowa i `PROBE_ADMIN_EXIT=1` z `PROBE_TARGET=prod PROBE_CONFIRM=1 PROBE_APP_URL=<URL>`. Kody, metryki SC1/SC5, sprzątanie.)_
+Cel: produkcja `ytbwmmqwbfcugouourih`, aplikacja `https://fue-quiz.vercel.app` (`PROBE_TARGET=prod PROBE_CONFIRM=1 PROBE_APP_URL=https://fue-quiz.vercel.app`). Kraków, 2 telefony, 3 pytania × 20 s. Sonda sprawdza, czy bundle łączy się z tym samym projektem Supabase (po adresie socketu Realtime). Rozjazd przerwałby przebieg.
+
+- **`npm run verify-prod` (2026-09-25 09:16 UTC):** kod **0**, „PRODUKCJA GOTOWA pod kątem SQL (40 OK)”.
+
+| Przebieg (2026-09-25, UTC) | Kod | Widoczność pytań (plan 26 s) | Telefon vs telefon | Start pytań vs plan (maks.) | Idx w bazie vs plan | `results` od zamiatacza | SC5 | Socket t1 | Sprzątanie |
+|---|---|---|---|---|---|---|---|---|---|
+| podstawowy, 09:16–09:18 | **0** | 25,9 / 25,5 / 25,4 s | ≤ 1 s | 493 ms (limit 1500) | 96/96 | +1222 ms | OK (21 asercji, submit_answer_v2 ×3) | 1 otwarcie, 0 zamknięć, 9 zdarzeń / 3 pyt. | pytania 0, kody 0, plany 0 |
+| ADMIN_EXIT, 09:27–09:29 | **0** | 25,9 / 25,7 / 25,6 s | 0 s | 142 ms (limit 1500) | 96/96 | +1122 ms (bez admina) | OK (21, ×3) | 1 / 0, 9 zdarzeń / 3 pyt. | 0 / 0 / 0 |
+
+- Podstawowy: host vs telefon 0,0% rozbieżnych próbek; najdłuższy czas w pytaniu bez zmiany 19,7 s (limit 23 s).
+- **SC1 (ADMIN_EXIT):** przeglądarka admina zamknięta zaraz po starcie. „Bez admina: wszystkie pytania na czas ✅”, „Bez admina: wyniki ustawione przez zamiatacz ✅”.
+- **SC5:** w żadnym przebiegu nie wyciekła poprawność przed bramką (ścieżka v2).
+- **Wynik bramki SC1/SC5 na wdrożeniu: ZALICZONA.**
 
 ## Urządzenia
 

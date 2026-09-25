@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
-  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerSummary, getLiveAnswerCount, getQuestions,
+  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions,
   getParticipantCount, getSessionPlan, getAnswerSummaryV2,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
-import { REVEAL_SECONDS, projectLiveState } from "../lib/gameLogic.js";
+import { REVEAL_SECONDS } from "../lib/gameLogic.js";
 import { toMs, projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow } from "../lib/serverClock.js";
 
@@ -17,8 +17,8 @@ const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)"
 //
 // Faza 6: sesja z planem (plan_anchor_at) → projekcja z planu sesji (items + kotwica
 // + serverNow), czas pytania z planu (zamrożony przy starcie), reveal po bramce
-// closes_at + 1,5 s przez get_answer_summary_v2. Sesja bez planu (legacy) → stara
-// projekcja z (status, current_question_idx, q_started_at, czas modułu) — do 06-11.
+// closes_at + 1,5 s przez get_answer_summary_v2. Sesja bez planu albo plan jeszcze
+// niepobrany → "waiting" bez licznika (nie liczymy czasu z modułów).
 //
 // `detailed`: true only for the admin embed (authenticated) → fetches the full
 // per-participant answer list (get_admin_question_stats, admin-only). The public
@@ -47,8 +47,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
 
   const sessionRef       = useRef(null);
   const questionsRef     = useRef([]);
-  const modulesRef       = useRef(MODULES);
-  const phaseRef         = useRef("waiting");
+  const phaseRef        = useRef("waiting");
   const lastIdxRef       = useRef(-1);
   const revealFetchedRef = useRef(-1);
   const liveRef          = useRef(null);
@@ -75,7 +74,6 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     });
   };
 
-  useEffect(() => { modulesRef.current = MODULES; }, [MODULES]);
   useEffect(() => { questionsRef.current = questions; }, [questions]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
@@ -134,35 +132,26 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
 
   // Projection ticker
   useEffect(() => {
-    // idx = indeks w questionsRef; v2 = sesja z planem (reveal bramkowany planem, sekcja 39).
-    const fetchReveal = async (idx, { v2 = false, retry = false } = {}) => {
+    // idx = indeks w questionsRef; reveal bramkowany planem (sekcja 39).
+    const fetchReveal = async (idx, { retry = false } = {}) => {
       const q = questionsRef.current[idx];
       const sid = sessionRef.current?.id;
       if (!sid || !q?.id) return;
-      if (v2 && !detailed) {
-        // Publiczny projektor, sesja z planem: poprawna odpowiedź dopiero po closes_at + 1,5 s.
+      if (!detailed) {
+        // Publiczny projektor (anon): tylko agregaty; poprawna odpowiedź dopiero po closes_at + 1,5 s.
         const s = await getAnswerSummaryV2(sid, q.id);
         if (lastIdxRef.current !== idx) return; // przyszło po zmianie pytania
         setRevealTotal(s.total || 0);
         setRevealCorrect(s.correct || 0);
         if (s.ans != null) setRevealAns(s.ans);
-        else if (retry) setTimeout(() => { if (lastIdxRef.current === idx) fetchReveal(idx, { v2: true }); }, 1000);
+        else if (retry) setTimeout(() => { if (lastIdxRef.current === idx) fetchReveal(idx); }, 1000);
         return;
       }
-      if (detailed) {
-        // Admin embed (authenticated): full per-participant list + counts.
-        const stats = await getLiveQuestionStats(sid, q.id);
-        setReveal(stats.answers || []);
-        setRevealTotal(stats.total || 0);
-        setRevealCorrect(stats.correct || 0);
-      } else {
-        // Public projector (anon): aggregate counts only — no per-person data.
-        // ans jest bramkowane serwerowo (tylko po końcu czasu pytania).
-        const s = await getLiveAnswerSummary(sid, q.id);
-        setRevealTotal(s.total || 0);
-        setRevealCorrect(s.correct || 0);
-        if (s.ans != null) setRevealAns(s.ans);
-      }
+      // Admin embed (authenticated): full per-participant list + counts.
+      const stats = await getLiveQuestionStats(sid, q.id);
+      setReveal(stats.answers || []);
+      setRevealTotal(stats.total || 0);
+      setRevealCorrect(stats.correct || 0);
     };
 
     const resetForIdx = (idx) => {
@@ -215,35 +204,16 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
           && nowMs >= v.closesAt + REVEAL_GATE_MS + 100
           && revealFetchedRef.current !== idx) {
         revealFetchedRef.current = idx;
-        fetchReveal(idx, { v2: true, retry: true });
+        fetchReveal(idx, { retry: true });
       }
     };
 
     const tick = () => {
       const s = sessionRef.current;
       if (planRef.current?.length && s?.plan_anchor_at) { tickPlan(s); return; }
-      // Legacy (sesja bez planu albo plan jeszcze się pobiera) — do usunięcia w 06-11.
+      // Sesja bez planu albo plan jeszcze się pobiera → poczekalnia, bez licznika.
       setPlanTpq(null);
-      const { phase: p, idx, timer: t, autoSec: a, cdNum: cd, firstOfModule: fom } = projectLiveState({
-        session: sessionRef.current,
-        questions: questionsRef.current,
-        modules: modulesRef.current,
-        now: serverNow(), // wspólny zegar — ta sama sekunda co u uczestnika
-      });
-
-      resetForIdx(idx);
-      setGIdx(idx);
-      setPhase(p);
-      setCdNum(cd);
-      setFirstOfModule(!!fom);
-      if (p === "quiz") setTimer(t);
-      if (p === "reveal") {
-        setAutoSec(a);
-        if (revealFetchedRef.current !== idx) {
-          revealFetchedRef.current = idx;
-          setTimeout(() => fetchReveal(idx), 1500); // let last submissions land
-        }
-      }
+      setPhase("waiting"); setCdNum(null); setFirstOfModule(false);
     };
 
     tick();
@@ -293,8 +263,8 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
 
   const currentQ = questions[gIdx];
   const mod      = MODULES.find((m) => m.id === currentQ?.module);
-  // Sesja z planem: czas z planu (SC4). Fallback na czas modułu tylko dla legacy — usunąć w 06-11.
-  const timePerQ = planTpq ?? (mod?.timePerQ || 60);
+  // Czas pytania wyłącznie z planu (SC4); mod służy tylko do nazwy/ikony/koloru.
+  const timePerQ = planTpq ?? 0;
 
   return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium };
 }

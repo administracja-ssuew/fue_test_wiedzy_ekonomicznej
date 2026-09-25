@@ -9,7 +9,11 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { computeOffset } from "../src/lib/serverClock.js";
-import { remainingSeconds } from "../src/lib/gameLogic.js";
+
+// Pozostałe sekundy pytania z (czas pytania, znacznik startu, „teraz”), obcięte do
+// [0, timePerQ]. Lokalna kopia — produkcyjna projekcja liczy czas z planu (src/lib/plan.js).
+const remainingSeconds = (timePerQ, startedAtMs, nowMs) =>
+  Math.min(timePerQ, Math.max(0, Math.ceil(timePerQ - (nowMs - startedAtMs) / 1000)));
 
 const USING_STAGE = !!process.env.VITE_SUPABASE_URL_STAGE;
 const URL = process.env.VITE_SUPABASE_URL_STAGE || process.env.VITE_SUPABASE_URL;

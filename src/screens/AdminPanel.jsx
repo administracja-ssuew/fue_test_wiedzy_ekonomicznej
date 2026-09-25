@@ -17,7 +17,7 @@ import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
-import { shouldAdvance, advanceLeadSeconds, shouldEndEarly } from "../lib/gameLogic.js";
+import { shouldEndEarly } from "../lib/gameLogic.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -529,7 +529,6 @@ function SesjaTab({ city, adminId, onPodium }) {
   const plAtRef    = useRef(0);        // plateau: kiedy total ostatnio się zmienił
   const driverIdxRef = useRef(-1);     // pytanie, dla którego kierowca policzył już baseline
   const expectedRef  = useRef(0);      // realna frekwencja: max liczby odpowiedzi z poprzednich pytań
-  const advancingRef = useRef(false);  // blokada re-entrancy — interwał 1 s vs. trwający RPC
   const [lobbyCount, setLobbyCount]         = useState(0);
   const [lobbyPresenceList, setLobbyPresenceList] = useState([]);
   const [violAlert, setViolAlert]           = useState(null);
@@ -692,14 +691,10 @@ function SesjaTab({ city, adminId, onPodium }) {
   // is second-accurate during a question — matches the LiveView/embed cadence.
   // The heavier participants/violations bundle above stays at 3s to keep DB load low.
   //
-  // ZNALEZISKO (24.09.2026, telefon-refresh-blokuje-live-view): ten interwał jest
-  // JEDYNYM miejscem, które zapisuje przejście pytania do bazy (KIEROWCA niżej).
-  // Przeglądarka dławi setInterval w karcie w tle/nieaktywnej (aż do 1 tiku/minutę
-  // po dłuższym czasie ukrycia) — bez obsługi tego admin patrzący w telefon
-  // uczestnika (drugie urządzenie, więc karta laptopa nie jest aktywna) zamraża CAŁĄ
-  // rozgrywkę dla wszystkich, dopóki sam nie wróci uwagą do panelu. Ten sam wzorzec
-  // (dociągnij natychmiast po powrocie widoczności) jest już w serverClock.js i
-  // ModulesContext.jsx — tu brakowało go dla kierowcy.
+  // Przejścia pytań zapisuje zamiatacz w bazie (faza 6) — ten interwał tylko odświeża
+  // licznik odpowiedzi i decyduje o auto-skrócie (adminSkipQuestion). Przeglądarka
+  // dławi setInterval w karcie w tle, więc po powrocie widoczności dociągamy od razu
+  // (ten sam wzorzec co w serverClock.js i ModulesContext.jsx).
   const driverTickingRef = useRef(false);
   useEffect(() => {
     clearInterval(liveStatsRef.current);
@@ -711,11 +706,14 @@ function SesjaTab({ city, adminId, onPodium }) {
       driverTickingRef.current = true;
       try {
         const s = sessionRef.current;
-        // Sesja z planem: pozycja z planu (zamiatacz i tak synchronizuje wiersz, ale plan
-        // jest dokładny od razu, bez czekania na przebieg pg_cron).
+        // Pozycja z planu sesji (zamiatacz i tak synchronizuje wiersz, ale plan jest
+        // dokładny od razu, bez czekania na przebieg pg_cron). Przejść pytań panel NIE
+        // zapisuje — robi to zamiatacz w bazie (faza 6, advance_due_sessions). Sesja bez
+        // planu (stary panel) → nic nie liczymy, panel pokazuje baner „zakończ ją”.
         const pos = s?.plan_anchor_at ? planPos() : null;
-        const idx = pos?.idx ?? s?.current_question_idx ?? 0;
-        const q = cityQuestions.find((x) => x.id === pos?.item?.id) ?? cityQuestions[idx];
+        if (!pos?.item) return;
+        const idx = pos.idx;
+        const q = cityQuestions.find((x) => x.id === pos.item.id) ?? cityQuestions[idx];
         if (!s?.id || !q?.id || s.status !== "running") return;
 
         // Zmiana pytania — zamknij poprzednie i zaktualizuj oszacowanie frekwencji.
@@ -730,8 +728,8 @@ function SesjaTab({ city, adminId, onPodium }) {
           plAtRef.current = Date.now();
         }
 
-        const startedMsNow = pos?.opensAt ?? (s.q_started_at ? new Date(s.q_started_at).getTime() : null);
-        const tpqNow = pos?.item?.tpq ?? (MODULES.find((m) => m.id === q.module)?.timePerQ || 60);
+        const startedMsNow = pos.opensAt;
+        const tpqNow = pos.item.tpq; // czas z planu (zamrożony przy starcie), nie z modułów
 
         const stats = await getLiveAnswerSummary(s.id, q.id);
         if (stats) {
@@ -760,40 +758,6 @@ function SesjaTab({ city, adminId, onPodium }) {
             goToNextRef.current(tpqNow);
           }
         }
-
-        if (s.plan_anchor_at) return; // przejścia sesji z planem wykonuje zamiatacz w bazie (faza 6)
-
-        // ── KIEROWCA PRZEJŚCIA PYTANIA ──────────────────────────────────────────
-        // LEGACY (sesje bez planu) — usunąć w 06-11.
-        // Od 09.2026 to admin zapisuje przejście, nie uczestnicy. Wcześniej robił to
-        // KAŻDY z 500 telefonów w tym samym ticku 250 ms — ~500 wywołań RPC
-        // serializowanych na blokadzie jednego wiersza plus ~1500 zapytań pochodnych,
-        // na każde z 58 pytań. Uczestnik ma teraz wyłącznie reagować na q_started_at.
-        //
-        // Warunek nie zależy od liczby odpowiedzi, więc pytanie, na które NIE odpowiedział
-        // NIKT (total === 0), też idzie dalej — wcześniej plateau wymagało total > 0
-        // i quiz potrafił stanąć do ręcznej interwencji.
-        const nextIdx = idx + 1;
-        if (advancingRef.current || nextIdx >= cityQuestions.length) return;
-        if (!shouldAdvance(tpqNow, startedMsNow, serverNow())) return;
-
-        advancingRef.current = true;
-        try {
-          const lead = advanceLeadSeconds(q, cityQuestions[nextIdx]);
-          const { startedAt } = await advanceSessionQuestion(s.id, idx, nextIdx, lead);
-          if (startedAt) {
-            const next = { ...sessionRef.current, current_question_idx: nextIdx, q_started_at: startedAt, status: "running" };
-            sessionRef.current = next;
-            setSession(next);
-            // Instant push — Live View i uczestnicy dostają zmianę w ~50 ms zamiast czekać
-            // na postgres_changes. Payload to tylko sygnał; klient i tak czyta stan z bazy.
-            if (!DEMO && supabase && quizBcChRef.current) {
-              quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: next });
-            }
-          }
-        } finally {
-          advancingRef.current = false;
-        }
       } finally {
         driverTickingRef.current = false;
       }
@@ -809,7 +773,7 @@ function SesjaTab({ city, adminId, onPodium }) {
       clearInterval(liveStatsRef.current);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [session?.status, cityQuestions, MODULES]);
+  }, [session?.status, cityQuestions]);
 
   // Realtime Presence — count participants actually on the lobby screen
   useEffect(() => {

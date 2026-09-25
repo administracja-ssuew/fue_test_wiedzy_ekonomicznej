@@ -185,7 +185,7 @@ Plans:
 - [x] 06-05-PLAN.md — App.jsx: routing uczestnika z planu, localStorage, data-fue-*; Quiz/Break/WaitingResults prezentacyjne (fala 3)
 - [x] 06-06-PLAN.md — LiveView/embed z planu, panel admina na akcjach v2, baner zamiatacza (fala 3)
 - [x] 06-07-PLAN.md — Płynność: Wake Lock, pasek CSS, vibrate, View Transitions, prefetch, szkielet, reduced-motion (fala 4)
-- [ ] 06-08-PLAN.md — Sonda: tryby ADMIN_EXIT/REFRESH/OFFLINE + asercja SC5, przebieg na produkcji (fala 5)
+- [x] 06-08-PLAN.md — Sonda: tryby ADMIN_EXIT/REFRESH/OFFLINE + asercja SC5, przebieg na produkcji (fala 5)
 - [ ] 06-09-PLAN.md — Bramka: wdrożenie na Vercel, sonda na wdrożeniu, realne telefony, zgoda na utwardzenie (fala 6, checkpoint)
 - [ ] 06-10-PLAN.md — SQL sekcja 41: utwardzenie starych RPC, ręczne wgranie (fala 7, checkpoint)
 - [ ] 06-11-PLAN.md — Usunięcie kodu legacy (kierowcy, projekcja z modułów) + sondy (fala 8)

@@ -76,7 +76,7 @@ completed: 2026-09-25
 - **Commit:** c00dc75
 
 **2. [Rule 3 - Blocking] `scripts/verify-clock.js` importował `remainingSeconds`**
-- **Fix:** lokalna kopia tej 2-liniowej formuły w skrypcie (skrypt demonstruje korektę offsetu zegara, nie projekcję gry). Kryterium „0 trafień w src” spełnione, `npm run verify-clock` dalej działa.
+- **Fix:** lokalna kopia tej 2-liniowej formuły w skrypcie (skrypt demonstruje korektę offsetu zegara, nie projekcję gry). Kryterium „0 trafień w src” spełnione. `npm run verify-clock` ładuje się bez błędu importu, ale pełnego przebiegu nie potwierdzono: skrypt celuje w projekt STAGING (`VITE_SUPABASE_URL_STAGE`) i zakończył się na `server_now: TypeError: fetch failed` (sieć/projekt stagingowy niedostępny), zanim doszedł do zmienionej formuły.
 - **Commit:** c00dc75
 
 **3. `submitAnswer` pozostawiony** — importuje go `scripts/bot-runner.js` (zgodnie z instrukcją planu: zostaw i odnotuj). Stary RPC `submit_answer` jest utwardzony sekcją 41.

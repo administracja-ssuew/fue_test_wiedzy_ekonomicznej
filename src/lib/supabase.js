@@ -389,72 +389,6 @@ export async function updateSession(sessionId, updates) {
   return { error: error?.message || null };
 }
 
-// Advance quiz to the next question using a server-generated timestamp.
-// Uses optimistic locking so only the first of N concurrent callers wins.
-// Returns { startedAt: string|null } — null means another client already advanced;
-// the caller should wait for the Realtime event instead of setting a local timestamp.
-export async function advanceSessionQuestion(sessionId, expectedIdx, nextIdx, leadSeconds = 4) {
-  if (DEMO) {
-    // In demo mode simulate the RPC: only advance if current index still matches
-    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
-    for (const city of cities) {
-      for (const suffix of ["", "_practice"]) {
-        const key = `fue_session_${city}${suffix}`;
-        const s = JSON.parse(localStorage.getItem(key) || "null");
-        if (s?.id === sessionId) {
-          if (s.current_question_idx !== expectedIdx || s.status !== "running") {
-            return { startedAt: null, error: null }; // lost the race
-          }
-          const startedAt = new Date(Date.now() + Math.max(0, leadSeconds) * 1000).toISOString();
-          localStorage.setItem(key, JSON.stringify({ ...s, current_question_idx: nextIdx, q_started_at: startedAt }));
-          return { startedAt, error: null };
-        }
-      }
-    }
-    return { startedAt: null, error: null };
-  }
-  let { data, error } = await supabase.rpc("advance_session_question", {
-    p_session_id:   sessionId,
-    p_expected_idx: expectedIdx,
-    p_next_idx:     nextIdx,
-    p_lead_seconds: leadSeconds,
-  });
-  // Miękki fallback: jeśli na bazie nie ma jeszcze 4-arg wersji (sekcja 26 nie
-  // wgrana), nie zawieszaj quizu — wywołaj starą 3-arg (stały lead 4 s, bez
-  // ekranu zapowiedzi modułu).
-  if (error && (error.code === "PGRST202" || /Could not find the function/i.test(error.message || ""))) {
-    ({ data, error } = await supabase.rpc("advance_session_question", {
-      p_session_id: sessionId, p_expected_idx: expectedIdx, p_next_idx: nextIdx,
-    }));
-  }
-  if (error) return { startedAt: null, error: error.message };
-  // data is the returned TIMESTAMPTZ string, or null if this client lost the race
-  return { startedAt: data || null, error: null };
-}
-
-// Starts a waiting session using a server-side timestamp (avoids admin clock skew).
-// Returns { startedAt: string|null, error: string|null }.
-export async function startQuizSession(sessionId) {
-  if (DEMO) {
-    const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
-    for (const city of cities) {
-      for (const suffix of ["", "_practice"]) {
-        const key = `fue_session_${city}${suffix}`;
-        const s = JSON.parse(localStorage.getItem(key) || "null");
-        if (s?.id === sessionId) {
-          const startedAt = new Date().toISOString();
-          localStorage.setItem(key, JSON.stringify({ ...s, status: "running", q_started_at: startedAt, current_question_idx: 0 }));
-          return { startedAt, error: null };
-        }
-      }
-    }
-    return { startedAt: null, error: "Sesja nie znaleziona." };
-  }
-  const { data, error } = await supabase.rpc("start_quiz_session", { p_session_id: sessionId });
-  if (error) return { startedAt: null, error: error.message };
-  return { startedAt: data || null, error: null };
-}
-
 export async function getSessionForCity(city) {
   if (DEMO) {
     const real = JSON.parse(localStorage.getItem(`fue_session_${city}`) || "null");
@@ -553,24 +487,6 @@ export async function submitAnswer({ sessionId, participantCode, participantName
   // Fallback (sekcja 29 nie wgrana): stary bezpośredni zapis, klientowe isCorrect.
   const { error: e2 } = await saveAnswer({ sessionId, participantCode, participantName, city, questionId, module, chosen, isCorrect: !!clientCorrect, points: 0, responseTimeS });
   return { isCorrect: !!clientCorrect, correctAns: null, error: e2 || null };
-}
-
-// Returns one participant's own answers for a session — used to rebuild local
-// score/breakdown after a page refresh. SECURITY DEFINER RPC scopes rows to the
-// given code only (participants are anon and can't SELECT the answers table).
-export async function getParticipantAnswers(sessionId, participantCode) {
-  if (DEMO) {
-    return JSON.parse(localStorage.getItem("fue_answers") || "[]")
-      .filter((a) => a.sessionId === sessionId && a.participantCode === participantCode)
-      .map((a) => ({ qId: a.questionId, module: a.module, picked: a.chosen, correct: a.isCorrect, pts: a.points }));
-  }
-  const { data, error } = await supabase.rpc("get_participant_answers", {
-    p_session_id: sessionId, p_code: participantCode,
-  });
-  if (error || !data) return [];
-  return data.map((a) => ({
-    qId: a.question_id, module: a.module, picked: a.chosen, correct: a.is_correct, pts: a.points,
-  }));
 }
 
 export async function getSessionResults(sessionId) {

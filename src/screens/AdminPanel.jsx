@@ -7,7 +7,7 @@ import {
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
   getViolationsForSession,
   getModules, addModule, updateModule, deleteModule,
-  advanceSessionQuestion, getSessionDetailedResults,
+  getSessionDetailedResults,
   logEvent,
   startQuizSessionV2, adminPauseSession, adminResumeSession, adminSkipQuestion, adminRepeatQuestion,
   getSessionPlan, getSweeperStatus, adminSweepSession,
@@ -505,7 +505,6 @@ function KodyTab({ city, adminId }) {
 // ─── Tab: Sesja ───────────────────────────────────────────────────────────────
 
 function SesjaTab({ city, adminId, onPodium }) {
-  const MODULES = useModules();
   const [session, setSession]           = useState(null);
   const [participants, setParticipants] = useState([]);
   const [results, setResults]           = useState([]);
@@ -750,12 +749,8 @@ function SesjaTab({ city, adminId, onPodium }) {
           });
           if (endEarly && autoAdvancedRef.current !== idx) {
             autoAdvancedRef.current = idx;
-            // tpqNow przekazane JAWNIE — wcześniej goToNextQuestion liczyło czas modułu
-            // z `session` (stan React), a kierowca z `sessionRef`. Gdy te dwa źródła się
-            // rozjechały, admin cofał znacznik o inną liczbę sekund, niż uczestnik
-            // oczekiwał — u uczestnika nie odpalała się ŻADNA gałąź handleUpdate, więc
-            // liczył dalej stary czas i przeskakiwał dopiero przy przejściu pytania.
-            goToNextRef.current(tpqNow);
+            // Skrócenie = adminSkipQuestion (przesunięcie kotwicy planu w RPC).
+            goToNextRef.current();
           }
         }
       } finally {
@@ -975,18 +970,8 @@ function SesjaTab({ city, adminId, onPodium }) {
   const liveTotal = liveStats?.total ?? 0;
   const allAnswered = st === "running" && liveTotal > 0 &&
     ((participants.length > 0 && liveTotal >= participants.length) || answersSettled);
-  // Czas bieżącego pytania (do "force-end" — back-date q_started_at o tyle sekund).
-  const curQuestionTimePerQ = (() => {
-    const planTpq = isPlan ? planPos()?.item?.tpq : null;
-    if (planTpq != null) return planTpq;
-    const q = cityQuestions[session?.current_question_idx ?? 0];
-    return MODULES.find((m) => m.id === q?.module)?.timePerQ || 60;
-  })();
-  // Wymusza koniec czasu bieżącego pytania u WSZYSTKICH (uczestnik, LiveView, panel)
-  // przez cofnięcie q_started_at o pełen czas pytania → remaining=0 wszędzie → reveal
-  // → normalny auto-advance. Reużywa istniejącego, zsynchronizowanego mechanizmu.
-  // tpqOverride: czas modułu wyliczony przez kierowcę z sessionRef. Bez niego
-  // spadamy na curQuestionTimePerQ liczone ze stanu React, które bywa o tick stare.
+  // Sesja uruchomiona starym panelem (bez planu) w trakcie gry — nie da się nią sterować.
+  const legacyActive = !isPlan && (st === "running" || st === "paused");
   // Wspólna obsługa wyniku akcji v2 (jedno przesunięcie kotwicy w RPC).
   const applyV2 = (res, logType) => {
     if (!res) return;
@@ -1005,17 +990,10 @@ function SesjaTab({ city, adminId, onPodium }) {
     }
   };
 
-  const goToNextQuestion = async (tpqOverride) => {
-    if (sessionRef.current?.plan_anchor_at) {
-      // „⏭ Następne” = skrócenie bieżącego pytania do teraz (przesunięcie kotwicy w RPC).
-      applyV2(await adminSkipQuestion(sessionRef.current.id, planPos()?.idx), "question_skipped");
-      return;
-    }
-    // LEGACY (sesje bez planu) — usunąć w 06-11.
-    const tpq = tpqOverride || curQuestionTimePerQ;
-    const backdated = new Date(serverNow() - tpq * 1000).toISOString();
-    upd({ status: "running", q_started_at: backdated });
-    logEvent({ type: "question_skipped", sessionId: session?.id, city, actor: adminId, detail: { idx: session?.current_question_idx } });
+  // „⏭ Następne” = skrócenie bieżącego pytania do teraz (przesunięcie kotwicy w RPC).
+  const goToNextQuestion = async () => {
+    if (!sessionRef.current?.plan_anchor_at) return;
+    applyV2(await adminSkipQuestion(sessionRef.current.id, planPos()?.idx), "question_skipped");
   };
   goToNextRef.current = goToNextQuestion; // #3 — efekt auto-przejścia (nad early-return) woła zawsze aktualną wersję
 
@@ -1118,6 +1096,14 @@ function SesjaTab({ city, adminId, onPodium }) {
           </div>
         )}
 
+        {/* Sesja bez planu (uruchomiona starym panelem) — sterowanie tylko przez zakończenie */}
+        {legacyActive && (
+          <div style={{ margin: "12px 20px 0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.5)", color: "#F59E0B" }}>
+            ⚠️ Ta sesja została uruchomiona starszą wersją panelu — zakończ ją (⏹ Zakończ) i uruchom ponownie.
+          </div>
+        )}
+
         {/* Action buttons */}
         <div style={{ padding: "14px 20px", borderTop: `1px solid ${stCol}20`, display: "flex", gap: 10, flexWrap: "wrap" }}>
           {st === "waiting" && (
@@ -1132,25 +1118,19 @@ function SesjaTab({ city, adminId, onPodium }) {
             }}>▶ Start quizu</button>
           )}
           {st === "running" && <>
-            <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={async () => {
-              if (!confirm("Czy na pewno chcesz zatrzymać quiz?")) return;
-              if (sessionRef.current?.plan_anchor_at) {
+            {isPlan && <>
+              <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={async () => {
+                if (!confirm("Czy na pewno chcesz zatrzymać quiz?")) return;
                 applyV2(await adminPauseSession(sessionRef.current.id), "session_paused");
-                return;
-              }
-              // LEGACY (sesje bez planu) — usunąć w 06-11.
-              // Zapamiętaj MOMENT pauzy (epoch s). q_started_at zostaje bez zmian — na
-              // wznowieniu przesuniemy go o czas pauzy, więc remaining zostaje zachowane
-              // (bez liczenia elapsed z potencjalnie nieaktualnego stanu = bez „skoku").
-              upd({ status: "paused", pause_elapsed_s: Math.floor(serverNow() / 1000) });
-            }}>⏸ Pauza</button>
-            <button
-              disabled={!allAnswered}
-              title={allAnswered ? "Można przejść dalej bez czekania na czas" : "Aktywne, gdy wszyscy odpowiedzą (lub gdy odpowiedzi przestaną napływać)"}
-              style={{ ...C.btn(allAnswered ? "success" : "ghost"), opacity: allAnswered ? 1 : .45, cursor: allAnswered ? "pointer" : "not-allowed" }}
-              onClick={() => { if (allAnswered) goToNextQuestion(); }}>
-              ⏭ Następne ({liveTotal}/{participants.length})
-            </button>
+              }}>⏸ Pauza</button>
+              <button
+                disabled={!allAnswered}
+                title={allAnswered ? "Można przejść dalej bez czekania na czas" : "Aktywne, gdy wszyscy odpowiedzą (lub gdy odpowiedzi przestaną napływać)"}
+                style={{ ...C.btn(allAnswered ? "success" : "ghost"), opacity: allAnswered ? 1 : .45, cursor: allAnswered ? "pointer" : "not-allowed" }}
+                onClick={() => { if (allAnswered) goToNextQuestion(); }}>
+                ⏭ Następne ({liveTotal}/{participants.length})
+              </button>
+            </>}
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
             {/* Plan zakończony, a zamiatacz jeszcze nie przełączył na results — bez wymuszania pauzy. */}
             {isPlan && planPos()?.phase === "finished" && (
@@ -1158,36 +1138,20 @@ function SesjaTab({ city, adminId, onPodium }) {
             )}
           </>}
           {st === "paused" && <>
-            <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={async () => {
-              if (sessionRef.current?.plan_anchor_at) {
+            {isPlan && <>
+              <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={async () => {
                 // Wznowienie = kotwica przesunięta o czas pauzy (w RPC, zegar bazy).
                 applyV2(await adminResumeSession(sessionRef.current.id), "session_running");
-                return;
-              }
-              // LEGACY (sesje bez planu) — usunąć w 06-11.
-              // Przesuń q_started_at o czas trwania pauzy → remaining identyczne jak przed pauzą.
-              const pausedAtMs = (sessionRef.current?.pause_elapsed_s ?? Math.floor(serverNow() / 1000)) * 1000;
-              const qsa = sessionRef.current?.q_started_at;
-              const shifted = qsa
-                ? new Date(new Date(qsa).getTime() + (serverNow() - pausedAtMs)).toISOString()
-                : new Date(serverNow()).toISOString();
-              upd({ status: "running", q_started_at: shifted, pause_elapsed_s: null });
-            }}>▶ Wznów quiz</button>
-            <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
+              }}>▶ Wznów quiz</button>
+              <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
+            </>}
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
           </>}
           <button onClick={() => load()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>🔄 Odśwież</button>
-          {st === "running" && (
+          {st === "running" && isPlan && (
             <button style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }} title="Resetuje czas bieżącego pytania dla wszystkich uczestników" onClick={async () => {
               if (!confirm("Powtórzyć bieżące pytanie? Czas zostanie zresetowany dla wszystkich uczestników (na tym samym pytaniu).")) return;
-              if (sessionRef.current?.plan_anchor_at) {
-                applyV2(await adminRepeatQuestion(sessionRef.current.id, planPos()?.idx), "question_repeated");
-                return;
-              }
-              // LEGACY (sesje bez planu) — usunąć w 06-11.
-              const startedAt = new Date(serverNow()).toISOString();
-              upd({ status: "running", q_started_at: startedAt, pause_elapsed_s: null });
-              logEvent({ type: "question_repeated", sessionId: session.id, city, actor: adminId, detail: { idx: sessionRef.current?.current_question_idx } });
+              applyV2(await adminRepeatQuestion(sessionRef.current.id, planPos()?.idx), "question_repeated");
             }}>🔁 Powtórz</button>
           )}
         </div>

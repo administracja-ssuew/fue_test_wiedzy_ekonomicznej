@@ -414,8 +414,10 @@ export async function getSessionById(sessionId) {
     const cities = ["Kraków", "Warszawa", "Poznań", "Wrocław", "Katowice"];
     for (const city of cities) {
       for (const suffix of ["", "_practice"]) {
-        const s = JSON.parse(localStorage.getItem(`fue_session_${city}${suffix}`) || "null");
-        if (s?.id === sessionId) return s;
+        const key = `fue_session_${city}${suffix}`;
+        const s = JSON.parse(localStorage.getItem(key) || "null");
+        // Przerwa planowa (lustro zamiatacza, sekcja 42) przed zwrotem wiersza.
+        if (s?.id === sessionId) return demoApplyHold(key, s, demoPlan(sessionId), Date.now());
       }
     }
     return null;
@@ -866,7 +868,7 @@ export async function getEventLog(sessionId) {
 
 import {
   buildPlanItems, planPosition, isRevealed, resumeAnchor, skipAnchor, repeatAnchor,
-  answerResponseMs, toMs, REVEAL_GATE_MS,
+  answerResponseMs, toMs, REVEAL_GATE_MS, sweepAction,
 } from "./plan.js";
 
 const isMissingFn = (e) => e && (e.code === "PGRST202" || /Could not find the function/i.test(e.message || ""));
@@ -887,6 +889,19 @@ function demoFindSession(sessionId) {
 
 function demoPlan(sessionId) {
   try { return JSON.parse(localStorage.getItem(`fue_plan_${sessionId}`) || "null"); } catch { return null; }
+}
+
+// DEMO: przerwa planowa (lustro advance_due_sessions, sekcja 42) — wiersz w localStorage
+// przechodzi w 'paused' dokładnie na anchor + r przerwy; wznowienie jak zwykła pauza.
+function demoApplyHold(key, s, items, nowMs) {
+  if (!key || !s || s.status !== "running" || s.plan_anchor_at == null || s.plan_paused_at != null || !items?.length) return s;
+  const d = sweepAction({ status: s.status, anchorMs: toMs(s.plan_anchor_at), pausedAtMs: null, curIdx: s.current_question_idx,
+    qStartedAtMs: toMs(s.q_started_at), revealedIdx: s.revealed_idx ?? null, holdIdx: s.plan_hold_idx ?? null }, items, nowMs);
+  if (d.action !== "hold") return s;
+  const next = { ...s, status: "paused", plan_paused_at: iso(d.pausedAtMs), plan_hold_idx: d.holdIdx,
+    current_question_idx: d.idx, q_started_at: iso(d.qStartedAtMs), revealed_idx: d.revealedIdx };
+  localStorage.setItem(key, JSON.stringify(next));
+  return next;
 }
 
 function demoQuestionsSorted(city) {
@@ -915,7 +930,7 @@ export async function startQuizSessionV2(sessionId) {
     const anchor = Date.now();
     const next = {
       ...s, status: "running", current_question_idx: 0,
-      plan_anchor_at: iso(anchor), plan_paused_at: null, revealed_idx: null, revealed_ans: null,
+      plan_anchor_at: iso(anchor), plan_paused_at: null, plan_hold_idx: null, revealed_idx: null, revealed_ans: null,
       q_started_at: iso(anchor + items[0].o),
     };
     localStorage.setItem(key, JSON.stringify(next));
@@ -969,6 +984,8 @@ function demoParticipantState(rawCode, sessionId, includePlan) {
   if (!s) {
     return { server_now: nowMs, error: null, session: null, position: null, plan: null, my_answers: [], reveal: null, correct_total: 0 };
   }
+  // Przerwa planowa (lustro zamiatacza) — zanim policzymy pozycję.
+  s = demoApplyHold(demoFindSession(s.id)?.key, s, demoPlan(s.id), nowMs);
 
   const anchorMs = toMs(s.plan_anchor_at);
   const pausedMs = toMs(s.plan_paused_at);
@@ -1014,7 +1031,7 @@ function demoParticipantState(rawCode, sessionId, includePlan) {
     session: {
       id: s.id, city: s.city, status: s.status, is_practice: !!s.is_practice,
       bg: s.bg ?? null, bg_mobile: s.bg_mobile ?? null, name: s.name ?? null,
-      plan_anchor_at: anchorMs, plan_paused_at: pausedMs,
+      plan_anchor_at: anchorMs, plan_paused_at: pausedMs, plan_hold_idx: s.plan_hold_idx ?? null,
     },
     position, plan, my_answers: myAnswers, reveal, correct_total: correctTotal,
   };
@@ -1187,7 +1204,9 @@ export async function adminSweepSession(sessionId) {
     const found = demoFindSession(sessionId);
     const items = demoPlan(sessionId);
     if (found && items?.length && found.s.plan_anchor_at != null && found.s.status === "running") {
-      const { key, s } = found;
+      const { key } = found;
+      const s = demoApplyHold(key, found.s, items, Date.now());
+      if (s.status !== "running") return { error: null };
       const pos = planPosition(items, toMs(s.plan_anchor_at), toMs(s.plan_paused_at), Date.now());
       if (pos?.phase === "finished") localStorage.setItem(key, JSON.stringify({ ...s, status: "results" }));
     }

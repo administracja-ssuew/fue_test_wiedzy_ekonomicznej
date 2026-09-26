@@ -2277,6 +2277,337 @@ RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
 REVOKE EXECUTE ON FUNCTION public.schema_marker_41() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.schema_marker_41() TO anon, authenticated;
 
+-- ─── 42. REVEAL 11,5 s + PRZERWY PLANOWE PO MODUŁACH 2 i 4 (faza 6, luki G1/G3) ──
+-- Wyłącznie ADDYTYWNIE (SC6): nowa kolumna nullable, nowe funkcje, CREATE OR REPLACE
+-- z identycznymi sygnaturami, zero DROP. Wdrożony front działa bez zmian.
+-- Dotyczy TYLKO sesji startowanych po wgraniu tej sekcji (plan zamrażany przy starcie);
+-- sesje z planem zamrożonym wcześniej (reveal 6 s, bez `h`) działają jak dotąd.
+-- Decyzje (06-09): poprawna odpowiedź widoczna 10 s → okno reveal = 1,5 s bramki + 10 s
+-- = 11 500 ms; quiz sam staje po ostatnim pytaniu modułu 2 i 4, wznowienie ręczne
+-- istniejącym admin_resume_session. Bramka poprawności (c + 1500, SC5) bez zmian.
+-- UWAGA: stałe MUSZĄ być zgodne z src/lib/gameLogic.js (REVEAL_MS = 11500,
+-- BREAK_AFTER_MODULES = [2,4]) i src/lib/plan.js (FIRST_QUESTION_LEAD = 10,
+-- MODULE_INTRO_SECONDS = 30, PRE_QUESTION_LEAD = 4). Parzystość: `npm run verify-plan`.
+-- Wgrywać ręcznie w SQL Editorze projektu ytbwmmqwbfcugouourih.
+
+-- 42.1 — indeks ostatniej przerwy planowej zatrzymanej przez zamiatacz; NULL = żadna.
+-- Przerwa o indeksie ≤ plan_hold_idx jest „zużyta” (po wznowieniu brak ponownego zatrzymania).
+ALTER TABLE public.quiz_sessions ADD COLUMN IF NOT EXISTS plan_hold_idx INT;
+
+-- 42.2 — build_plan_items: czysta budowa planu (bez tabel) — lustro buildPlanItems (plan.js).
+-- Wejście: p_questions = [{id, module}] JUŻ posortowane (module, sort_order, id),
+-- p_modules = [{id, timePerQ}]. Znacznik h: true na ostatnim pytaniu modułu 2 i 4,
+-- tylko gdy po nim jest pytanie innego modułu.
+CREATE OR REPLACE FUNCTION public.build_plan_items(p_questions JSONB, p_modules JSONB)
+RETURNS JSONB LANGUAGE plpgsql IMMUTABLE SET search_path = public AS $$
+DECLARE
+  q RECORD;
+  v_items  JSONB  := '[]'::jsonb;
+  v_i      INT    := 0;
+  v_prev_m INT    := NULL;
+  v_prev_r BIGINT := 0;
+  v_tpq    INT;
+  v_lead   INT; v_o BIGINT; v_c BIGINT; v_r BIGINT;
+BEGIN
+  FOR q IN
+    SELECT (e->>'id')::UUID AS id, (e->>'module')::INT AS module, ord
+    FROM jsonb_array_elements(COALESCE(p_questions, '[]'::jsonb)) WITH ORDINALITY AS t(e, ord)
+    ORDER BY ord
+  LOOP
+    v_tpq := COALESCE((SELECT (m->>'timePerQ')::INT
+                         FROM jsonb_array_elements(COALESCE(p_modules, '[]'::jsonb)) m
+                        WHERE (m->>'id')::INT = q.module LIMIT 1), 60);
+    IF v_i > 0 AND q.module IS DISTINCT FROM v_prev_m AND v_prev_m IN (2, 4) THEN
+      v_items := jsonb_set(v_items, ARRAY[(v_i - 1)::TEXT, 'h'], 'true'::jsonb, true);
+    END IF;
+    v_lead := CASE WHEN v_i = 0 THEN 10
+                   WHEN q.module IS DISTINCT FROM v_prev_m THEN 30
+                   ELSE 4 END;
+    v_o := v_prev_r + v_lead * 1000;
+    v_c := v_o + v_tpq * 1000;
+    v_r := v_c + 11500;
+    v_items := v_items || jsonb_build_array(jsonb_build_object(
+      'i', v_i, 'id', q.id, 'm', q.module, 'tpq', v_tpq, 'lead', v_lead,
+      'o', v_o, 'c', v_c, 'r', v_r));
+    v_prev_r := v_r;
+    v_prev_m := q.module;
+    v_i := v_i + 1;
+  END LOOP;
+  RETURN v_items;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.build_plan_items(JSONB, JSONB) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.build_plan_items(JSONB, JSONB) TO anon, authenticated;
+
+-- 42.3 — build_session_plan: ta sama sygnatura co 39.4 (bez DROP), budowa przez build_plan_items.
+-- Kolejność identyczna z get_quiz_questions: ORDER BY module, sort_order, id.
+CREATE OR REPLACE FUNCTION public.build_session_plan(p_city TEXT)
+RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_q JSONB;
+  v_m JSONB;
+BEGIN
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', q.id, 'module', q.module)
+                            ORDER BY q.module, q.sort_order, q.id), '[]'::jsonb)
+    INTO v_q
+    FROM public.questions q
+   WHERE q.city = p_city AND q.is_practice = false;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', m.id, 'timePerQ', m.time_per_q)), '[]'::jsonb)
+    INTO v_m
+    FROM public.modules m;
+  RETURN public.build_plan_items(v_q, v_m);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.build_session_plan(TEXT) FROM PUBLIC, anon, authenticated;
+
+-- 42.4 — plan_hold_due: pierwsza NIEZUŻYTA przerwa (h, i > p_hold_idx), której termin
+-- anchor + r minął → i; inaczej NULL. Lustro holdDue (plan.js).
+CREATE OR REPLACE FUNCTION public.plan_hold_due(p_items JSONB, p_anchor TIMESTAMPTZ, p_hold_idx INT, p_at TIMESTAMPTZ)
+RETURNS INT LANGUAGE sql IMMUTABLE SET search_path = public AS $$
+  SELECT CASE WHEN p_anchor IS NOT NULL AND EXTRACT(epoch FROM (p_at - p_anchor)) * 1000 >= h.r THEN h.i END
+    FROM (SELECT (e->>'i')::INT AS i, (e->>'r')::BIGINT AS r
+            FROM jsonb_array_elements(COALESCE(p_items, '[]'::jsonb)) e
+           WHERE COALESCE((e->>'h')::BOOLEAN, false)
+             AND (e->>'i')::INT > COALESCE(p_hold_idx, -1)
+           ORDER BY (e->>'i')::INT
+           LIMIT 1) h
+$$;
+REVOKE EXECUTE ON FUNCTION public.plan_hold_due(JSONB, TIMESTAMPTZ, INT, TIMESTAMPTZ) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.plan_hold_due(JSONB, TIMESTAMPTZ, INT, TIMESTAMPTZ) TO anon, authenticated;
+
+-- 42.5 — start_quiz_session_v2: ciało 39.5 bez zmian + reset plan_hold_idx (nowa sesja = brak zużytych przerw).
+CREATE OR REPLACE FUNCTION public.start_quiz_session_v2(p_session_id UUID)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+  v_city TEXT; v_status TEXT; v_items JSONB;
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  SELECT city, status INTO v_city, v_status
+    FROM public.quiz_sessions WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN json_build_object('ok', false, 'reason', 'not found', 'session', NULL);
+  END IF;
+  -- kotwica liczona PO uzyskaniu blokady (czekanie na blokadę nie skraca zapowiedzi)
+  v_now := clock_timestamp();
+  IF v_status IS DISTINCT FROM 'waiting' THEN
+    RETURN json_build_object('ok', false, 'reason', 'not waiting',
+      'session', (SELECT row_to_json(s) FROM public.quiz_sessions s WHERE s.id = p_session_id));
+  END IF;
+  v_items := public.build_session_plan(v_city);
+  IF v_items IS NULL OR jsonb_array_length(v_items) = 0 THEN
+    RETURN json_build_object('ok', false, 'reason', 'no questions',
+      'session', (SELECT row_to_json(s) FROM public.quiz_sessions s WHERE s.id = p_session_id));
+  END IF;
+  INSERT INTO public.session_plans (session_id, items) VALUES (p_session_id, v_items)
+  ON CONFLICT (session_id) DO UPDATE SET items = EXCLUDED.items, created_at = clock_timestamp();
+  UPDATE public.quiz_sessions SET
+    status               = 'running',
+    current_question_idx = 0,
+    plan_anchor_at       = v_now,
+    plan_paused_at       = NULL,
+    plan_hold_idx        = NULL,
+    revealed_idx         = NULL,
+    revealed_ans         = NULL,
+    pause_elapsed_s      = NULL,
+    q_started_at         = v_now + ((v_items->0->>'o')::BIGINT) * INTERVAL '1 millisecond'
+  WHERE id = p_session_id;
+  RETURN json_build_object('ok', true, 'reason', NULL, 'items', jsonb_array_length(v_items),
+    'session', (SELECT row_to_json(s) FROM public.quiz_sessions s WHERE s.id = p_session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.start_quiz_session_v2(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.start_quiz_session_v2(UUID) TO authenticated;
+
+-- 42.6 — advance_due_sessions: kopia 39.8 + przerwa planowa PRZED sweep_decision.
+-- admin_sweep_session nie wymaga zmian (woła tę funkcję).
+CREATE OR REPLACE FUNCTION public.advance_due_sessions(p_only UUID DEFAULT NULL)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_now TIMESTAMPTZ := clock_timestamp(); r RECORD; d RECORD; n INT := 0;
+  v_hold INT; v_paused TIMESTAMPTZ;
+BEGIN
+  FOR r IN
+    SELECT s.id, s.status, s.current_question_idx, s.q_started_at, s.plan_anchor_at, s.plan_paused_at, s.revealed_idx,
+           s.plan_hold_idx, sp.items
+    FROM public.quiz_sessions s JOIN public.session_plans sp ON sp.session_id = s.id
+    WHERE s.status = 'running' AND s.plan_anchor_at IS NOT NULL AND s.plan_paused_at IS NULL
+      AND (p_only IS NULL OR s.id = p_only)
+    FOR UPDATE OF s SKIP LOCKED
+  LOOP
+    -- 42: przerwa planowa — zatrzymanie DOKŁADNIE na granicy anchor + r (także przy zaległości crona).
+    -- Wznowienie = admin_resume_session (przesunięcie kotwicy); przerwa v_hold jest zużyta → brak ponownego zatrzymania.
+    v_hold := public.plan_hold_due(r.items, r.plan_anchor_at, r.plan_hold_idx, v_now);
+    IF v_hold IS NOT NULL THEN
+      v_paused := r.plan_anchor_at + ((r.items->v_hold->>'r')::BIGINT) * INTERVAL '1 millisecond';
+      UPDATE public.quiz_sessions SET
+        status = 'paused', plan_paused_at = v_paused, plan_hold_idx = v_hold,
+        pause_elapsed_s = FLOOR(EXTRACT(epoch FROM v_paused))::INT,
+        current_question_idx = v_hold + 1,
+        q_started_at = r.plan_anchor_at + ((r.items->(v_hold + 1)->>'o')::BIGINT) * INTERVAL '1 millisecond',
+        revealed_idx = v_hold,
+        revealed_ans = (SELECT q.ans FROM public.questions q WHERE q.id = (r.items->v_hold->>'id')::UUID)
+      WHERE id = r.id;
+      n := n + 1;
+      CONTINUE;
+    END IF;
+    SELECT * INTO d FROM public.sweep_decision(r.items, r.plan_anchor_at, r.plan_paused_at, r.status,
+                                                r.current_question_idx, r.q_started_at, r.revealed_idx, v_now);
+    IF d.action = 'none' THEN CONTINUE; END IF;
+    UPDATE public.quiz_sessions SET
+      status = d.new_status, current_question_idx = d.new_idx, q_started_at = d.new_q_started_at,
+      revealed_idx = d.new_revealed_idx,
+      revealed_ans = CASE WHEN d.new_revealed_idx IS NULL THEN NULL
+                          ELSE (SELECT q.ans FROM public.questions q WHERE q.id = (r.items->d.new_revealed_idx->>'id')::UUID) END
+    WHERE id = r.id;
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.advance_due_sessions(UUID) FROM PUBLIC, anon, authenticated;
+
+-- 42.7 — get_participant_state: kopia 39.6b; jedyna zmiana — 'plan_hold_idx' w obiekcie session
+-- (klient rozpoznaje przerwę planową). Bramkowanie poprawności (c + 1500, SC5) NIETKNIĘTE.
+CREATE OR REPLACE FUNCTION public.get_participant_state(
+  p_code TEXT, p_session_id UUID DEFAULT NULL, p_include_plan BOOLEAN DEFAULT true)
+RETURNS JSON LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now      TIMESTAMPTZ := clock_timestamp();
+  v_now_ms   BIGINT;
+  v_code     TEXT;
+  v_city     TEXT;
+  s          public.quiz_sessions%ROWTYPE;
+  v_found    BOOLEAN := false;
+  v_items    JSONB;
+  v_t        NUMERIC;
+  v_final    BOOLEAN;
+  p          RECORD;
+  v_has_pos  BOOLEAN := false;
+  v_session  JSON; v_position JSON; v_plan JSON; v_my JSON; v_reveal JSON;
+  v_correct  INT := 0;
+  v_rev      INT;
+  v_rev_ans  INT;
+BEGIN
+  v_now_ms := FLOOR(EXTRACT(epoch FROM v_now) * 1000)::BIGINT;
+  v_code := upper(btrim(COALESCE(p_code, '')));
+  SELECT pc.city INTO v_city FROM public.participant_codes pc WHERE pc.code = v_code;
+  IF v_city IS NULL THEN
+    RETURN json_build_object('server_now', v_now_ms, 'error', 'invalid code');
+  END IF;
+
+  -- Sesja przypięta przez klienta (localStorage) …
+  IF p_session_id IS NOT NULL THEN
+    SELECT * INTO s FROM public.quiz_sessions WHERE id = p_session_id AND city = v_city;
+    v_found := FOUND;
+    -- … porzucana, gdy jest zakończona, a miasto ma NOWSZĄ niezakończoną sesję.
+    -- Klient przypina sessionId w localStorage, a endAndResetSession tworzy NOWE id
+    -- (próba → właściwy test, wcześniejsza próba generalna) — bez tej reguły uczestnik
+    -- krążyłby w Lobby na starej sesji. Zakończona przypięta sesja BEZ nowszej zostaje
+    -- zwrócona (ekran wyników nie znika po 15-s siatce bezpieczeństwa).
+    IF v_found AND s.status IN ('results','ended') AND EXISTS (
+         SELECT 1 FROM public.quiz_sessions n
+          WHERE n.city = v_city AND n.status <> 'ended' AND n.created_at > s.created_at) THEN
+      v_found := false;
+    END IF;
+  END IF;
+  IF NOT v_found THEN
+    SELECT * INTO s FROM public.quiz_sessions
+     WHERE city = v_city AND status <> 'ended'
+     ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'paused' THEN 1 WHEN 'waiting' THEN 2 ELSE 3 END,
+              created_at DESC
+     LIMIT 1;
+    v_found := FOUND;
+  END IF;
+  IF NOT v_found THEN
+    RETURN json_build_object('server_now', v_now_ms, 'error', NULL, 'session', NULL, 'position', NULL,
+      'plan', NULL, 'my_answers', '[]'::json, 'reveal', NULL, 'correct_total', 0);
+  END IF;
+
+  IF s.plan_anchor_at IS NOT NULL THEN
+    SELECT sp.items INTO v_items FROM public.session_plans sp WHERE sp.session_id = s.id;
+    v_t := EXTRACT(epoch FROM (COALESCE(s.plan_paused_at, v_now) - s.plan_anchor_at)) * 1000;
+  END IF;
+  v_final := s.status IN ('results','ended');
+
+  v_session := json_build_object(
+    'id', s.id, 'city', s.city, 'status', s.status, 'is_practice', s.is_practice,
+    'bg', s.bg, 'bg_mobile', s.bg_mobile, 'name', s.name,
+    'plan_anchor_at', FLOOR(EXTRACT(epoch FROM s.plan_anchor_at) * 1000)::BIGINT,
+    'plan_paused_at', FLOOR(EXTRACT(epoch FROM s.plan_paused_at) * 1000)::BIGINT,
+    'plan_hold_idx', s.plan_hold_idx);
+
+  IF v_items IS NOT NULL AND jsonb_array_length(v_items) > 0 THEN
+    SELECT * INTO p FROM public.plan_position(v_items, s.plan_anchor_at, s.plan_paused_at, v_now);
+    v_has_pos := FOUND;
+    IF v_has_pos THEN
+      v_position := json_build_object(
+        'idx', p.idx, 'phase', p.phase,
+        'opens_at',     FLOOR(EXTRACT(epoch FROM p.opens_at) * 1000)::BIGINT,
+        'closes_at',    FLOOR(EXTRACT(epoch FROM p.closes_at) * 1000)::BIGINT,
+        'reveal_until', FLOOR(EXTRACT(epoch FROM p.reveal_until) * 1000)::BIGINT);
+    END IF;
+    IF p_include_plan THEN
+      SELECT json_agg(e || jsonb_build_object(
+               'q',    COALESCE(q.q, '(pytanie usunięte)'),
+               'opts', COALESCE(to_jsonb(q.opts), '[]'::jsonb))
+             ORDER BY (e->>'i')::INT)
+        INTO v_plan
+        FROM jsonb_array_elements(v_items) e
+        LEFT JOIN public.questions q ON q.id = (e->>'id')::UUID;
+    END IF;
+  END IF;
+
+  -- Moje odpowiedzi: is_correct tylko dla pytań odsłoniętych (t_eff ≥ c + 1500) lub po końcu.
+  SELECT COALESCE(json_agg(json_build_object(
+           'question_id', a.question_id,
+           'chosen',      a.chosen,
+           'is_correct',  CASE WHEN v_final OR (it.c IS NOT NULL AND v_t >= it.c + 1500)
+                              THEN a.is_correct ELSE NULL END)), '[]'::json),
+         COUNT(*) FILTER (WHERE a.is_correct = true
+                            AND (v_final OR (it.c IS NOT NULL AND v_t >= it.c + 1500)))::INT
+    INTO v_my, v_correct
+    FROM public.answers a
+    LEFT JOIN LATERAL (
+      SELECT (e->>'c')::BIGINT AS c
+        FROM jsonb_array_elements(COALESCE(v_items, '[]'::jsonb)) e
+       WHERE (e->>'id')::UUID = a.question_id
+       LIMIT 1
+    ) it ON true
+   WHERE a.session_id = s.id AND a.participant_code = v_code;
+
+  -- Najnowsze odsłonięte pytanie (z poprawną odpowiedzią) — tylko po bramce.
+  IF v_items IS NOT NULL AND jsonb_array_length(v_items) > 0 THEN
+    IF v_final THEN
+      v_rev := jsonb_array_length(v_items) - 1;
+    ELSIF v_has_pos THEN
+      v_rev := CASE WHEN v_t >= (v_items->p.idx->>'c')::BIGINT + 1500 THEN p.idx
+                    WHEN p.idx > 0 THEN p.idx - 1
+                    ELSE NULL END;
+    END IF;
+    IF v_rev IS NOT NULL THEN
+      SELECT q.ans INTO v_rev_ans FROM public.questions q
+       WHERE q.id = (v_items->v_rev->>'id')::UUID;
+      v_reveal := json_build_object('idx', v_rev, 'ans', v_rev_ans);
+    END IF;
+  END IF;
+
+  RETURN json_build_object(
+    'server_now',    v_now_ms,
+    'error',         NULL,
+    'session',       v_session,
+    'position',      v_position,
+    'plan',          v_plan,
+    'my_answers',    v_my,
+    'reveal',        v_reveal,
+    'correct_total', COALESCE(v_correct, 0));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.get_participant_state(TEXT, UUID, BOOLEAN) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.get_participant_state(TEXT, UUID, BOOLEAN) TO anon, authenticated;
+
+-- 42.8 — znacznik wgrania sekcji 42 (dla `npm run verify-prod`).
+CREATE OR REPLACE FUNCTION public.schema_marker_42()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_42() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_42() TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

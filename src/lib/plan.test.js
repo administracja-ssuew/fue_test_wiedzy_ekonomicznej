@@ -3,10 +3,13 @@ import fixtures from "./plan.fixtures.json";
 import {
   FIRST_QUESTION_LEAD, REVEAL_GATE_MS, toMs, buildPlanItems, planPosition, projectPlanState,
   sweepDecision, isRevealed, resumeAnchor, skipAnchor, repeatAnchor, answerResponseMs,
+  holdDue, breakIdxAt, sweepAction, BREAK_MATCH_MS,
 } from "./plan.js";
+import { REVEAL_MS } from "./gameLogic.js";
 
 const A = fixtures.anchorMs;
-const ITEMS = fixtures.items;
+const ITEMS = fixtures.items;          // legacy: plan zamrożony przed sekcją 42 (reveal 6 s, bez przerw)
+const V2 = fixtures.v2;                // reveal 11,5 s + przerwy planowe po modułach 2 i 4
 const rel = (t) => (t == null ? null : A + t);
 
 describe("stałe i toMs", () => {
@@ -25,8 +28,26 @@ describe("stałe i toMs", () => {
 });
 
 describe("buildPlanItems", () => {
-  it("buduje items zgodne z fixture'ami (kontrakt z SQL)", () => {
-    expect(buildPlanItems(fixtures.questions, fixtures.modules)).toEqual(ITEMS);
+  it("buduje items zgodne z fixture'ami v2 (kontrakt z SQL build_plan_items)", () => {
+    expect(buildPlanItems(V2.questions, V2.modules)).toEqual(V2.items);
+  });
+
+  it("pytania legacy → okno odsłony 11,5 s, brak przerwy po module 1", () => {
+    const items = buildPlanItems(fixtures.questions, fixtures.modules);
+    expect(items).toHaveLength(3);
+    for (const it0 of items) {
+      expect(it0.r - it0.c).toBe(11500);
+      expect(it0.r - it0.c).toBe(REVEAL_MS);
+      expect("h" in it0).toBe(false);
+    }
+  });
+
+  it("znacznik h tylko na ostatnim pytaniu modułu 2 i 4, gdy po nim jest kolejny moduł", () => {
+    const items = buildPlanItems(V2.questions, V2.modules);
+    expect(items.filter((x) => x.h).map((x) => x.i)).toEqual([2, 4]);
+    // moduł 4 jako ostatni w planie → brak przerwy (quiz się po prostu kończy)
+    const tail = buildPlanItems(V2.questions.slice(0, 5), V2.modules);
+    expect(tail.filter((x) => x.h).map((x) => x.i)).toEqual([2]);
   });
 
   it("puste pytania → pusta lista", () => {
@@ -53,6 +74,131 @@ describe("planPosition — fixture'y", () => {
       expect(pos.revealUntil).toBe(A + it0.r);
     });
   }
+});
+
+describe("planPosition — v2 (reveal 11,5 s)", () => {
+  for (const c of V2.position) {
+    it(c.name, () => {
+      const pos = planPosition(V2.items, A, rel(c.pausedT), A + c.t);
+      const it0 = V2.items[c.expect.idx];
+      expect(pos.idx).toBe(c.expect.idx);
+      expect(pos.phase).toBe(c.expect.phase);
+      expect(pos.item).toEqual(it0);
+      expect(pos.opensAt).toBe(A + it0.o);
+      expect(pos.closesAt).toBe(A + it0.c);
+      expect(pos.revealUntil).toBe(A + it0.r);
+    });
+  }
+});
+
+describe("przerwy planowe (holdDue)", () => {
+  for (const c of V2.hold) {
+    it(c.name, () => {
+      expect(holdDue(V2.items, A, c.holdIdx, A + c.t)).toBe(c.expect);
+    });
+  }
+
+  it("plan legacy (bez h) nigdy nie ma przerwy", () => {
+    expect(holdDue(ITEMS, A, null, A + 900000)).toBe(null);
+  });
+
+  it("brak planu lub kotwicy → null", () => {
+    expect(holdDue([], A, null, A + 900000)).toBe(null);
+    expect(holdDue(null, A, null, A + 900000)).toBe(null);
+    expect(holdDue(V2.items, null, null, A + 900000)).toBe(null);
+  });
+});
+
+describe("breakIdxAt", () => {
+  it("pauza w granicach tolerancji BREAK_MATCH_MS → indeks przerwy", () => {
+    expect(BREAK_MATCH_MS).toBe(2);
+    const base = { items: V2.items, anchorMs: A, status: "paused", holdIdx: 2, nowMs: A + 500000 };
+    expect(breakIdxAt({ ...base, pausedAtMs: A + 148500 })).toBe(2);
+    expect(breakIdxAt({ ...base, pausedAtMs: A + 148502 })).toBe(2);
+    expect(breakIdxAt({ ...base, pausedAtMs: A + 148503 })).toBe(null);
+  });
+
+  it("ręczna pauza po wznowieniu z przerwy (inna chwila) → null", () => {
+    expect(breakIdxAt({ items: V2.items, anchorMs: A + 60000, pausedAtMs: A + 60000 + 190000,
+      status: "paused", holdIdx: 2, nowMs: A + 400000 })).toBe(null);
+  });
+
+  it("wyniki / lobby → null", () => {
+    expect(breakIdxAt({ items: V2.items, anchorMs: A, status: "results", holdIdx: null, nowMs: A + 200000 })).toBe(null);
+  });
+});
+
+describe("sweepAction (lustro advance_due_sessions, sekcja 42)", () => {
+  it("running, przerwa po module 2 należna → hold dokładnie na granicy", () => {
+    const row = { status: "running", anchorMs: A, pausedAtMs: null, curIdx: 2, qStartedAtMs: A + 107000, revealedIdx: 2, holdIdx: null };
+    expect(sweepAction(row, V2.items, A + 149000)).toEqual({
+      action: "hold", status: "paused", holdIdx: 2, pausedAtMs: A + 148500,
+      idx: 3, qStartedAtMs: A + 178500, revealedIdx: 2,
+    });
+  });
+
+  it("po wznowieniu (przerwa zużyta) → brak ponownego zatrzymania", () => {
+    const a2 = A + 60000;
+    const row = { status: "running", anchorMs: a2, pausedAtMs: null, curIdx: 3, qStartedAtMs: a2 + 178500, revealedIdx: 2, holdIdx: 2 };
+    expect(sweepAction(row, V2.items, a2 + 150000).action).toBe("none");
+  });
+
+  it("pauza / brak kotwicy → deleguje do sweepDecision (none)", () => {
+    const row = { status: "paused", anchorMs: A, pausedAtMs: A + 148500, curIdx: 3, qStartedAtMs: A + 178500, revealedIdx: 2, holdIdx: 2 };
+    expect(sweepAction(row, V2.items, A + 400000).action).toBe("none");
+  });
+
+  for (const c of fixtures.sweep) {
+    it(`legacy ${c.name} — wynik jak sweepDecision`, () => {
+      const row = {
+        status: c.row.status, anchorMs: A, pausedAtMs: rel(c.row.pausedT), curIdx: c.row.curIdx,
+        qStartedAtMs: rel(c.row.qStartedT), revealedIdx: c.row.revealedIdx, holdIdx: null,
+      };
+      expect(sweepAction(row, ITEMS, A + c.t)).toEqual(sweepDecision(row, ITEMS, A + c.t));
+    });
+  }
+});
+
+describe("projectPlanState — przerwa planowa", () => {
+  it("running, przerwa należna, zanim zamiatacz zapisał pauzę → paused (plannedBreak)", () => {
+    const s = projectPlanState({ items: V2.items, anchorMs: A, status: "running", holdIdx: null, nowMs: A + 150000 });
+    expect(s.phase).toBe("paused");
+    expect(s.plannedBreak).toBe(true);
+    expect(s.breakAfterModule).toBe(2);
+    expect(s.nextModule).toBe(3);
+    expect(s.idx).toBe(3);
+    expect(s.underPhase).toBe("intro");
+    expect(s.remainingMs).toBe(30000);
+  });
+
+  it("paused zapisane przez zamiatacz na granicy → paused (plannedBreak)", () => {
+    const s = projectPlanState({ items: V2.items, anchorMs: A, pausedAtMs: A + 148500, status: "paused", holdIdx: 2, nowMs: A + 500000 });
+    expect(s.phase).toBe("paused");
+    expect(s.plannedBreak).toBe(true);
+    expect(s.nextModule).toBe(3);
+  });
+
+  it("po wznowieniu z przerwy → zapowiedź modułu 3, bez przerwy", () => {
+    const a2 = A + 60000;
+    const s = projectPlanState({ items: V2.items, anchorMs: a2, status: "running", holdIdx: 2, nowMs: a2 + 148600 });
+    expect(s.phase).toBe("intro");
+    expect(s.idx).toBe(3);
+    expect(s.plannedBreak).toBe(false);
+  });
+
+  it("ręczna pauza (nie na granicy przerwy) → plannedBreak false", () => {
+    const s = projectPlanState({ items: V2.items, anchorMs: A, pausedAtMs: A + 100000, status: "paused", holdIdx: null, nowMs: A + 200000 });
+    expect(s.phase).toBe("paused");
+    expect(s.plannedBreak).toBe(false);
+    expect(s.breakAfterModule).toBe(null);
+    expect(s.nextModule).toBe(null);
+  });
+
+  it("plan legacy do końca → finished bez przerwy", () => {
+    const s = projectPlanState({ items: ITEMS, anchorMs: A, status: "running", nowMs: A + 900000 });
+    expect(s.phase).toBe("finished");
+    expect(s.plannedBreak).toBe(false);
+  });
 });
 
 describe("zamiatacz (sweepDecision) — fixture'y", () => {
@@ -203,14 +349,14 @@ describe("przesunięcie kotwicy (Następne / Powtórz)", () => {
 
 describe("moduły — plan zamrożony przy budowie", () => {
   it("zmiana timePerQ po buildPlanItems nie zmienia projekcji", () => {
-    const mods = fixtures.modules.map((m) => ({ ...m }));
-    const items = buildPlanItems(fixtures.questions, mods);
+    const mods = V2.modules.map((m) => ({ ...m }));
+    const items = buildPlanItems(V2.questions, mods);
     const before = projectPlanState({ items, anchorMs: A, status: "running", nowMs: A + 50000 });
     mods[0].timePerQ = 90;
     mods[1].timePerQ = 5;
     const after = projectPlanState({ items, anchorMs: A, status: "running", nowMs: A + 50000 });
     expect(after).toEqual(before);
-    expect(items).toEqual(ITEMS);
+    expect(items).toEqual(V2.items);
   });
 
   it("brak modułu → tpq 60", () => {

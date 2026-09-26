@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { cityInfo, REVEAL_SECONDS,
+import { cityInfo, REVEAL_SECONDS, REVEAL_MS, BREAK_AFTER_MODULES,
   shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS, AUTO_SKIP_MIN_TPQ } from "./gameLogic.js";
+
+describe("stałe planu (G1/G3)", () => {
+  it("okno odsłony 11,5 s = bramka 1,5 s + 10 s widoczności poprawnej odpowiedzi", () => {
+    expect(REVEAL_MS).toBe(11500);
+    expect(REVEAL_SECONDS).toBe(11.5);
+  });
+  it("przerwy planowe po modułach 2 i 4", () => {
+    expect(BREAK_AFTER_MODULES).toEqual([2, 4]);
+  });
+});
 
 describe("cityInfo", () => {
   it("returns correct abbr for known city", () => {

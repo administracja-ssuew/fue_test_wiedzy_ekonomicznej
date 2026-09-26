@@ -9,6 +9,7 @@
     { "id": 1, "timePerQ": 20 },
     { "id": 2, "timePerQ": 30 }
   ],
+  "itemsNote": "items = plan zamrożony przed sekcją 42 (reveal 6 s, bez przerw) — projekcja i zamiatacz muszą go obsługiwać bez zmian",
   "items": [
     { "i": 0, "id": "00000000-0000-0000-0000-000000000001", "m": 1, "tpq": 20, "lead": 10, "o": 10000, "c": 30000, "r": 36000 },
     { "i": 1, "id": "00000000-0000-0000-0000-000000000002", "m": 1, "tpq": 20, "lead": 4, "o": 40000, "c": 60000, "r": 66000 },
@@ -56,5 +57,51 @@
     { "name": "P6 pełny plan — pytanie 1", "status": "running", "hasAnchor": true, "items": "full", "t": 15000, "expect": { "phase": "quiz", "idx": 0 } },
     { "name": "P7 wyniki", "status": "results", "hasAnchor": true, "items": "full", "t": 200000, "expect": { "phase": "results" } },
     { "name": "P8 zakończona", "status": "ended", "hasAnchor": true, "items": "full", "t": 200000, "expect": { "phase": "ended" } }
-  ]
+  ],
+  "v2": {
+    "questions": [
+      { "id": "00000000-0000-0000-0000-000000000011", "module": 1 },
+      { "id": "00000000-0000-0000-0000-000000000012", "module": 1 },
+      { "id": "00000000-0000-0000-0000-000000000021", "module": 2 },
+      { "id": "00000000-0000-0000-0000-000000000031", "module": 3 },
+      { "id": "00000000-0000-0000-0000-000000000041", "module": 4 },
+      { "id": "00000000-0000-0000-0000-000000000051", "module": 5 }
+    ],
+    "modules": [
+      { "id": 1, "timePerQ": 20 },
+      { "id": 2, "timePerQ": 30 },
+      { "id": 3, "timePerQ": 20 },
+      { "id": 4, "timePerQ": 20 },
+      { "id": 5, "timePerQ": 20 }
+    ],
+    "items": [
+      { "i": 0, "id": "00000000-0000-0000-0000-000000000011", "m": 1, "tpq": 20, "lead": 10, "o": 10000, "c": 30000, "r": 41500 },
+      { "i": 1, "id": "00000000-0000-0000-0000-000000000012", "m": 1, "tpq": 20, "lead": 4, "o": 45500, "c": 65500, "r": 77000 },
+      { "i": 2, "id": "00000000-0000-0000-0000-000000000021", "m": 2, "tpq": 30, "lead": 30, "o": 107000, "c": 137000, "r": 148500, "h": true },
+      { "i": 3, "id": "00000000-0000-0000-0000-000000000031", "m": 3, "tpq": 20, "lead": 30, "o": 178500, "c": 198500, "r": 210000 },
+      { "i": 4, "id": "00000000-0000-0000-0000-000000000041", "m": 4, "tpq": 20, "lead": 30, "o": 240000, "c": 260000, "r": 271500, "h": true },
+      { "i": 5, "id": "00000000-0000-0000-0000-000000000051", "m": 5, "tpq": 20, "lead": 30, "o": 301500, "c": 321500, "r": 333000 }
+    ],
+    "position": [
+      { "name": "V1 zamknięcie pytania 1 — początek odsłony 11,5 s", "t": 30000, "pausedT": null, "expect": { "idx": 0, "phase": "reveal" } },
+      { "name": "V2 ostatnia ms odsłony pytania 1", "t": 41499, "pausedT": null, "expect": { "idx": 0, "phase": "reveal" } },
+      { "name": "V3 odliczanie przed pytaniem 2", "t": 41500, "pausedT": null, "expect": { "idx": 1, "phase": "countdown" } },
+      { "name": "V4 otwarcie pytania 2", "t": 45500, "pausedT": null, "expect": { "idx": 1, "phase": "quiz" } },
+      { "name": "V5 ostatnia ms odsłony pytania 3 (koniec modułu 2)", "t": 148499, "pausedT": null, "expect": { "idx": 2, "phase": "reveal" } },
+      { "name": "V6 granica przerwy — plan_position nie zna przerw (zapowiedź modułu 3)", "t": 148500, "pausedT": null, "expect": { "idx": 3, "phase": "intro" } },
+      { "name": "V7 pauza dokładnie na granicy przerwy", "t": 400000, "pausedT": 148500, "expect": { "idx": 3, "phase": "paused" } },
+      { "name": "V8 otwarcie pytania 6 (moduł 5)", "t": 301500, "pausedT": null, "expect": { "idx": 5, "phase": "quiz" } },
+      { "name": "V9 koniec planu", "t": 333000, "pausedT": null, "expect": { "idx": 5, "phase": "finished" } }
+    ],
+    "hold": [
+      { "name": "H1 tuż przed granicą przerwy po module 2", "t": 148499, "holdIdx": null, "expect": null },
+      { "name": "H2 granica przerwy po module 2", "t": 148500, "holdIdx": null, "expect": 2 },
+      { "name": "H3 zaległość zamiatacza — przerwa nadal należna", "t": 200000, "holdIdx": null, "expect": 2 },
+      { "name": "H4 przerwa po module 2 zużyta", "t": 148500, "holdIdx": 2, "expect": null },
+      { "name": "H5 granica przerwy po module 4", "t": 271500, "holdIdx": 2, "expect": 4 },
+      { "name": "H6 przerwa po module 4 zużyta", "t": 280000, "holdIdx": 4, "expect": null },
+      { "name": "H7 po ostatnim module brak przerwy", "t": 333000, "holdIdx": 4, "expect": null },
+      { "name": "H8 duża zaległość — najpierw najwcześniejsza przerwa", "t": 271500, "holdIdx": null, "expect": 2 }
+    ]
+  }
 }

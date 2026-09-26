@@ -6,9 +6,18 @@ export const ANSWER_LABELS = ["A", "B", "C", "D"];
 // Seconds the correct answer is shown after the timer hits 0, before advancing.
 // Single source of truth so participant, LiveView and the admin ghost view all
 // count down for exactly the same window and stay in sync.
-// 6 s reveal + 4 s pre-question countdown (PRE_QUESTION_LEAD) = 10 s przerwy
-// między pytaniami — wbudowane w plan sesji przy starcie (src/lib/plan.js).
-export const REVEAL_SECONDS = 6;
+// 11,5 s odsłony + 4 s odliczania (PRE_QUESTION_LEAD) = 15,5 s między pytaniami
+// — wbudowane w plan sesji przy starcie (src/lib/plan.js).
+// Okno odsłony (reveal) po zamknięciu pytania — w MILISEKUNDACH (plan sesji trzyma ms).
+// Bramka serwera odsłania poprawną odpowiedź po closes + 1,5 s (REVEAL_GATE_MS w plan.js),
+// więc uczestnik widzi ją przez 11,5 − 1,5 = 10 s (decyzja 06-09, luka G1).
+// Lustro w SQL: build_plan_items (SUPABASE_FIXES.sql, sekcja 42) — zmiana TU wymaga zmiany TAM.
+export const REVEAL_MS = 11500;
+// Tylko do arytmetyki (11,5 — niecałkowite). NIE wyświetlać: UI liczy sekundy z terminów planu (Math.ceil).
+export const REVEAL_SECONDS = REVEAL_MS / 1000;
+// Przerwy planowe (decyzja 06-09, luka G3): quiz sam staje po ostatnim pytaniu tych modułów
+// i czeka na „▶ Wznów quiz” (admin_resume_session). Lustro w SQL: build_plan_items (sekcja 42).
+export const BREAK_AFTER_MODULES = [2, 4];
 
 // Długość zapowiedzi modułu (ekran "Moduł X" przed pierwszym pytaniem modułu).
 // Wbudowana w plan sesji jako wydłużony lead pierwszego pytania modułu, więc jest
@@ -63,7 +72,7 @@ export function answerPlateauMs(timePerQ) {
  */
 // Automatyczny skrót ma sens tylko przy DŁUGICH pytaniach. Pomiar na symulacji przy
 // pytaniach 20-sekundowych (docelowy format TWE): skrót oszczędza 2–3 sekundy, bo
-// podłoga i tak wypada na 12 s, a okno reveal trwa 6 s. Za taką oszczędność nie warto
+// podłoga i tak wypada na 12 s, a okno reveal trwa 11,5 s. Za taką oszczędność nie warto
 // płacić ryzykiem ucięcia komuś odpowiedzi — przy 90-sekundowych obliczeniach owszem,
 // bo tam oszczędność to kilkadziesiąt sekund na pytanie.
 // Prowadzący ZAWSZE ma ręczny przycisk „⏭ Następne", niezależnie od tego progu.

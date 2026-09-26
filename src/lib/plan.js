@@ -1,13 +1,15 @@
-import { REVEAL_SECONDS, MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD } from "./gameLogic.js";
+import { REVEAL_MS, MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD, BREAK_AFTER_MODULES } from "./gameLogic.js";
 
-// ─── Plan sesji (lustro SQL plan_position / sweep_decision, sekcja 39) ───────
+// ─── Plan sesji (lustro SQL plan_position / sweep_decision, sekcja 39; budowa i przerwy — sekcja 42) ─
 // Cała rozgrywka to deterministyczna funkcja (items, anchorMs, pausedAtMs, nowMs).
-// Plan (items) jest zamrażany przy starcie sesji: o/c/r to ms od kotwicy (anchor).
+// Plan (items) jest zamrażany przy starcie sesji: items { i, id, m, tpq, lead, o, c, r, h? },
+// o/c/r to ms od kotwicy (anchor); h = przerwa planowa po tym pytaniu (sekcja 42).
 // Pauza / „Następne” / „Powtórz” przesuwają wyłącznie kotwicę — nigdy items.
 // Każda zmiana tu MUSI mieć odpowiednik w SQL (fixture'y plan.fixtures.json).
 
 export const FIRST_QUESTION_LEAD = 10;   // zapowiedź modułu 1 (jak dzisiejszy start_quiz_session: +10 s)
 export const REVEAL_GATE_MS = 1500;      // bramka odsłonięcia = closes + 1,5 s (strefa tolerancji submit)
+export const BREAK_MATCH_MS = 2;         // tolerancja porównania plan_paused_at − kotwica z r (zaokrąglenia epoch ms)
 
 // Znacznik czasu z bazy (ISO) / liczba / brak → ms albo null.
 export function toMs(ts) {
@@ -24,10 +26,12 @@ export function buildPlanItems(questions, modules) {
   (questions || []).forEach((q, i) => {
     const tpq = (modules || []).find((m) => m.id === q.module)?.timePerQ ?? 60;
     const prev = items[i - 1];
+    // Przerwa planowa: ostatnie pytanie modułu z BREAK_AFTER_MODULES, po którym jest inny moduł.
+    if (prev && q.module !== prev.m && BREAK_AFTER_MODULES.includes(prev.m)) prev.h = true;
     const lead = i === 0 ? FIRST_QUESTION_LEAD : q.module !== prev.m ? MODULE_INTRO_SECONDS : PRE_QUESTION_LEAD;
     const o = (i === 0 ? 0 : prev.r) + lead * 1000;
     const c = o + tpq * 1000;
-    const r = c + REVEAL_SECONDS * 1000;
+    const r = c + REVEAL_MS;
     items.push({ i, id: q.id, m: q.module, tpq, lead, o, c, r });
   });
   return items;
@@ -51,8 +55,28 @@ export function planPosition(items, anchorMs, pausedAtMs, nowMs) {
   };
 }
 
+// Pierwsza NIEZUŻYTA przerwa planowa (h, i > holdIdx), której termin anchor + r już minął → i; inaczej null.
+// Lustro SQL plan_hold_due (sekcja 42). holdIdx = quiz_sessions.plan_hold_idx (ostatnia zatrzymana przerwa).
+export function holdDue(items, anchorMs, holdIdx, nowMs) {
+  if (!items?.length || anchorMs == null) return null;
+  const next = items.find((x) => x.h && x.i > (holdIdx ?? -1));
+  return next && nowMs - anchorMs >= next.r ? next.i : null;
+}
+
+// Indeks przerwy planowej, w której sesja stoi (paused dokładnie na anchor + r przerwy holdIdx)
+// albo powinna już stać (running, przerwa należna — zamiatacz zapisze ją w ≤ 1 s).
+export function breakIdxAt({ items, anchorMs, pausedAtMs = null, status, holdIdx = null, nowMs }) {
+  if (!items?.length || anchorMs == null) return null;
+  const paused = pausedAtMs != null || status === "paused";
+  if (!paused) return status === "running" ? holdDue(items, anchorMs, holdIdx, nowMs) : null;
+  if (holdIdx == null || pausedAtMs == null) return null;
+  const it = items[holdIdx];
+  return it?.h && Math.abs((pausedAtMs - anchorMs) - it.r) <= BREAK_MATCH_MS ? holdIdx : null;
+}
+
 // Pełna projekcja stanu dla UI (uczestnik / Live View / panel).
-export function projectPlanState({ items, anchorMs, pausedAtMs = null, status, nowMs }) {
+// holdIdx = quiz_sessions.plan_hold_idx — potrzebny do rozpoznania przerwy planowej.
+export function projectPlanState({ items, anchorMs, pausedAtMs = null, status, nowMs, holdIdx = null }) {
   if (status === "waiting") return { phase: "lobby" };
   if (status === "results") return { phase: "results" };
   if (status === "ended") return { phase: "ended" };
@@ -62,8 +86,10 @@ export function projectPlanState({ items, anchorMs, pausedAtMs = null, status, n
   // fazy ~500 osób widziałoby na starcie komunikat „starsza wersja panelu”.
   if (!items?.length) return { phase: "plan_loading" };
 
+  const bIdx = breakIdxAt({ items, anchorMs, pausedAtMs, status, holdIdx, nowMs });
   const paused = pausedAtMs != null || status === "paused";
-  const effNow = paused ? (pausedAtMs ?? nowMs) : nowMs;
+  // Przerwa należna, zanim zamiatacz zapisał pauzę → czas stoi na granicy anchor + r.
+  const effNow = paused ? (pausedAtMs ?? nowMs) : bIdx != null ? anchorMs + items[bIdx].r : nowMs;
   const pos = planPosition(items, anchorMs, null, effNow);
   let remainingMs;
   if (pos.phase === "intro" || pos.phase === "countdown") remainingMs = pos.opensAt - effNow;
@@ -72,13 +98,16 @@ export function projectPlanState({ items, anchorMs, pausedAtMs = null, status, n
   else remainingMs = 0;
 
   return {
-    phase: paused ? "paused" : pos.phase,
+    phase: (paused || bIdx != null) ? "paused" : pos.phase,
     underPhase: pos.phase,
     idx: pos.idx, item: pos.item,
     opensAt: pos.opensAt, closesAt: pos.closesAt, revealUntil: pos.revealUntil,
     remainingMs,
     secondsLeft: Math.max(0, Math.ceil(remainingMs / 1000)),
     firstOfModule: pos.item.lead >= 10,
+    plannedBreak: bIdx != null,
+    breakAfterModule: bIdx != null ? items[bIdx].m : null,
+    nextModule: bIdx != null ? (items[bIdx + 1]?.m ?? null) : null,
   };
 }
 
@@ -130,4 +159,17 @@ export function sweepDecision(row, items, nowMs) {
     return { action: "update", status: "running", idx: pos.idx, qStartedAtMs: pos.opensAt, revealedIdx: rev };
   }
   return { action: "none" };
+}
+
+// Pełna decyzja zamiatacza = lustro advance_due_sessions (sekcja 42): najpierw przerwa planowa,
+// potem sweepDecision. row = { status, anchorMs, pausedAtMs, curIdx, qStartedAtMs, revealedIdx, holdIdx }.
+export function sweepAction(row, items, nowMs) {
+  if (row?.status === "running" && row.anchorMs != null && row.pausedAtMs == null && items?.length) {
+    const k = holdDue(items, row.anchorMs, row.holdIdx ?? null, nowMs);
+    if (k != null) {
+      return { action: "hold", status: "paused", holdIdx: k, pausedAtMs: row.anchorMs + items[k].r,
+               idx: k + 1, qStartedAtMs: row.anchorMs + items[k + 1].o, revealedIdx: k };
+    }
+  }
+  return sweepDecision(row, items, nowMs);
 }

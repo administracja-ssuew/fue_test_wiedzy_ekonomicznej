@@ -31,6 +31,17 @@
  *     PROBE_TARGET=prod PROBE_CONFIRM=1 npm run sonda
  *     PROBE_TARGET=prod PROBE_CONFIRM=1 PROBE_REFRESH=1 PROBE_PHONES=2 npm run sonda
  *
+ *   Pauza w zadanej fazie (diagnoza G2) + ślad przyczynowy (diagnoza G7):
+ *   PowerShell:
+ *     $env:PROBE_TARGET="prod"; $env:PROBE_CONFIRM="1"; $env:PROBE_PAUSE_PHASE="reveal"; $env:PROBE_TRACE="1"; npm run sonda
+ *     $env:PROBE_TARGET="prod"; $env:PROBE_CONFIRM="1"; $env:PROBE_PAUSE_PHASE="countdown"; $env:PROBE_TPQ="60"; npm run sonda
+ *   Bash:
+ *     PROBE_TARGET=prod PROBE_CONFIRM=1 PROBE_PAUSE_PHASE=reveal PROBE_TRACE=1 npm run sonda
+ *     PROBE_TARGET=prod PROBE_CONFIRM=1 PROBE_PAUSE_PHASE=countdown PROBE_PAUSE_Q=2 PROBE_TPQ=60 npm run sonda
+ *
+ *   Kod wyjścia: 0 = PASS, 1 = FAIL, 2 = przebieg pauzy NIEWYKONANY (pauza nie trafiła w
+ *   zadaną fazę albo okno kliknięcia minęło) — taki przebieg się powtarza, nie jest wynikiem.
+ *
  * Zmienne:
  *   PROBE_TARGET=prod                     cel (jawnie — staging nie istnieje)
  *   PROBE_CONFIRM=1                       świadoma zgoda na przebieg na produkcji
@@ -47,7 +58,17 @@
  *                                         (intro, countdown, quiz przed/po odpowiedzi, reveal)
  *   PROBE_OFFLINE=1                       (SC3) telefon 2 jest 10 s offline w pytaniu 2
  *                                         i odpowiada w trakcie offline
- *   PROBE_TRACE=1                         ślad zmian stanu w raporcie
+ *   PROBE_PAUSE_PHASE=reveal|countdown    (G2) pauza admina w zadanej fazie pytania PROBE_PAUSE_Q:
+ *                                         reveal TEGO pytania albo odliczanie PO nim; asercje P1–P6
+ *                                         (wejście w pauzę, pytanie w pauzie, stan po wznowieniu,
+ *                                         ucieczka z pauzy / utknięcie w pauzie, faza lądowania).
+ *                                         Wymaga przeglądarki admina — nie łączy się z PROBE_ADMIN_EXIT.
+ *   PROBE_PAUSE_Q=2                       numer pytania (1-based) dla PROBE_PAUSE_PHASE
+ *   PROBE_PAUSE_HOLD_MS=8000              jak długo trzymać pauzę przed „Wznów quiz”
+ *   PROBE_TRACE=1                         ślad zmian stanu + DIAGNOZA przyczynowa (View Transitions,
+ *                                         offset zegara telefonu, snapshot vs Realtime, start z DOM)
+ *                                         i zrzut surowych danych do test-results/probe-trace-*.json
+ * PROBE_FULL przechodzi też przez przerwy planowe po modułach 2 i 4 (klika „Wznów quiz” po 5 s).
  * Tryby łączą się ze sobą i z PROBE_FULL. Każdy przebieg sprawdza też SC5: przed końcem
  * czasu pytania ani submit_answer_v2, ani snapshot, ani summary nie ujawniają poprawności.
  */
@@ -73,10 +94,24 @@ const CITY = process.env.PROBE_CITY || "Kraków";
 //   PROBE_ADMIN_EXIT=1 (SC1) — admin zamyka przeglądarkę po starcie,
 //   PROBE_REFRESH=1    (SC2) — telefon 2 robi reload w każdej fazie,
 //   PROBE_OFFLINE=1    (SC3) — telefon 2 (albo 3, gdy razem z REFRESH) 10 s offline w pytaniu 2.
+//   PROBE_PAUSE_PHASE=reveal|countdown (G2) — pauza w zadanej fazie pytania PROBE_PAUSE_Q (P1–P6),
+//   PROBE_TRACE=1      (G7) — ślad przyczynowy per telefon (VT, zegar, snapshot vs Realtime, DOM).
 // Telefon 1 jest zawsze referencyjny.
 const ADMIN_EXIT = process.env.PROBE_ADMIN_EXIT === "1";
 const REFRESH = process.env.PROBE_REFRESH === "1";
 const OFFLINE = process.env.PROBE_OFFLINE === "1";
+const TRACE = process.env.PROBE_TRACE === "1";
+const PAUSE_PHASE = process.env.PROBE_PAUSE_PHASE || "";
+if (!["", "reveal", "countdown"].includes(PAUSE_PHASE)) {
+  console.error(`❌ PROBE_PAUSE_PHASE="${PAUSE_PHASE}" — dozwolone: reveal, countdown.`);
+  process.exit(1);
+}
+if (PAUSE_PHASE && ADMIN_EXIT) {
+  console.error("❌ PROBE_PAUSE_PHASE wymaga przeglądarki admina — nie łącz z PROBE_ADMIN_EXIT.");
+  process.exit(1);
+}
+const PAUSE_Q = Math.max(1, parseInt(process.env.PROBE_PAUSE_Q || "2", 10));   // 1-based
+const PAUSE_HOLD_MS = parseInt(process.env.PROBE_PAUSE_HOLD_MS || "8000", 10);
 const MIN_PHONES = REFRESH && OFFLINE ? 3 : REFRESH || OFFLINE ? 2 : 1;
 const PHONES = Math.max(MIN_PHONES, parseInt(process.env.PROBE_PHONES || "2", 10));
 const REF_PI = 1;                        // telefon testowany w REFRESH (indeks 0-based)
@@ -88,12 +123,18 @@ const FULL = process.env.PROBE_FULL === "1";
 const QPM = Math.max(1, parseInt(process.env.PROBE_QPM || "2", 10));   // pytań na moduł (full)
 // REFRESH potrzebuje 3 pytań (intro/quiz pyt.1, countdown/quiz-po-odpowiedzi pyt.2, reveal pyt.3),
 // OFFLINE — 2 (offline w pytaniu 2).
-const NQ = FULL ? QPM * 5 : Math.max(REFRESH ? 3 : OFFLINE ? 2 : 1, parseInt(process.env.PROBE_QUESTIONS || "3", 10));
+// PAUSE_PHASE potrzebuje pytania PAUSE_Q i następnego (odliczanie / stan po wznowieniu).
+// (FULL sieje zawsze QPM × 5 pytań — PAUSE_Q musi się w nich zmieścić, inaczej przebieg NIEWYKONANY.)
+const NQ = FULL ? QPM * 5
+  : Math.max(REFRESH ? 3 : OFFLINE ? 2 : 1, PAUSE_PHASE ? PAUSE_Q + 1 : 1, parseInt(process.env.PROBE_QUESTIONS || "3", 10));
 const TPQ_OVERRIDE = parseInt(process.env.PROBE_TPQ || "20", 10);      // czas modułu na czas testu
 // OFFLINE: powrót (5 s + 10 s od otwarcia pytania) musi wypaść przed terminem pytania,
 // więc czas pytania ustawiamy jawnie (domyślnie 20 s), niezależnie od konfiguracji produkcji.
 const OVERRIDE_TPQ = FULL || OFFLINE || !!process.env.PROBE_TPQ;
-const RUN_MS = parseInt(process.env.PROBE_RUN_MS || (FULL ? "540000" : "150000"), 10);
+// FULL: przerwy planowe po modułach 2 i 4 + reveal 11,5 s (sekcja 42) → 900000.
+// PAUSE_PHASE: 3 pytania + pauza; przy PROBE_TPQ=60 sam plan to ~233 s, więc 360000
+// (pętla i tak kończy się na ekranie wyników — limit to tylko bezpiecznik).
+const RUN_MS = parseInt(process.env.PROBE_RUN_MS || (FULL ? "900000" : PAUSE_PHASE ? "360000" : "150000"), 10);
 const TAG = "[SONDA]";
 
 if (!URL_SB || !ANON || !SVC) {
@@ -151,7 +192,8 @@ async function setup() {
   console.log(`\n🌐 Cel: ${URL_SB}  ${STAGE ? "(STAGING ✓)" : "⚠️  (PRODUKCJA)"}`);
   console.log(`🖥️  Aplikacja: ${APP}`);
   console.log(`👥 Telefony: ${PHONES}  ·  Pytania: ${NQ}  ·  Miasto: ${CITY}`);
-  const modes = [FULL && "FULL", ADMIN_EXIT && "ADMIN_EXIT", REFRESH && "REFRESH", OFFLINE && "OFFLINE"].filter(Boolean);
+  const modes = [FULL && "FULL", ADMIN_EXIT && "ADMIN_EXIT", REFRESH && "REFRESH", OFFLINE && "OFFLINE",
+    PAUSE_PHASE && `PAUSE_${PAUSE_PHASE.toUpperCase()}(pyt.${PAUSE_Q})`, TRACE && "TRACE"].filter(Boolean);
   console.log(`🧪 Tryby: ${modes.length ? modes.join(" + ") : "podstawowy"}\n`);
   console.log("SETUP");
 
@@ -201,6 +243,9 @@ async function setup() {
     plan_anchor_at: sess.plan_anchor_at ?? null, plan_paused_at: sess.plan_paused_at ?? null,
     revealed_idx: sess.revealed_idx ?? null, revealed_ans: sess.revealed_ans ?? null,
   };
+  // plan_hold_idx (sekcja 42) — tylko gdy kolumna istnieje (select("*") zwraca klucz).
+  state.hasHoldIdx = "plan_hold_idx" in sess;
+  if (state.hasHoldIdx) state.sessionBefore.plan_hold_idx = sess.plan_hold_idx ?? null;
   // Plan sprzed testu (normalnie brak) — zapamiętany, żeby cleanup mógł go odtworzyć.
   const { data: planBefore } = await svc.from("session_plans").select("items").eq("session_id", sess.id).maybeSingle();
   state.planBefore = planBefore?.items ?? null;
@@ -208,6 +253,7 @@ async function setup() {
   await svc.from("quiz_sessions").update({
     status: "waiting", current_question_idx: 0, q_started_at: null,
     plan_anchor_at: null, plan_paused_at: null, revealed_idx: null, revealed_ans: null,
+    ...(state.hasHoldIdx ? { plan_hold_idx: null } : {}),
   }).eq("id", sess.id);
 
   // Czasy modułów na produkcji są różne (20/30/60/75/20), a pełny przebieg z nimi
@@ -332,12 +378,13 @@ function nearBoundary(srv, marginMs = 700) {
 async function monitorLoop(stopRef) {
   while (!stopRef.stop) {
     const t0 = Date.now();
-    const { data } = await svc.from("quiz_sessions")
-      .select("status, current_question_idx, q_started_at, plan_anchor_at, plan_paused_at").eq("id", state.sessionId).single();
+    // select("*"): kolumna plan_hold_idx istnieje dopiero po sekcji 42 — gwiazdka działa przed i po.
+    const { data } = await svc.from("quiz_sessions").select("*").eq("id", state.sessionId).single();
     const t1 = Date.now();
     if (data) state.monitor.push({
       srv: (t0 + t1) / 2 + state.clockOff, status: data.status, idx: data.current_question_idx,
       anchorMs: toMs(data.plan_anchor_at), pausedMs: toMs(data.plan_paused_at),
+      holdIdx: data.plan_hold_idx ?? null,
     });
     await sleep(Math.max(0, 1000 - (Date.now() - t0)));
   }
@@ -398,6 +445,7 @@ const READ = `(() => {
     src: "data", phase: d.fuePhase, q: d.fueQ ? Number(d.fueQ) : null,
     timer: d.fueRemaining !== undefined && d.fueRemaining !== "" ? Number(d.fueRemaining) : null,
     locked: d.fueLocked === "1", choice: d.fueChoice || null,
+    brk: d.fueBreak !== undefined ? d.fueBreak : null,
     saveFailed: (document.body.innerText || "").includes("Nie udało się zapisać odpowiedzi"),
   };
   const t = document.body.innerText || "";
@@ -522,6 +570,9 @@ async function main() {
     await admin.getByRole("button", { name: /Start quizu/ }).click({ timeout: 20000 });
     t0 = Date.now();
     await loadPlanAfterStart();
+    if (FULL && ADMIN_EXIT && state.plan.some((x) => x.h)) {
+      throw new Error("PROBE_FULL z przerwami planowymi wymaga admina — nie łącz z PROBE_ADMIN_EXIT");
+    }
     monDone = monitorLoop(monStop);
 
     // SC1: od tej chwili nikt nie „prowadzi” quizu z przeglądarki — przejścia pytań
@@ -535,7 +586,7 @@ async function main() {
     const answered = new Set();
     const noAuto = new Set();   // klucze `${telefon}:${pytanie}`, na które odpowiada scenariusz, nie pętla
     const sc5Seen = new Set();
-    const sctx = { samples, pages, noAuto };
+    const sctx = { samples, pages, noAuto, admin };
     if (REFRESH) {
       noAuto.add(`${REF_PI}:1`); noAuto.add(`${REF_PI}:2`);
       startScenario("REFRESH", () => refreshScenario(sctx));
@@ -544,7 +595,14 @@ async function main() {
       noAuto.add(`${OFF_PI}:2`);
       startScenario("OFFLINE", () => offlineScenario(sctx));
     }
-    const flow = { paused: false, pausedAt: 0, resumed: false, pauseSeen: false, before: null, during: null, after: null };
+    if (PAUSE_PHASE) startScenario("PAUSE_" + PAUSE_PHASE.toUpperCase(), () => pausePhaseScenario(sctx));
+    const flow = {
+      paused: false, pausedAt: 0, resumed: false, pauseSeen: false, before: null, during: null, after: null,
+      breaks: new Set(), breakLog: [], brk: null,   // przerwy planowe (sekcja 42) obsłużone przez sondę
+    };
+    // Moduły, po których jest przerwa planowa — pauza sondy w FULL wybiera pytanie spoza nich,
+    // żeby wznowienie pauzy sondy nie mieszało się z przerwą planową.
+    const brkMods = new Set((state.plan || []).filter((x) => x.h).map((x) => x.m));
     globalThis.__flow = flow;
     while (Date.now() - t0 < RUN_MS) {
       const at = Date.now() - t0;
@@ -581,10 +639,27 @@ async function main() {
       // ── Sterowanie pełną ścieżką ────────────────────────────────────────────
       if (FULL) {
         const ph = ps[0]?.phase;
+        // Przerwa planowa (sekcja 42): zamiatacz ustawia status='paused' + plan_hold_idx.
+        // Sonda zapisuje stan telefonów, po 5 s klika „Wznów quiz” (bez blokowania pętli).
+        const lm = state.monitor[state.monitor.length - 1];
+        const probePauseActive = flow.paused && !flow.resumed;
+        if (admin && !flow.brk && lm?.status === "paused" && lm.holdIdx != null && !flow.breaks.has(lm.holdIdx) && !probePauseActive) {
+          flow.brk = { holdIdx: lm.holdIdx, seenAt: Date.now(), seenSrv: srv, phones: ps.map((p) => ({ phase: p?.phase, q: p?.q, brk: p?.brk ?? null })) };
+          console.log(`   ☕ przerwa planowa po pytaniu ${lm.holdIdx + 1} (telefony: ${flow.brk.phones.map((p) => p.phase).join(", ")})`);
+        } else if (admin && flow.brk && Date.now() - flow.brk.seenAt >= 5000) {
+          const b = flow.brk;
+          flow.brk = null;
+          b.clickSrv = srvNow();
+          flow.breakLog.push(b);
+          flow.breaks.add(b.holdIdx);
+          console.log(`   ▶️  wznowienie po przerwie planowej ${b.holdIdx + 1}`);
+          await admin.getByRole("button", { name: /Wznów quiz/ }).click({ timeout: 10000 }).catch((e) => console.log("   ⚠️ wznów po przerwie:", e.message.slice(0, 60)));
+        }
         // Pauza w środku przebiegu — czy uczestnik realnie widzi „Wstrzymano” i czy po
         // wznowieniu ma tę samą fazę, pytanie i licznik co przed pauzą (±1 s).
         // Pauzujemy w połowie pytania, z dala od granic faz, żeby porównanie było jednoznaczne.
-        if (admin && !flow.paused && ph === "quiz" && ps[0]?.q >= Math.ceil(NQ / 2) && ps[0].timer != null && ps[0].timer <= (state.plan?.[ps[0].q - 1]?.tpq ?? tpq) - 5 && ps[0].timer >= 8) {
+        // Z PROBE_PAUSE_PHASE pauzą steruje scenariusz — własna pauza FULL jest wtedy wyłączona.
+        if (admin && !PAUSE_PHASE && !flow.paused && !flow.brk && ph === "quiz" && ps[0]?.q >= Math.ceil(NQ / 2) && !brkMods.has(state.plan?.[ps[0].q - 1]?.m) && ps[0].timer != null && ps[0].timer <= (state.plan?.[ps[0].q - 1]?.tpq ?? tpq) - 5 && ps[0].timer >= 8) {
           flow.paused = true; flow.pausedAt = at;
           flow.before = ps.map((p) => ({ phase: p.phase, q: p.q, timer: p.timer }));
           console.log(`   ⏸  pauza (pytanie ${ps[0].q}, licznik ${ps[0].timer}s)`);
@@ -616,7 +691,10 @@ async function main() {
   const failures = report(samples, tpq, t0);
   await cleanup();
   console.log(failures.length ? `\n❌ SONDA: ${failures.length} PROBLEM(ÓW)\n` : "\n✅ SONDA: rozgrywka płynna\n");
-  process.exit(failures.length ? 1 : 0);
+  // 0 = PASS, 1 = FAIL, 2 = przebieg pauzy niewykonany (powtórz) — 2 ma pierwszeństwo,
+  // bo bez pauzy w zadanej fazie przebieg nie odpowiada na pytanie diagnozy.
+  if (state.pauseNotRun) console.log("⚠️  PAUZA: przebieg niewykonany — powtórz (kod 2)\n");
+  process.exit(state.pauseNotRun ? 2 : failures.length ? 1 : 0);
 }
 
 // Błędy z konsoli telefonu. Bez tego diagnoza kończyła się na wnioskowaniu: widać
@@ -663,7 +741,7 @@ function attachWs(page) {
 }
 
 // ─── SCENARIUSZE TRYBÓW ──────────────────────────────────────────────────────
-const modeRes = { refresh: [], offline: null, errors: [] };
+const modeRes = { refresh: [], offline: null, pause: null, errors: [] };
 function startScenario(name, fn) {
   const sc = { name, done: false };
   scenarios.push(sc);
@@ -840,9 +918,209 @@ async function offlineScenario(ctx) {
   }
 }
 
+// ─── PAUZA W ZADANEJ FAZIE (PROBE_PAUSE_PHASE, diagnoza G2) ─────────────────
+// Koniec fazy `pos` (z planPosition) przy kotwicy `anchor`: quiz → c, reveal → r, intro/countdown → o.
+function phaseEnd(pos, anchor) {
+  if (!pos?.item || anchor == null) return null;
+  if (pos.phase === "quiz") return anchor + pos.item.c;
+  if (pos.phase === "reveal") return anchor + pos.item.r;
+  return anchor + pos.item.o;
+}
+// Oś czasu faz telefonu (czas serwera): z historii MutationObserver (dokładna chwila zmiany
+// w DOM), a gdy jej brak — z próbek co 250 ms.
+function phoneTimeline(hist, samples, pi) {
+  if (hist && hist.length) return hist.map((h) => ({ srv: h.t + state.clockOff, phase: h.phase, q: h.q, src: "dom" }));
+  return samples.map((s) => ({ srv: s.srv, phase: s.phones[pi]?.phase, q: s.phones[pi]?.q, src: "próbki" }));
+}
+// Stany telefonu w oknie [from, to]: stan obowiązujący na początku okna + każda zmiana w oknie.
+function phasesIn(tl, from, to) {
+  let lastBefore = null;
+  const out = [];
+  for (const e of tl) { if (e.srv <= from) lastBefore = e; else if (e.srv <= to) out.push(e); }
+  return lastBefore ? [{ ...lastBefore, srv: from }, ...out] : out;
+}
+async function waitMonitor(pred, timeoutMs) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const m = state.monitor.find(pred);
+    if (m) return m;
+    await sleep(100);
+  }
+  return null;
+}
+
+async function pausePhaseScenario(ctx) {
+  const { samples, pages, admin } = ctx;
+  const P = state.plan;
+  const reveal = PAUSE_PHASE === "reveal";
+  const it = P[PAUSE_Q - 1], nx = P[PAUSE_Q];
+  const expQ = reveal ? PAUSE_Q : PAUSE_Q + 1;
+  const res = { phase: PAUSE_PHASE, q: PAUSE_Q, expQ, status: "OK", reason: null, problems: [], phones: [] };
+  modeRes.pause = res;
+  if (!it || !nx) { res.status = "NIEWYKONANY"; res.reason = `plan ma ${P.length} pytań — za mało dla pytania ${PAUSE_Q}`; return; }
+  // Nazwa fazy w data-fue-phase: odliczanie przed pierwszym pytaniem modułu to „intro”.
+  const wantPhase = reveal ? "reveal" : (nx.lead >= 10 ? "intro" : "countdown");
+  res.wantPhase = wantPhase;
+
+  // a. Okno kliknięcia liczone NA BIEŻĄCO — auto-skrót (tpq ≥ 45 s) i każda zmiana kotwicy
+  //    przesuwają terminy; cel zachowuje względną pozycję w oknie.
+  const win = (a) => (reveal ? [a + it.c + 2000, a + it.r - 2000] : [a + it.r + 500, a + nx.o - 1500]);
+  const frac = Math.random();
+  let anchor, lo = 0, hi = 0, target = 0;
+  for (;;) {
+    const a = anchorAt(srvNow()).anchorMs;
+    if (a !== anchor) { anchor = a; [lo, hi] = win(a); target = lo + frac * Math.max(0, hi - lo); }
+    const now = srvNow();
+    const p1 = samples[samples.length - 1]?.phones[0];
+    if (now > hi) {
+      res.status = "NIEWYKONANY";
+      res.reason = `okno kliknięcia minęło (telefon 1: ${p1?.phase} q${p1?.q}, oczekiwano ${wantPhase} q${expQ})`;
+      console.log(`   ⚠️ pauza: ${res.reason}`);
+      return;
+    }
+    if (now >= target && p1?.phase === wantPhase && p1.q === expQ) break;
+    await sleep(100);
+  }
+
+  // b. Klik „Pauza” (confirm auto-akceptowany; po 06-16 ewentualnie drugi klik uzbrojonego przycisku).
+  res.before = samples[samples.length - 1].phones.map((p) => ({ phase: p?.phase, q: p?.q, timer: p?.timer }));
+  res.tClick = srvNow();
+  console.log(`   ⏸  pauza w fazie ${wantPhase} pyt.${expQ} (licznik t1 ${res.before[0]?.timer ?? "—"}s)`);
+  await admin.getByRole("button", { name: /Pauza/ }).first().click({ timeout: 5000 })
+    .catch((e) => res.problems.push("klik Pauza: " + e.message.slice(0, 60)));
+  const armed = admin.getByRole("button", { name: /Kliknij ponownie, aby wstrzymać/ });
+  if (await armed.count().catch(() => 0)) {
+    res.armed = true;
+    await armed.first().click({ timeout: 1000 }).catch(() => {});
+  }
+
+  // c. Gdzie pauza REALNIE wylądowała (H4: confirm/klik → baza).
+  const mP = await waitMonitor((m) => m.pausedMs != null && m.pausedMs >= res.tClick - 1000, 5000);
+  if (!mP) { res.status = "BŁĄD"; res.problems.push("P1 pauza nie dotarła do bazy w 5 s po kliknięciu"); return; }
+  res.pausedAt = mP.pausedMs;
+  res.anchorAtPause = mP.anchorMs;
+  res.clickToDbMs = Math.round(res.pausedAt - res.tClick);
+  const landed = planPosition(P, res.anchorAtPause, null, res.pausedAt);
+  res.landed = landed ? { phase: landed.phase, idx: landed.idx } : null;
+  res.remainingLanded = landed ? Math.round(phaseEnd(landed, res.anchorAtPause) - res.pausedAt) : null;
+  const hit = !!landed && landed.phase === wantPhase && landed.idx + 1 === expQ;
+  if (!hit) {
+    res.status = "NIEWYKONANY";
+    res.reason = `pauza wylądowała w ${landed?.phase} q${landed ? landed.idx + 1 : "?"} zamiast ${wantPhase} q${expQ} (klik→baza ${res.clickToDbMs} ms)`;
+    console.log(`   ⚠️ ${res.reason}`);
+  }
+
+  // d. Trzymamy pauzę, potem „Wznów quiz”.
+  await waitSrv(res.pausedAt + PAUSE_HOLD_MS);
+  res.during = [...samples].reverse().find((s) => s.srv > res.pausedAt && s.phones.every((p) => p?.phase === "paused"))
+    ?.phones.map((p) => ({ phase: p.phase, q: p.q, timer: p.timer })) ?? null;
+  res.tResumeClick = srvNow();
+  await admin.getByRole("button", { name: /Wznów quiz/ }).first().click({ timeout: 5000 })
+    .catch((e) => res.problems.push("klik Wznów: " + e.message.slice(0, 60)));
+  const mR = await waitMonitor((m) => m.srv >= res.tResumeClick && m.status === "running" && m.pausedMs == null && m.anchorMs != null, 5000);
+  if (!mR) { if (res.status === "OK") res.status = "BŁĄD"; res.problems.push("P5 wznowienie nie dotarło do bazy w 5 s"); return; }
+  res.newAnchor = mR.anchorMs;
+  // Chwila wznowienia w bazie: resume przesuwa kotwicę o czas pauzy (now − plan_paused_at),
+  // więc now_resume = pausedAt + (newAnchor − anchorAtPause) — dokładniej niż odczyt monitora co 1 s.
+  const exact = res.pausedAt + (res.newAnchor - res.anchorAtPause);
+  res.tResumeDb = exact >= res.tResumeClick - 1000 && exact <= mR.srv + 200 ? exact : mR.srv;
+  console.log(`   ▶️  wznowienie (klik→baza ${Math.round(res.tResumeDb - res.tResumeClick)} ms)`);
+  if (res.status === "NIEWYKONANY") return;
+
+  // e. PIERWSZA próbka po wznowieniu z wszystkimi telefonami poza pauzą — bez dodatkowego czekania.
+  const dl = Date.now() + 3000;
+  let after = null;
+  while (!after && Date.now() < dl) {
+    after = samples.find((s) => s.srv > res.tResumeDb && s.phones.every((p) => p?.src === "data" && p.phase !== "paused"));
+    if (!after) await sleep(50);
+  }
+  if (after) res.after = { srv: after.srv, phones: after.phones.map((p) => ({ phase: p.phase, q: p.q, timer: p.timer })) };
+  await waitSrv(res.tResumeDb + 6300);
+  await sleep(300);
+
+  // f. Asercje P1–P6 — czasy zmian ekranu z historii DOM (MutationObserver), gdy jest.
+  const hist = await Promise.all(pages.map((x) => x.page.evaluate("window.__fuePhases || []").catch(() => [])));
+  const tls = pages.map((_, pi) => phoneTimeline(hist[pi], samples, pi));
+  const L = res.landed.idx + 1;
+  tls.forEach((tl, pi) => {
+    const tag = `telefon ${pi + 1}`;
+    const ph = { src: tl[0]?.src ?? "—" };
+    res.phones.push(ph);
+    // P1 wejście w pauzę ≤ 1500 ms po plan_paused_at
+    const ent = tl.find((e) => e.srv >= res.tClick - 500 && e.phase === "paused");
+    ph.enterMs = ent ? Math.round(ent.srv - res.pausedAt) : null;
+    if (ph.enterMs == null || ph.enterMs > 1500) res.problems.push(`P1 ${tag} wszedł w pauzę ${ph.enterMs == null ? "nigdy" : ph.enterMs + " ms"} po pauzie w bazie (limit 1500)`);
+    // P2 pytanie w trakcie pauzy
+    const d = res.during?.[pi];
+    if (!d) res.problems.push(`P2 ${tag}: brak próbki, w której wszystkie telefony są w pauzie`);
+    else if (d.q !== L) res.problems.push(`P2 ${tag}: w pauzie pytanie q${d.q} zamiast q${L}`);
+    // P4 ucieczka z pauzy (H1)
+    const esc = phasesIn(tl, res.pausedAt + 1500, res.tResumeDb).filter((e) => e.phase !== "paused");
+    ph.escapes = esc.length;
+    if (esc.length) res.problems.push(`P4 ${tag} uciekł z pauzy: ${esc[0].phase} q${esc[0].q} ${Math.round(esc[0].srv - res.pausedAt)} ms po pauzie (przed wznowieniem)`);
+    // P5 utknięcie w pauzie (H1)
+    const stuck = phasesIn(tl, res.tResumeDb + 1500, res.tResumeDb + 6000).filter((e) => e.phase === "paused");
+    ph.stuck = stuck.length;
+    if (stuck.length) res.problems.push(`P5 ${tag} utknął w pauzie ${Math.round(stuck[stuck.length - 1].srv - res.tResumeDb)} ms po wznowieniu`);
+  });
+  // P3 stan po wznowieniu — oczekiwany dla chwili próbki, od NOWEJ kotwicy.
+  if (!res.after) res.problems.push("P3 w 3 s po wznowieniu nie wszystkie telefony wyszły z pauzy");
+  else {
+    const exp = planPosition(P, res.newAnchor, null, res.after.srv);
+    const bound = phaseEnd(exp, res.newAnchor);
+    const expTimer = bound != null ? Math.ceil((bound - res.after.srv) / 1000) : null;
+    res.exp = { phase: exp?.phase, q: exp ? exp.idx + 1 : null, timer: expTimer };
+    res.after.phones.forEach((p, pi) => {
+      if (!exp || p.q !== exp.idx + 1 || !samePhase(p.phase, exp.phase)) {
+        res.problems.push(`P3 telefon ${pi + 1} po wznowieniu ${p.phase} q${p.q} zamiast ${exp?.phase} q${exp ? exp.idx + 1 : "?"}`);
+      } else if (p.timer != null && expTimer != null && Math.abs(p.timer - expTimer) > 1) {
+        res.problems.push(`P3 telefon ${pi + 1} licznik po wznowieniu ${p.timer}s zamiast ${expTimer}s (±1)`);
+      }
+    });
+    // Faza nie mogła się jeszcze legalnie zmienić, jeśli do jej końca zostało więcej, niż minęło od wznowienia.
+    if (res.remainingLanded > (res.after.srv - res.tResumeDb) + 300 && exp && (exp.phase !== res.landed.phase || exp.idx !== res.landed.idx)) {
+      res.problems.push(`P3 plan po wznowieniu (${exp.phase} q${exp.idx + 1}) ≠ faza pauzy (${res.landed.phase} q${L}), choć zostało ${res.remainingLanded} ms fazy`);
+    }
+  }
+}
+
 // Raport trybów REFRESH / OFFLINE (dopisuje FAIL-e do `fail`).
 function reportModes(fail) {
   for (const e of modeRes.errors) fail.push(`scenariusz ${e}`);
+  if (PAUSE_PHASE) {
+    const r = modeRes.pause;
+    console.log(`\n⏸  PAUZA W FAZIE ${PAUSE_PHASE} (pyt. ${PAUSE_Q})`);
+    if (!r || r.status === "NIEWYKONANY") {
+      state.pauseNotRun = true;
+      console.log(`   ⚠️  PAUZA: przebieg niewykonany — powtórz${r?.reason ? ` (${r.reason})` : ""}`);
+    }
+    if (r) {
+      const fmt = (p) => (p ? `${p.phase} q${p.q ?? "-"} ${p.timer ?? "-"}s` : "—");
+      if (r.landed) console.log(`   wylądowała: ${r.landed.phase} q${r.landed.idx + 1} (zostało ${r.remainingLanded} ms fazy)  ·  klik→baza ${r.clickToDbMs} ms${r.armed ? "  ·  przycisk uzbrojony (2 kliki)" : ""}`);
+      if (r.tResumeDb != null) console.log(`   wznowienie: klik→baza ${Math.round(r.tResumeDb - r.tResumeClick)} ms  ·  pierwsza próbka po wznowieniu +${r.after ? Math.round(r.after.srv - r.tResumeDb) : "—"} ms`);
+      if (r.exp) console.log(`   oczekiwane po wznowieniu (od nowej kotwicy, w chwili próbki): ${r.exp.phase} q${r.exp.q} ${r.exp.timer ?? "-"}s`);
+      (r.before || []).forEach((b, i) => {
+        const ph = r.phones[i] || {};
+        console.log(`   t${i + 1}: ${fmt(b)} → pauza ${fmt(r.during?.[i])} → ${fmt(r.after?.phones[i])}` +
+          `  (wejście w pauzę ${ph.enterMs ?? "—"} ms, ucieczki ${ph.escapes ?? "—"}, utknięcia ${ph.stuck ?? "—"}, czas z: ${ph.src ?? "—"})`);
+      });
+      const byP = (k) => r.problems.filter((p) => p.startsWith(k));
+      const labels = {
+        P1: "wejście w pauzę ≤ 1500 ms", P2: "pytanie w trakcie pauzy", P3: "stan po wznowieniu (faza/pytanie/licznik ±1 s)",
+        P4: "brak ucieczki z pauzy (H1)", P5: "brak utknięcia w pauzie (H1)",
+      };
+      if (r.status !== "NIEWYKONANY") {
+        for (const k of ["P1", "P2", "P3", "P4", "P5"]) {
+          const ps = byP(k);
+          console.log(`   ${ps.length ? "❌" : "✅"} ${k} ${labels[k]}`);
+          for (const p of ps.slice(0, 3)) console.log(`      • ${p}`);
+          for (const p of ps) fail.push(`PAUZA ${p}`);
+        }
+      }
+      console.log(`   ℹ️  P6 (H4) klik→baza ${r.clickToDbMs ?? "—"} ms, faza lądowania ${r.landed ? `${r.landed.phase} q${r.landed.idx + 1}` : "—"}`);
+      for (const p of r.problems.filter((x) => !/^P[1-5] /.test(x))) { console.log(`   ❌ ${p}`); fail.push(`PAUZA ${p}`); }
+    }
+  }
   if (REFRESH) {
     const rs = modeRes.refresh;
     const diffs = rs.filter((r) => r.maxDiff != null).map((r) => r.maxDiff);
@@ -875,6 +1153,27 @@ function reportModes(fail) {
 }
 
 // ─── RAPORT ──────────────────────────────────────────────────────────────────
+// Etap FULL: przerwy planowe (sekcja 42) — każda obsłużona, a w jej trakcie wszystkie
+// telefony w fazie „paused” (i data-fue-break="1", jeśli klient wystawia ten atrybut — 06-15).
+function breakStage(plan, samples, flow) {
+  const want = plan.filter((x) => x.h).length;
+  const name = "przerwy planowe po modułach 2 i 4";
+  if (!want) return [name, true, "brak przerw w planie"];
+  const log = flow.breakLog || [];
+  const bad = [];
+  for (const b of log) {
+    const ss = samples.filter((s) => s.srv >= b.seenSrv + 500 && s.srv <= b.clickSrv - 200);
+    const s = ss.find((x) => x.phones.some((p) => p?.phase !== "paused" || (p?.brk != null && p.brk !== "1")));
+    if (s) {
+      const p = s.phones.find((x) => x?.phase !== "paused" || (x?.brk != null && x.brk !== "1"));
+      bad.push(`przerwa ${b.holdIdx + 1}: telefon w ${p?.phase} (break=${p?.brk ?? "—"}) w ${(s.at / 1000).toFixed(1)}s`);
+    }
+    if (!ss.length) bad.push(`przerwa ${b.holdIdx + 1}: brak próbek w trakcie przerwy`);
+  }
+  const ok = (flow.breaks?.size ?? 0) === want && !bad.length;
+  return [name, ok, `${flow.breaks?.size ?? 0}/${want}${bad.length ? "; " + bad.join("; ") : ""}`];
+}
+
 function report(samples, tpq, t0) {
   const fail = [];
   const plan = state.plan || [];
@@ -991,6 +1290,14 @@ function report(samples, tpq, t0) {
   }
   if (idxBad) fail.push(`current_question_idx w bazie niezgodny z planem w ${idxBad}/${idxN} odczytach`);
   console.log(`\n🗄️  Baza: current_question_idx zgodny z planem w ${idxN - idxBad}/${idxN} odczytach ${idxBad ? "❌" : "✅"}`);
+  // Ciągłość idx (zawsze): kolejne różne wartości w statusach running/paused rosną dokładnie o 1
+  // — pauza / wznowienie / przerwa / auto-skrót nie mogą przeskoczyć ani cofnąć pytania.
+  const idxSeq = state.monitor.filter((m) => (m.status === "running" || m.status === "paused") && m.idx != null)
+    .map((m) => m.idx).filter((v, i, a) => i === 0 || v !== a[i - 1]);
+  const jumps = [];
+  for (let i = 1; i < idxSeq.length; i++) if (idxSeq[i] - idxSeq[i - 1] !== 1) jumps.push([idxSeq[i - 1], idxSeq[i]]);
+  for (const [a, b] of jumps) fail.push(`current_question_idx w bazie przeskoczył z ${a} na ${b}`);
+  console.log(`🔢 Baza: sekwencja idx ${idxSeq.join("→") || "—"} ${jumps.length ? "❌" : "✅"}`);
   const firstRes = state.monitor.find((m) => m.status === "results");
   if (lastIt) {
     const lastAnchor = [...state.monitor].reverse().find((m) => m.anchorMs != null)?.anchorMs ?? state.anchorMs;
@@ -1058,10 +1365,12 @@ function report(samples, tpq, t0) {
       ["zapowiedzi modułów", intros >= 5, `${intros} (oczekiwane ≥5 dla 5 modułów)`],
       ["pytania", seen.has("quiz")],
       // Z ADMIN_EXIT nie ma kto pauzować — etapy pauzy nie są wtedy oceniane.
-      ...(ADMIN_EXIT ? [] : [
+      // Z PROBE_PAUSE_PHASE pauzę ocenia blok „PAUZA W FAZIE” (własna pauza FULL wyłączona).
+      ...(ADMIN_EXIT || PAUSE_PHASE ? [] : [
         ["pauza widoczna u uczestnika", !!flow.pauseSeen],
         ["wznowienie: ta sama faza/pytanie/licznik ±1 s", pauseOk, pauseInfo.join("; ")],
       ]),
+      ...(ADMIN_EXIT ? [] : [breakStage(plan, samples, flow)]),
       ["ekran oczekiwania na wyniki / wynik", seen.has("finished") || seen.has("results")],
       ["wyniki ustawione przez zamiatacz", !!firstRes],
       ["ekran wyniku uczestnika", seen.has("results")],

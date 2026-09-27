@@ -114,6 +114,27 @@ describe("mergeSessionRow", () => {
     const m = mergeSessionRow({ plan_paused_at: 5, status: "paused" }, { plan_paused_at: null, status: "running" });
     expect(m.plan_paused_at).toBeNull();
   });
+
+  it("plan_hold_idx (przerwa planowa, sekcja 42): ustawia, zachowuje przy braku pola, jawny null czyści", () => {
+    expect(mergeSessionRow({ id: "s1", plan_hold_idx: null }, { plan_hold_idx: 2 }).plan_hold_idx).toBe(2);
+    expect(mergeSessionRow({ plan_hold_idx: 2 }, { status: "running" }).plan_hold_idx).toBe(2);
+    expect(mergeSessionRow({ plan_hold_idx: 2 }, { plan_hold_idx: null }).plan_hold_idx).toBeNull();
+  });
+});
+
+describe("plan_hold_idx w snapshocie", () => {
+  it("normalizeSnapshot przenosi session.plan_hold_idx (indeks, bez konwersji na ms)", () => {
+    const n = normalizeSnapshot({ session: { id: "s1", plan_hold_idx: 4, plan_anchor_at: 1, plan_paused_at: null } });
+    expect(n.session.plan_hold_idx).toBe(4);
+  });
+
+  it("applySnapshot (ta sama sesja) przenosi plan_hold_idx ze snapshotu do sesji", () => {
+    const prev = { session: { id: "s1", plan_hold_idx: null, revealed_idx: 1 }, plan: [], myAnswers: {}, reveal: null, correctTotal: 0 };
+    const next = applySnapshot(prev, normalizeSnapshot({ session: { id: "s1", plan_hold_idx: 3, plan_anchor_at: 1 } }));
+    expect(next.switched).toBe(false);
+    expect(next.session.plan_hold_idx).toBe(3);
+    expect(next.session.revealed_idx).toBe(1);
+  });
 });
 
 describe("revealAnsFor", () => {

@@ -70,6 +70,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  delete document.startViewTransition;
 });
 
 async function mountInLobby() {
@@ -196,5 +197,58 @@ describe("useParticipantGame — zawieszony snapshot nie blokuje planu (G7, 06-1
     await tick(1100);                         // 1. ponowienie: 500–1000 ms
     expect(h.calls.length).toBe(before + 2);
     expect(result.current.view.phase).toBe("intro"); // projekcja z planu działa dalej
+  });
+});
+
+describe("useParticipantGame — View Transitions na wolnym renderze", () => {
+  function fakeVT(callbackDelayMs) {
+    const vtCalls = [];
+    document.startViewTransition = vi.fn((cb) => {
+      let done;
+      const finished = new Promise((r) => { done = r; });
+      const rec = { call: Date.now(), cb: null };
+      vtCalls.push(rec);
+      setTimeout(() => { rec.cb = Date.now(); cb(); done(); }, callbackDelayMs);
+      return { ready: Promise.resolve(), updateCallbackDone: Promise.resolve(), finished, skipTransition: vi.fn() };
+    });
+    return vtCalls;
+  }
+
+  async function mountRunning() {
+    const hook = await mountInLobby();
+    const anchor = Date.now();
+    act(() => { h.handlers.postgres_changes({ new: { status: "running", plan_anchor_at: anchor, plan_paused_at: null, plan_hold_idx: null } }); });
+    await tick(1000);
+    const planCall = h.calls[h.calls.length - 1];
+    await act(async () => { planCall.resolve(snap({ status: "running", anchor, plan: PLAN })); await vi.advanceTimersByTimeAsync(20); });
+    expect(hook.result.current.view.phase).toBe("intro");
+    return { ...hook, anchor };
+  }
+
+  it("callback przejścia odkładany 400 ms → faza zmienia się po ≤ 150 ms, kolejne przejścia bez VT", async () => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    const { result, anchor } = await mountRunning();
+    const vtCalls = fakeVT(400);
+
+    await tick(anchor + 10000 - Date.now() + 20);   // granica pytania 1 (+ jedna klatka)
+    expect(vtCalls.length).toBe(1);
+    await tick(150);
+    expect(result.current.view.phase).toBe("quiz"); // limit 150 ms, nie callback po 400 ms
+
+    await tick(anchor + 30000 - Date.now() + 20);   // granica odsłony
+    expect(result.current.view.phase).toBe("reveal");
+    expect(vtCalls.length).toBe(1);                 // render uznany za wolny → bez przejścia
+  });
+
+  it("szybki callback przejścia → View Transitions zostają włączone", async () => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    const { result, anchor } = await mountRunning();
+    const vtCalls = fakeVT(10);
+
+    await tick(anchor + 10000 - Date.now() + 40);
+    expect(result.current.view.phase).toBe("quiz");
+    await tick(anchor + 30000 - Date.now() + 40);
+    expect(result.current.view.phase).toBe("reveal");
+    expect(vtCalls.length).toBe(2);
   });
 });

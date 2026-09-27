@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { DEMO, supabase, getParticipantState, submitAnswerV2 } from "../lib/supabase.js";
 import { projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow, addClockSample } from "../lib/serverClock.js";
+import { VT_MAX_DELAY_MS, shouldStartViewTransition, isSlowViewTransition } from "../lib/viewTransition.js";
 import {
   loadGameCache, saveGameCache, saveParticipant,
   normalizeSnapshot, mergeSessionRow, revealAnsFor, applySnapshot, snapshotSessionId,
@@ -19,9 +20,6 @@ import {
 const EMPTY_GAME = { session: null, plan: null, myAnswers: {}, reveal: null, correctTotal: 0 };
 const SAFETY_NET_MS = 15000;
 const RETRY_MS = 700;
-// Maksymalne opóźnienie zmiany fazy przez View Transition (callback bywa odkładany przy
-// zdławionym renderze) — po tym czasie przejście jest pomijane, a widok ustawiany wprost.
-const VT_MAX_DELAY_MS = 150;
 // G7 (06-17, przebieg 05): jedno żądanie snapshotu utknęło na 20,9 s i zablokowało pobranie
 // planu po starcie. Snapshot w locie żyje najwyżej SNAPSHOT_TIMEOUT_MS, a gdy telefon ma kotwicę
 // bez planu, snapshot wysłany PRZED ostatnim wierszem Realtime — najwyżej STALE_PLAN_WAIT_MS.
@@ -107,6 +105,9 @@ export default function useParticipantGame(participant) {
   const finishedSnapRef = useRef(null);       // session.id, dla której pobrano snapshot końca gry
   const rowSeqRef = useRef(0);                // licznik wierszy Realtime (świeżość snapshotu, G2/H1)
   const vtRef = useRef(null);                 // trwające View Transition (bez nakładania przejść)
+  const vtSlowRef = useRef(false);            // przejście przekroczyło limit → dalej bez VT
+  const lastFrameRef = useRef(Date.now());    // ostatnia klatka rAF tickera
+  const frameGapRef = useRef(0);              // przerwa między dwiema ostatnimi klatkami
   const flightRef = useRef(null);             // snapshot w locie: { sentAt, seq, expireAt }
   const stallRef = useRef(0);                 // kolejne przekroczenia limitu (rozrzut ponowień)
   const retryTimerRef = useRef(null);         // ponowienie po przekroczeniu limitu
@@ -124,15 +125,27 @@ export default function useParticipantGame(participant) {
   // widok podmieniony w międzyczasie nie zostanie nadpisany starszym.
   // H2 (06-DIAG): faza NIGDY nie czeka na callback dłużej niż VT_MAX_DELAY_MS, a nowe
   // przejście nie startuje, gdy poprzednie trwa (drugie = zwykłe setView, bez animacji).
+  // 06-17: sam limit nie wystarcza — przy wolnym przechwyceniu render jest zamrożony do końca
+  // przechwycenia (skipTransition go nie skraca). Dlatego przejście NIE startuje, gdy klatki
+  // są zdławione, a po pierwszym przekroczeniu limitu VT jest wyłączone do końca życia hooka.
   const pushView = useCallback((v, k) => {
     const prev = viewRef.current;
     viewKeyRef.current = k;
     viewRef.current = v;
     const structural = prev?.phase !== v.phase || prev?.idx !== v.idx;
-    if (structural && canViewTransition() && !vtRef.current) {
+    const useVT = structural && shouldStartViewTransition({
+      structural, available: canViewTransition(), busy: !!vtRef.current, slow: vtSlowRef.current,
+      frameGapMs: Math.max(frameGapRef.current, Date.now() - lastFrameRef.current),
+    });
+    if (useVT) {
       try {
         let applied = false;
-        const vt = document.startViewTransition(() => { applied = true; flushSync(() => setView(viewRef.current)); });
+        const callAt = Date.now();
+        const vt = document.startViewTransition(() => {
+          applied = true;
+          if (isSlowViewTransition(Date.now() - callAt)) vtSlowRef.current = true;
+          flushSync(() => setView(viewRef.current));
+        });
         vtRef.current = vt;
         const clear = () => { if (vtRef.current === vt) vtRef.current = null; };
         // Pominięte przejście odrzuca ready/updateCallbackDone („Transition was skipped”) —
@@ -143,6 +156,7 @@ export default function useParticipantGame(participant) {
         // Callback przejścia bywa odkładany (zdławiony render) — faza NIGDY nie czeka dłużej niż 150 ms.
         later(() => {
           if (applied) return;
+          vtSlowRef.current = true;
           try { vt.skipTransition(); } catch (_) { /* już zakończone */ }
           clear();
           setView(viewRef.current);
@@ -378,7 +392,12 @@ export default function useParticipantGame(participant) {
       ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
     const caf = typeof cancelAnimationFrame === "function" ? cancelAnimationFrame : clearTimeout;
     let id = null;
+    lastFrameRef.current = Date.now();
     const tick = () => {
+      // Przerwa między klatkami: zdławiony render → zmiana fazy bez View Transition (06-17).
+      const now = Date.now();
+      frameGapRef.current = now - lastFrameRef.current;
+      lastFrameRef.current = now;
       const g = gameRef.current;
       const v = computeView(g);
       const k = viewKey(g, v);

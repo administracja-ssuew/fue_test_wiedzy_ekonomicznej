@@ -19,6 +19,9 @@ import {
 const EMPTY_GAME = { session: null, plan: null, myAnswers: {}, reveal: null, correctTotal: 0 };
 const SAFETY_NET_MS = 15000;
 const RETRY_MS = 700;
+// Maksymalne opóźnienie zmiany fazy przez View Transition (callback bywa odkładany przy
+// zdławionym renderze) — po tym czasie przejście jest pomijane, a widok ustawiany wprost.
+const VT_MAX_DELAY_MS = 150;
 
 // Liczba poprawnych = wpisy z correct === true (snapshot + lokalnie odsłonięte), więc
 // odpowiedź nigdy nie jest liczona dwa razy.
@@ -96,25 +99,50 @@ export default function useParticipantGame(participant) {
   const planLoadRef = useRef(null);           // kotwica, dla której dociągamy plan
   const submitsRef = useRef(new Set());       // item.id z zapisem odpowiedzi w locie
   const finishedSnapRef = useRef(null);       // session.id, dla której pobrano snapshot końca gry
+  const rowSeqRef = useRef(0);                // licznik wierszy Realtime (świeżość snapshotu, G2/H1)
+  const vtRef = useRef(null);                 // trwające View Transition (bez nakładania przejść)
+
+  const later = useCallback((fn, ms) => {
+    const t = setTimeout(() => { timeoutsRef.current.delete(t); fn(); }, ms);
+    timeoutsRef.current.add(t);
+    return t;
+  }, []);
 
   // Publikacja nowego widoku. Zmiana fazy lub pytania (nie sam tik sekund) idzie przez
   // View Transitions. Pułapka 10: w React 18 setState jest asynchroniczny — bez flushSync
   // przeglądarka zrobiłaby zrzut „po” przed renderem (brak animacji / mignięcie).
   // Callback przejścia odpala się asynchronicznie, więc ustawia NAJNOWSZY widok z refa —
   // widok podmieniony w międzyczasie nie zostanie nadpisany starszym.
+  // H2 (06-DIAG): faza NIGDY nie czeka na callback dłużej niż VT_MAX_DELAY_MS, a nowe
+  // przejście nie startuje, gdy poprzednie trwa (drugie = zwykłe setView, bez animacji).
   const pushView = useCallback((v, k) => {
     const prev = viewRef.current;
     viewKeyRef.current = k;
     viewRef.current = v;
     const structural = prev?.phase !== v.phase || prev?.idx !== v.idx;
-    if (structural && canViewTransition()) {
+    if (structural && canViewTransition() && !vtRef.current) {
       try {
-        document.startViewTransition(() => flushSync(() => setView(viewRef.current)));
+        let applied = false;
+        const vt = document.startViewTransition(() => { applied = true; flushSync(() => setView(viewRef.current)); });
+        vtRef.current = vt;
+        const clear = () => { if (vtRef.current === vt) vtRef.current = null; };
+        // Pominięte przejście odrzuca ready/updateCallbackDone („Transition was skipped”) —
+        // bez catch trafiało do konsoli jako pageerror (06-DIAG, obserwacja 2).
+        vt.ready?.catch?.(() => {});
+        vt.updateCallbackDone?.catch?.(() => {});
+        if (vt.finished?.then) vt.finished.then(clear, clear); else clear();
+        // Callback przejścia bywa odkładany (zdławiony render) — faza NIGDY nie czeka dłużej niż 150 ms.
+        later(() => {
+          if (applied) return;
+          try { vt.skipTransition(); } catch (_) { /* już zakończone */ }
+          clear();
+          setView(viewRef.current);
+        }, VT_MAX_DELAY_MS);
         return;
-      } catch (_) { /* przejście niedostępne — zwykła zmiana stanu */ }
+      } catch (_) { vtRef.current = null; /* przejście niedostępne — zwykła zmiana stanu */ }
     }
     setView(v);
-  }, []);
+  }, [later]);
 
   const commit = useCallback((next) => {
     gameRef.current = next;
@@ -126,12 +154,6 @@ export default function useParticipantGame(participant) {
   }, [pushView]);
 
   const setLoad = useCallback((s) => { loadStateRef.current = s; setLoadState(s); }, []);
-
-  const later = useCallback((fn, ms) => {
-    const t = setTimeout(() => { timeoutsRef.current.delete(t); fn(); }, ms);
-    timeoutsRef.current.add(t);
-    return t;
-  }, []);
 
   // ── Snapshot ────────────────────────────────────────────────────────────────
   const snapshot = useCallback(async ({ includePlan, sessionIdHint } = {}) => {
@@ -148,11 +170,15 @@ export default function useParticipantGame(participant) {
     }
     inFlightRef.current = true;
     let needPlan = false;
+    let needFresh = false;
     try {
       const cur = gameRef.current;
       let inc = includePlan ?? !cur.plan;
       if (!cur.plan) inc = true;                                        // bez planu nie ma fazy
       if (sessionIdHint && sessionIdHint !== cur.session?.id) inc = true; // inna sesja = inny plan
+      // Świeżość (G2/H1): wiersz Realtime odebrany w trakcie RPC może być nowszy niż stan
+      // w odpowiedzi — wtedy pola sterujące zostają z Realtime, a snapshot jest dociągany ponownie.
+      const seq0 = rowSeqRef.current;
       const { data, error, t0, t1 } = await getParticipantState(p.code, {
         sessionId: snapshotSessionId(sessionIdHint, cur.session), includePlan: inc,
       });
@@ -166,8 +192,10 @@ export default function useParticipantGame(participant) {
       addClockSample({ t0, t1, serverMs: Number(data.server_now) });
       if (data.error === "invalid code") { setLoad("invalid_code"); return; }
 
-      const next = applySnapshot(gameRef.current, normalizeSnapshot(data));
+      const keepControl = rowSeqRef.current !== seq0;
+      const next = applySnapshot(gameRef.current, normalizeSnapshot(data), { keepControl });
       const { switched, ...g } = next;
+      if (keepControl && !switched) needFresh = true;
       if (switched) {
         // Serwer zwrócił inną sesję niż przypięta (np. przypięta próba jest `ended`, a admin
         // utworzył nową) — refy per-sesja od zera, żeby nic ze starej sesji nie przeciekło.
@@ -188,6 +216,9 @@ export default function useParticipantGame(participant) {
       if (needPlan) {
         const prev = pendingRef.current;
         pendingRef.current = { includePlan: true, sessionIdHint: prev?.sessionIdHint };
+      } else if (needFresh && !pendingRef.current) {
+        // Zbieżność ze stanem bazy od razu, bez czekania 15 s na siatkę bezpieczeństwa.
+        pendingRef.current = { includePlan: false, sessionIdHint: undefined };
       }
       const pend = pendingRef.current;
       pendingRef.current = null;
@@ -316,6 +347,7 @@ export default function useParticipantGame(participant) {
 
     const onRow = ({ new: row }) => {
       if (!row) return;
+      rowSeqRef.current += 1;
       const g = gameRef.current;
       if (g.session?.id !== sessionId) return;
       const prevStatus = g.session.status;

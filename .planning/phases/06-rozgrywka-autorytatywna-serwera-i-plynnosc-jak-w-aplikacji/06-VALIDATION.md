@@ -55,6 +55,10 @@ Sonda (bramka fazy, PowerShell): `npm run build; npm run preview` (osobny termin
 | V-13 | SC5 | `submit_answer_v2` bez `is_correct`/`correct_ans`; snapshot/summary v2 zwracają NULL przed `closes_at + 1,5 s` | integracja prod | `npm run sonda` (asercja wbudowana) | ❌ | ⬜ pending |
 | V-14 | SC6 | Stare RPC i sygnatury wdrożonego frontu istnieją i działają | smoke read-only | `npm run verify-prod` | ✅ rozszerzyć | ⬜ pending |
 | V-15 | SC6 | Sesja bez planu działa po staremu (regresja) | e2e prod | sonda na starym buildzie (`87e7c20`) po wgraniu 39–40 | ✅ | ⬜ pending |
+| V-16 | G1/G3 | `buildPlanItems` z reveal 11 500 ms i `h`; `holdDue`/`breakIdxAt`/`sweepAction`; parzystość `build_plan_items`/`plan_hold_due` | unit + integracja read-only | `npx vitest run src/lib/plan.test.js -t "przerw"` + `npm run verify-plan` | ✅ | ⬜ pending |
+| V-17 | G2 | Pauza na granicach faz; stary snapshot nie cofa pauzy (`keepControl`) | unit | `npx vitest run src/lib/plan.test.js -t "granicach" src/lib/participantState.test.js` | ✅ | ⬜ pending |
+| V-18 | G5/G6 | Arkusze XLSX (ranking z mianownikiem planu, karta uczestnika z brakiem odpowiedzi) | unit | `npx vitest run src/lib/resultsXlsx.test.js` | ✅ | ⬜ pending |
+| V-19 | G2/G7 | Pauza w reveal/countdown na produkcji (P1–P5), start pytań z DOM ≤ 1,5 s | e2e prod | `PROBE_PAUSE_PHASE=reveal npm run sonda` i `PROBE_PAUSE_PHASE=countdown npm run sonda`, `PROBE_TRACE=1 npm run sonda` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

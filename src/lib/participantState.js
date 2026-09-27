@@ -93,7 +93,9 @@ export function normalizeSnapshot(json) {
   };
 }
 
-const ROW_FIELDS = ["status", "plan_anchor_at", "plan_paused_at", "plan_hold_idx", "revealed_idx", "revealed_ans"];
+// Pola sterujące przebiegiem sesji — dokładnie te, które niesie wiersz Realtime quiz_sessions.
+export const CONTROL_FIELDS = ["status", "plan_anchor_at", "plan_paused_at", "plan_hold_idx", "revealed_idx", "revealed_ans"];
+const ROW_FIELDS = CONTROL_FIELDS;
 const MS_FIELDS = new Set(["plan_anchor_at", "plan_paused_at"]);
 
 // UPDATE quiz_sessions z Realtime → scal do sesji. Pole nieobecne w wierszu zostaje;
@@ -133,7 +135,10 @@ export function snapshotSessionId(hint, currentSession) {
 }
 
 // prev = { session, plan, myAnswers, reveal, correctTotal } → nowy stan + switched.
-export function applySnapshot(prev, normalized) {
+// keepControl: wiersz Realtime przyszedł, gdy snapshot był w locie — nie wiadomo, który stan
+// jest nowszy; zostawiamy pola sterujące z Realtime (kolejność commitów) i dociągamy nowy
+// snapshot (G2/H1, 06-DIAG). Przy przełączeniu sesji ignorowane — stan w całości ze snapshotu.
+export function applySnapshot(prev, normalized, { keepControl = false } = {}) {
   const p = prev || {};
   const n = normalized || {};
   const switched = (n.session?.id ?? null) !== (p.session?.id ?? null);
@@ -159,9 +164,15 @@ export function applySnapshot(prev, normalized) {
       myAnswers[qid] = { ...srv, correct: a.correct };
     }
   }
+  // Snapshot nie niesie revealed_* — zachowaj je z Realtime.
+  let session = n.session ? { ...(p.session || {}), ...n.session } : null;
+  if (session && keepControl && p.session) {
+    for (const k of CONTROL_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(p.session, k)) session[k] = p.session[k];
+    }
+  }
   return {
-    // Snapshot nie niesie revealed_* — zachowaj je z Realtime.
-    session: n.session ? { ...(p.session || {}), ...n.session } : null,
+    session,
     plan: n.plan ?? p.plan ?? null,
     myAnswers,
     reveal: n.reveal ?? p.reveal ?? null,

@@ -191,7 +191,7 @@ Plans:
 - [x] 06-11-PLAN.md — Usunięcie kodu legacy (kierowcy, projekcja z modułów) + sondy (fala 8)
 
 Gap closure (luki G1–G7 z 06-VERIFICATION.md):
-- [ ] 06-12-PLAN.md — Model planu: reveal 11,5 s (10 s widoczności) + przerwy planowe po modułach 2 i 4; SQL sekcja 42, verify-plan, DEMO (fala G1, checkpoint SQL)
+- [x] 06-12-PLAN.md — Model planu: reveal 11,5 s (10 s widoczności) + przerwy planowe po modułach 2 i 4; SQL sekcja 42, verify-plan, DEMO (fala G1, checkpoint SQL)
 - [ ] 06-13-PLAN.md — Diagnoza G2/G7: sonda PROBE_PAUSE_PHASE=reveal|countdown, PROBE_TRACE (VT, zegar, snapshot vs Realtime), seria ≥ 5 przebiegów po sekcji 42, 06-DIAG (fala G2, checkpoint prod)
 - [ ] 06-14-PLAN.md — Wyniki: mianownik z planu i brak odpowiedzi = błędna (SQL sekcja 43), resultsXlsx.js + XLSX w Historii (fala G2, checkpoint SQL)
 - [ ] 06-15-PLAN.md — Ekrany: „Przerwa – Moduł X” na telefonie i projektorze, jeden ekran „Koniec testu” z wynikiem z planu (fala G2)

@@ -5,7 +5,7 @@ import {
   getParticipantCount, getSessionPlan, getAnswerSummaryV2,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
-import { REVEAL_SECONDS } from "../lib/gameLogic.js";
+import { REVEAL_MS } from "../lib/gameLogic.js";
 import { toMs, projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow } from "../lib/serverClock.js";
 
@@ -28,6 +28,9 @@ const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)"
 // phase: "waiting" | "paused" | "quiz" | "reveal"
 export default function useLiveProjection(city, { detailed = false } = {}) {
   const MODULES = useModules();
+  // tickPlan żyje w efekcie z pustymi zależnościami — moduły czyta przez ref, nie z domknięcia.
+  const modulesRef = useRef(MODULES);
+  modulesRef.current = MODULES;
   const [phase, setPhase]         = useState("waiting");
   const [gIdx, setGIdx]           = useState(0);
   const [timer, setTimer]         = useState(0);
@@ -35,7 +38,10 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const [revealTotal, setRevealTotal]     = useState(0);
   const [revealCorrect, setRevealCorrect] = useState(0);
   const [revealAns, setRevealAns]         = useState(null); // poprawny indeks (bramkowany z serwera)
-  const [autoSec, setAutoSec]     = useState(REVEAL_SECONDS);
+  // Liczba całkowita do wyświetlania (REVEAL_MS = 11 500 → 12 s na starcie odliczania).
+  const [autoSec, setAutoSec]     = useState(Math.ceil(REVEAL_MS / 1000));
+  // Przerwa planowa (06-12): następny moduł { id, name, icon, color } | null (ręczna pauza / brak przerwy).
+  const [breakNext, setBreakNext] = useState(null);
   const [bg, setBg]               = useState(DEFAULT_BG);
   const [liveCount, setLiveCount] = useState(0);
   const [participantsTotal, setParticipantsTotal] = useState(0);
@@ -170,11 +176,18 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         pausedAtMs: toMs(s.plan_paused_at),
         status: s.status,
         nowMs,
+        holdIdx: s.plan_hold_idx ?? null, // przerwa już obsłużona → brak powrotu do niej po wznowieniu
       });
       if (!v.item) {
         // lobby / results / ended / legacy
-        setPhase("waiting"); setCdNum(null); setFirstOfModule(false);
+        setPhase("waiting"); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
         return;
+      }
+      if (v.phase === "paused" && v.plannedBreak) {
+        const nm = v.nextModule;
+        setBreakNext(modulesRef.current.find((m) => m.id === nm) || { id: nm, name: `Moduł ${nm}`, icon: "📘", color: "#6B21E8" });
+      } else {
+        setBreakNext(null);
       }
       const qs = questionsRef.current;
       const found = qs.findIndex((x) => x.id === v.item.id);
@@ -213,7 +226,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       if (planRef.current?.length && s?.plan_anchor_at) { tickPlan(s); return; }
       // Sesja bez planu albo plan jeszcze się pobiera → poczekalnia, bez licznika.
       setPlanTpq(null);
-      setPhase("waiting"); setCdNum(null); setFirstOfModule(false);
+      setPhase("waiting"); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
     };
 
     tick();
@@ -266,5 +279,5 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   // Czas pytania wyłącznie z planu (SC4); mod służy tylko do nazwy/ikony/koloru.
   const timePerQ = planTpq ?? 0;
 
-  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium };
+  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext };
 }

@@ -13,7 +13,7 @@ const ANS_LABELS = ["A", "B", "C", "D"];
 // shared DB-state projection — stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
   // Public projector — anon, so no per-participant data; aggregate counts only.
-  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium } =
+  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext } =
     useLiveProjection(city);
   // Poprawny indeks w reveal: bramkowany z serwera (revealAns) lub fallback ans
   // (pre-migracja, gdy ans jest jeszcze w pytaniach).
@@ -91,8 +91,19 @@ export default function LiveView({ city }) {
         </div>
       )}
 
-      {/* Paused */}
-      {phase === "paused" && (
+      {/* Przerwa planowa (po module 2/4) — następny moduł */}
+      {phase === "paused" && breakNext && (
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>☕</div>
+          <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Przerwa</p>
+          <p style={{ color: "#9B89CC", fontSize: 18, marginTop: 8 }}>
+            {`Po przerwie: ${breakNext.icon ?? ""} Moduł ${breakNext.id} — ${breakNext.name}`}
+          </p>
+        </div>
+      )}
+
+      {/* Paused (ręczna pauza admina) */}
+      {phase === "paused" && !breakNext && (
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>⏸️</div>
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Wstrzymano</p>

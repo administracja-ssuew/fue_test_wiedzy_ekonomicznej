@@ -33,7 +33,7 @@ progress:
 ## Current Position
 
 Phase: 06 (rozgrywka-autorytatywna-serwera-i-plynnosc-jak-w-aplikacji) — EXECUTING
-Plan: 17 of 17 (06-16 done — naprawy defensywne H1 (keepControl), H2 (limit VT 150 ms), H3 (auto-skrót z idx sprzed await), panel przerwy planowej + faza pauzy, LiveTab z breakNext; confirm() przed pauzą zostaje (H4 NIEROZSTRZYGNIĘTA) — decyzja użytkownika otwarta; 06-12 done — sekcja 42 wgrana na prod; 06-15 done — ekrany przerwy planowej i „Koniec testu”; 06-14 done — sekcja 43 wgrana na prod, mianownik z planu + XLSX w Historii; 06-13 done — diagnoza G2/G7: 11 sond na prod, G2/G7 nieodtworzone, H4 (confirm przed pauzą) najbardziej prawdopodobną przyczyną G2 — wejście dla 06-16 w 06-DIAG-G2-G7.md; następny: 06-17)
+Plan: 17 of 17 (06-16 done — naprawy defensywne H1 (keepControl), H2 (limit VT 150 ms), H3 (auto-skrót z idx sprzed await), panel przerwy planowej + faza pauzy, LiveTab z breakNext; pauza z dwóch kliknięć zamiast confirm() (decyzja użytkownika, 3b188e0); 06-12 done — sekcja 42 wgrana na prod; 06-15 done — ekrany przerwy planowej i „Koniec testu”; 06-14 done — sekcja 43 wgrana na prod, mianownik z planu + XLSX w Historii; 06-13 done — diagnoza G2/G7: 11 sond na prod, G2/G7 nieodtworzone, H4 (confirm przed pauzą) najbardziej prawdopodobną przyczyną G2 — wejście dla 06-16 w 06-DIAG-G2-G7.md; następny: 06-17)
 **Phase:** 06
 **Plan:** 06-17
 **Status:** Executing Phase 06
@@ -90,7 +90,7 @@ Plan: 17 of 17 (06-16 done — naprawy defensywne H1 (keepControl), H2 (limit VT
 | Vitest added in Phase 1 | Safe to add alongside refactor, no behavior change |
 | W object copied per-screen (Plan 02) | Consolidation deferred to Plan 04 when App.jsx is thinned |
 | 06-14: session_question_set — wspólny zbiór pytań sesji (plan / pula miasta) | Ranking i raport XLSX liczą z tego samego zbioru; brak odpowiedzi = błędna z pełnym czasem pytania; sygnatury RPC bez zmian (SC6) |
-| 06-16: confirm() przed pauzą zostaje; panel pokazuje fazę, w której pauza wylądowała | Werdykt H4 w 06-DIAG = NIEROZSTRZYGNIĘTA, a plan zmienia UX pauzy tylko przy POTWIERDZONA; wariant „kliknij ponownie” gotowy do włączenia, jeśli G2 wróci |
+| 06-16: pauza z dwóch kliknięć zamiast confirm() (decyzja użytkownika) + panel pokazuje fazę, w której pauza wylądowała | confirm() przesuwał moment pauzy o czas czytania okna (06-DIAG H4, najbardziej prawdopodobna przyczyna G2) |
 | 06-16: wiersz Realtime w trakcie snapshotu ma pierwszeństwo dla pól sterujących (keepControl) + natychmiastowy ponowny snapshot | Tania ochrona przed H1 przy dużym RTT i 500 telefonach, bez porównywania znaczników czasu |
 
 ### Open Decisions (must resolve before Phase 2)

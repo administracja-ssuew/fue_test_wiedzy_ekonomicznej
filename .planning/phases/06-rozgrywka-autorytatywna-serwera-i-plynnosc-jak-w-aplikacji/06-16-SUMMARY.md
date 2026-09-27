@@ -117,9 +117,18 @@ completed: 2026-09-27
 - Linia pauzy ręcznej pokazuje też „· zostało N s” (zalecenie z 06-DIAG: „Pauza: odsłonięcie pyt. 2, zostało 2,5 s”).
 - Komentarz JSX banera sformułowany tak, żeby grep „Przerwa planowa po module” dawał dokładnie 1.
 
+### Addendum — decyzja użytkownika: pauza z dwóch kliknięć (H4)
+
+Po zakończeniu planu użytkownik zdecydował (przez orkiestratora), że `confirm()` przed pauzą ma zastąpić przycisk uzbrajany. Rozstrzygnięcie „confirm() zostaje” z tabeli H4 powyżej jest przez to **nieaktualne**. Commit `3b188e0`:
+- Pierwsze kliknięcie „⏸ Pauza” nic nie zapisuje w bazie, tylko uzbraja przycisk na 3 s: pojawia się tekst „⏸ Kliknij ponownie, aby wstrzymać” i czerwony styl `danger`. Drugie kliknięcie w tym czasie od razu wywołuje `adminPauseSession`. Po 3 s albo po zmianie statusu sesji przycisk sam się rozbraja. Okna `confirm("Czy na pewno chcesz zatrzymać quiz?")` już nie ma. Inne `confirm()` (Zakończ, Ogłoś wyniki, Powtórz, Nowy quiz) zostały bez zmian.
+- Uzbrojony przycisk ma `aria-label` „⏸ Pauza — Kliknij ponownie, aby wstrzymać”. Nazwa dostępna pasuje więc zarówno do `/Pauza/`, jak i do `/Kliknij ponownie, aby wstrzymać/`.
+- Logika jest w czystej funkcji `pauseClickAction(armedUntil, nowMs)` z `PAUSE_ARM_MS = 3000` w `src/lib/gameLogic.js` i ma test w `gameLogic.test.js`.
+- **[Rule 3] Sonda, tryb FULL** (`scripts/probe-gameplay.js`, własna pauza w połowie przebiegu) klikała „Pauza” tylko raz, więc po tej zmianie pauza by się w nim nie wykonała. Dodałem drugie kliknięcie uzbrojonego przycisku, tak jak w trybie `PROBE_PAUSE_PHASE`.
+- Weryfikacja: `npm test` 203/203, `npm run build` OK, `node --check` sondy OK. Na produkcji nic nie uruchamiałem.
+
 ## Otwarte
 
-- **H4 / zabezpieczenie pauzy — decyzja dla użytkownika.** 06-DIAG uznaje `confirm()` za najbardziej prawdopodobną przyczynę G2, ale werdykt to NIEROZSTRZYGNIĘTA, więc zgodnie z planem okno potwierdzenia zostało. Wariant z dwoma kliknięciami („⏸ Kliknij ponownie, aby wstrzymać”, 3 s, bez okna modalnego) to kilkanaście linii w `src/screens/AdminPanel.jsx` przy przycisku „⏸ Pauza”, a sonda już go obsługuje. Jeśli G2 wróci w 06-17 albo na próbie z ludźmi, warto go włączyć.
+- ~~**H4 / zabezpieczenie pauzy — decyzja dla użytkownika.**~~ Rozstrzygnięte: użytkownik wybrał pauzę z dwóch kliknięć (addendum powyżej, `3b188e0`). Skuteczność wobec G2 sprawdzi 06-17 (sonda z pauzą w odsłonie i w odliczaniu) oraz próba z ludźmi.
 - **Sonda: kontrola widoczności pytań ignoruje auto-skrót** (06-DIAG obs. 1) i daje fałszywy kod 1 przy `PROBE_TPQ ≥ 45`. Plik `scripts/probe-gameplay.js`, sekcja raportu 1 (`expOf`), jest poza plikami tego planu. Trzeba to uwzględnić przy ocenie sond w 06-17.
 - Obciążenie: przy 500 telefonach wiersz Realtime, który trafi w snapshot w locie, wywołuje jeden dodatkowy snapshot bez rozrzutu. Dotyczy to tylko telefonów, które akurat miały RPC w locie, więc skala jest niewielka. Warto obserwować w teście obciążeniowym.
 

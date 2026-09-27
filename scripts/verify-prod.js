@@ -315,6 +315,30 @@ async function main() {
     // start_quiz_session_v2 i admin_sweep_session sprawdza blok sekcji 39 (odmowa anona).
   }
 
+  console.log("\n📊 SEKCJA 43 (wyniki: mianownik z planu, raport z answers):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_43", {});
+    if (isMissing(error))      bad("schema_marker_43 — BRAK", "→ uruchom sekcję 43");
+    else if (error)            bad("schema_marker_43 — błąd", error.message);
+    else if (data === true)    ok("schema_marker_43 — sekcja 43 wgrana", "mianownik z planu + raport z answers");
+    else                       bad("schema_marker_43 — nieoczekiwana odpowiedź", JSON.stringify(data));
+
+    // session_question_set: funkcja wewnętrzna — anon MUSI dostać odmowę uprawnień.
+    const { error: eq } = await callRpc("session_question_set", { p_session_id: DUMMY });
+    if (isMissing(eq))         bad("session_question_set — BRAK", "→ uruchom sekcję 43");
+    else if (isDenied(eq))     ok("session_question_set — istnieje", "funkcja wewnętrzna niedostępna dla anon ✓");
+    else if (eq)               bad("session_question_set — nieoczekiwany błąd", eq.message);
+    else                       bad("session_question_set — funkcja wewnętrzna dostępna dla anon", "⚠️ REVOKE z 43.1 nie wgrany");
+
+    // SC6: get_session_results / get_session_detailed_results — te same sygnatury (CREATE OR REPLACE).
+    // Anon nie ma EXECUTE (odmowa) — liczy się tylko brak PGRST202.
+    for (const name of ["get_session_results", "get_session_detailed_results"]) {
+      const { error: e } = await callRpc(name, { p_session_id: DUMMY });
+      if (isMissing(e))        bad(`${name} — BRAK`, "⚠️ SC6 — sygnatura zniknęła");
+      else                     ok(`${name} — sygnatura istnieje`, `sekcja 43 / SC6 (${e ? (e.code || e.message) : "brak błędu"})`);
+    }
+  }
+
   console.log("\n" + "─".repeat(56));
   if (fail === 0) console.log(`✅ PRODUKCJA GOTOWA pod kątem SQL (${pass} OK${warn ? `, ${warn} uwag` : ""})`);
   else console.log(`❌ ${fail} PROBLEM(ÓW) — uzupełnij wskazane sekcje SQL na produkcji`);

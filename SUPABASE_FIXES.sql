@@ -2608,6 +2608,139 @@ RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
 REVOKE EXECUTE ON FUNCTION public.schema_marker_42() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.schema_marker_42() TO anon, authenticated;
 
+-- ─── 43. WYNIKI: MIANOWNIK Z PLANU + RAPORT Z ANSWERS (faza 6, luki G5/G6) ──
+-- Addytywnie (SC6): bez DROP, CREATE OR REPLACE z IDENTYCZNYMI RETURNS TABLE —
+-- stary front dostaje ten sam kształt odpowiedzi, tylko poprawniejsze liczby.
+-- Decyzje (LOCKED):
+--   * brak odpowiedzi = odpowiedź błędna; „Pytań” = liczba pytań w PLANIE sesji,
+--   * średni czas liczy brak odpowiedzi jako pełny czas pytania (tpq × 1000 ms),
+--   * zbiór pytań sesji = session_plans.items; dla sesji bez planu (sprzed fazy 6)
+--     pula miasta w kolejności (module, sort_order, id) — ta sama co get_quiz_questions,
+--   * uczestnicy raportu = DISTINCT answers.participant_code tej sesji (a NIE
+--     kolumny session_id w tabeli kodów — §24 przepina kod na najnowszą sesję, przez co
+--     uczestnik znikał z raportu archiwalnej sesji).
+-- Ranking i raport liczą z TEGO SAMEGO zbioru (session_question_set), więc „Pytań”
+-- w rankingu = liczba wierszy uczestnika w XLSX.
+-- Wgrywać RĘCZNIE w SQL Editorze projektu ytbwmmqwbfcugouourih.
+
+-- 43.1 — session_question_set: wspólny zbiór pytań sesji (funkcja wewnętrzna).
+-- Wywoływana tylko z funkcji SECURITY DEFINER (właściciel ma EXECUTE);
+-- anon/authenticated nie mają do niej dostępu.
+CREATE OR REPLACE FUNCTION public.session_question_set(p_session_id UUID)
+RETURNS TABLE (q_no INT, question_id UUID, module INT, tpq INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH sp AS (SELECT items FROM public.session_plans WHERE session_id = p_session_id),
+  planned AS (
+    SELECT ((e->>'i')::INT + 1) AS q_no, (e->>'id')::UUID AS question_id,
+           (e->>'m')::INT AS module, (e->>'tpq')::INT AS tpq
+    FROM sp, jsonb_array_elements(sp.items) e
+  ),
+  pool AS (
+    SELECT (row_number() OVER (ORDER BY q.module, q.sort_order, q.id))::INT AS q_no, q.id AS question_id,
+           q.module, COALESCE(m.time_per_q, 60) AS tpq
+    FROM public.questions q LEFT JOIN public.modules m ON m.id = q.module
+    WHERE q.is_practice = false
+      AND q.city = (SELECT s.city FROM public.quiz_sessions s WHERE s.id = p_session_id)
+      AND NOT EXISTS (SELECT 1 FROM sp)
+  )
+  SELECT * FROM planned UNION ALL SELECT * FROM pool;
+$$;
+REVOKE EXECUTE ON FUNCTION public.session_question_set(UUID) FROM PUBLIC, anon, authenticated;
+
+-- 43.2 — get_session_results: mianownik z planu, brak odpowiedzi = błędna,
+-- średni czas z brakami liczonymi jako pełny czas pytania. Ranking: poprawne DESC,
+-- średni czas ASC. Sygnatura bez zmian (SC6).
+CREATE OR REPLACE FUNCTION public.get_session_results(p_session_id UUID)
+RETURNS TABLE (participant_code TEXT, participant_name TEXT, city TEXT, correct_count BIGINT, total_count BIGINT, avg_response_time_ms INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH qs AS (SELECT * FROM public.session_question_set(p_session_id)),
+  n AS (SELECT COUNT(*)::BIGINT AS n FROM qs),
+  p AS (
+    SELECT a.participant_code AS code, MAX(a.participant_name) AS name, MAX(a.city) AS city
+    FROM public.answers a WHERE a.session_id = p_session_id
+    GROUP BY a.participant_code
+  ),
+  g AS (  -- uczestnik × pytanie z planu; brak wiersza = błędna, czas = pełny czas pytania (G6)
+    SELECT p.code, p.name, p.city,
+           COUNT(*) FILTER (WHERE a.is_correct = true)::BIGINT AS correct,
+           ROUND(AVG(COALESCE(a.response_time_ms, a.response_time_s * 1000, qs.tpq * 1000)))::INT AS avg_ms
+    FROM p CROSS JOIN qs
+    LEFT JOIN public.answers a ON a.session_id = p_session_id AND a.participant_code = p.code AND a.question_id = qs.question_id
+    GROUP BY p.code, p.name, p.city
+  ),
+  legacy AS (  -- zbiór pytań pusty (brak planu i pusta pula) → dotychczasowe zachowanie §31
+    SELECT a.participant_code AS code, MAX(a.participant_name) AS name, MAX(a.city) AS city,
+           COUNT(*) FILTER (WHERE a.is_correct = true)::BIGINT AS correct, COUNT(*)::BIGINT AS total,
+           ROUND(AVG(COALESCE(a.response_time_ms, a.response_time_s * 1000)))::INT AS avg_ms
+    FROM public.answers a WHERE a.session_id = p_session_id AND (SELECT n FROM n) = 0
+    GROUP BY a.participant_code
+  ),
+  allr AS (
+    SELECT g.code, g.name, g.city, g.correct, (SELECT n FROM n) AS total, g.avg_ms FROM g WHERE (SELECT n FROM n) > 0
+    UNION ALL SELECT code, name, city, correct, total, avg_ms FROM legacy
+  )
+  SELECT code, name, city, correct, total, avg_ms FROM allr
+  WHERE COALESCE(public.get_my_role(), '') IN ('city_admin','superadmin')
+  ORDER BY correct DESC, avg_ms ASC NULLS LAST;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_session_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_results(UUID) TO authenticated;
+
+-- 43.3 — get_session_detailed_results: uczestnicy z answers TEJ sesji, pytania
+-- i kolejność z planu (fallback: pula miasta). Brak wiersza w answers = brak
+-- odpowiedzi (błędna, czas = pełny czas pytania). Sygnatura bez zmian (SC6, §37.4).
+CREATE OR REPLACE FUNCTION public.get_session_detailed_results(p_session_id UUID)
+RETURNS TABLE (
+  participant_code TEXT,
+  participant_name TEXT,
+  city             TEXT,
+  q_no             INT,
+  module           INT,
+  module_name      TEXT,
+  question         TEXT,
+  chosen_label     TEXT,
+  chosen_text      TEXT,
+  correct_label    TEXT,
+  correct_text     TEXT,
+  is_correct       BOOLEAN,
+  response_time_ms INT
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH qs AS (SELECT * FROM public.session_question_set(p_session_id)),
+  p AS (  -- uczestnicy z odpowiedzi TEJ sesji (nie z kolumny session_id kodu — §24 przepina kod na najnowszą sesję)
+    SELECT a.participant_code AS code,
+           COALESCE(NULLIF(btrim(MAX(a.participant_name)), ''),
+                    NULLIF(btrim(MAX(pc.name) || ' ' || MAX(pc.surname)), ''), a.participant_code) AS full_name,
+           COALESCE(MAX(a.city), MAX(pc.city)) AS city
+    FROM public.answers a LEFT JOIN public.participant_codes pc ON pc.code = a.participant_code
+    WHERE a.session_id = p_session_id
+    GROUP BY a.participant_code
+  )
+  SELECT p.code, p.full_name, p.city, qs.q_no, qs.module,
+         COALESCE(m.name, 'Moduł ' || qs.module),
+         COALESCE(q.q, '(pytanie usunięte)'),
+         CASE WHEN a.chosen IS NOT NULL THEN chr(65 + a.chosen) END,
+         CASE WHEN a.chosen IS NOT NULL THEN q.opts[a.chosen + 1] END,
+         CASE WHEN q.ans IS NOT NULL THEN chr(65 + q.ans) END,
+         q.opts[q.ans + 1],
+         COALESCE(a.is_correct, false),
+         COALESCE(a.response_time_ms, a.response_time_s * 1000, qs.tpq * 1000)::INT
+  FROM p CROSS JOIN qs
+  LEFT JOIN public.questions q ON q.id = qs.question_id
+  LEFT JOIN public.answers a ON a.session_id = p_session_id AND a.participant_code = p.code AND a.question_id = qs.question_id
+  LEFT JOIN public.modules m ON m.id = qs.module
+  WHERE COALESCE(public.get_my_role(), '') IN ('city_admin','superadmin')
+  ORDER BY p.full_name, p.code, qs.q_no;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_session_detailed_results(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_detailed_results(UUID) TO authenticated;
+
+-- 43.4 — znacznik wgrania sekcji 43 (dla `npm run verify-prod`).
+CREATE OR REPLACE FUNCTION public.schema_marker_43()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_43() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_43() TO anon, authenticated;
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

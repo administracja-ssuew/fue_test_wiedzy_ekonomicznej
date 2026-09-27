@@ -33,11 +33,12 @@ const W = {
   ),
 };
 
-export default function Ended({ participant, myPts, allAnswers, isPractice, onGoHome }) {
+// Jeden ekran końca gry (06-15, G4/G6): pokazywany automatycznie od fazy finished/results,
+// bez czekania na admina. Wynik = poprawne (odsłonięte przez serwer) / liczba pytań w planie.
+// perModule: [{ id, ok, total }] z planu; pending — ostatnie odpowiedzi jeszcze bez is_correct.
+export default function Ended({ participant, correctN = 0, totalQ = 0, perModule = [], pending = false, isPractice, onGoHome }) {
   const MODULES = useModules();
-  // Wynik = liczba poprawnych odpowiedzi (bez punktów).
-  const totalQ   = allAnswers.length;
-  const correctN = allAnswers.filter((a) => a.correct).length;
+  const modInfo = (id) => MODULES.find((m) => m.id === id) || { id, name: `Moduł ${id}`, icon: "📘", color: "#6B21E8" };
   return (
     <div style={W.wrap}>
       <div className="fue-page" style={{ justifyContent: "center", alignItems: "center", padding: "36px 28px", textAlign: "center" }}>
@@ -49,35 +50,39 @@ export default function Ended({ participant, myPts, allAnswers, isPractice, onGo
         )}
         <div className="pi" style={{ fontSize: 64, marginBottom: 16 }}>{isPractice ? "🔬" : "🏆"}</div>
         <h2 className="su" style={{ fontFamily: '"Bebas Neue"', fontSize: 52, letterSpacing: 2, animationDelay: ".06s" }}>
-          {isPractice ? "Próba zakończona!" : "Ukończyłeś Test!"}
+          {isPractice ? "Próba zakończona!" : "Koniec testu"}
         </h2>
-        <p className="su" style={{ color: "#9B89CC", fontSize: 15, marginTop: 6, lineHeight: 1.7, animationDelay: ".12s" }}>
-          {isPractice ? "To był próbny test — wyniki nie są oficjalne." : "Dziękujemy za udział,"}<br />
-          <strong style={{ color: "#EDE9FE" }}>{participant?.name} {participant?.surname}</strong>!
-        </p>
+        {isPractice && (
+          <p className="su" style={{ color: "#9B89CC", fontSize: 15, marginTop: 6, lineHeight: 1.7, animationDelay: ".12s" }}>
+            To był próbny test — wyniki nie są oficjalne.
+          </p>
+        )}
         <div className="su" style={{ ...W.card({ padding: "24px", marginTop: 24, borderColor: "rgba(16,217,160,.3)", background: "rgba(16,217,160,.06)" }), animationDelay: ".18s", width: "100%" }}>
-          <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 6 }}>Poprawne odpowiedzi</p>
+          <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 6 }}>Twój wynik</p>
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 56, color: "#10D9A0", lineHeight: 1 }}>{correctN} / {totalQ}</p>
           <p style={{ fontSize: 13, color: "#9B89CC" }}>poprawnych odpowiedzi</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 16 }}>
-            {MODULES.map((m) => {
-              const inMod = allAnswers.filter((a) => a.module === m.id);
-              if (!inMod.length) return null;
-              const okMod = inMod.filter((a) => a.correct).length;
-              return (
-                <div key={m.id} style={{ textAlign: "center" }}>
-                  <p style={{ fontSize: 16 }}>{m.icon || "•"}</p>
-                  <p style={{ fontFamily: '"Bebas Neue"', fontSize: 18, color: m.color }}>{okMod}/{inMod.length}</p>
-                  <p style={{ fontSize: 9, color: "#9B89CC" }}>{m.name.split(" ")[0]}</p>
-                </div>
-              );
-            })}
-          </div>
+          {pending && <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 6 }}>Aktualizuję wynik…</p>}
+          {perModule.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(5, Math.max(1, perModule.length))},1fr)`, gap: 8, marginTop: 16 }}>
+              {perModule.map((pm) => {
+                const m = modInfo(pm.id);
+                return (
+                  <div key={pm.id} style={{ textAlign: "center" }}>
+                    <p style={{ fontSize: 16 }}>{m.icon || "•"}</p>
+                    <p style={{ fontFamily: '"Bebas Neue"', fontSize: 18, color: m.color }}>{pm.ok}/{pm.total}</p>
+                    <p style={{ fontSize: 9, color: "#9B89CC" }}>{String(m.name || `Moduł ${pm.id}`).split(" ")[0]}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div className="su" style={{ ...W.card({ padding: "16px", marginTop: 12, borderColor: "rgba(245,197,24,.3)", background: "rgba(245,197,24,.06)" }), animationDelay: ".24s", width: "100%" }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#F5C518", marginBottom: 4 }}>⏳ Poczekaj na ogłoszenie organizatora</p>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "#F5C518", marginBottom: 4 }}>
+            Dziękujemy za udział, {participant?.name} {participant?.surname}!
+          </p>
           <p style={{ fontSize: 13, color: "#9B89CC", lineHeight: 1.6 }}>
-            Wyniki zostaną podane za chwilę na miejscu.
+            Ranking i podium ogłosimy na sali.
           </p>
         </div>
         <button className="su" style={{ ...W.btn("ghost", { marginTop: 20 }), animationDelay: ".3s" }}

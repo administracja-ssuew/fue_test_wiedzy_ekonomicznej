@@ -11,7 +11,6 @@ import useWakeLock from "./hooks/useWakeLock.js";
 
 import Welcome        from "./screens/Welcome.jsx";
 import Break          from "./screens/Break.jsx";
-import WaitingResults from "./screens/WaitingResults.jsx";
 import CodeEntry   from "./screens/CodeEntry.jsx";
 import AdminLogin  from "./screens/AdminLogin.jsx";
 import Lobby       from "./screens/Lobby.jsx";
@@ -120,6 +119,7 @@ export default function App() {
       delete document.body.dataset.fueRemaining;
       delete document.body.dataset.fueLocked;
       delete document.body.dataset.fueChoice;
+      delete document.body.dataset.fueBreak;
       return;
     }
     document.body.dataset.fuePhase = gamePhase;
@@ -127,7 +127,9 @@ export default function App() {
     document.body.dataset.fueRemaining = String(gv.secondsLeft ?? "");
     document.body.dataset.fueLocked = myCurrent ? "1" : "0";
     document.body.dataset.fueChoice = myCurrent?.chosen != null ? (ANSWER_LABELS[myCurrent.chosen] ?? "") : "";
-  }, [screen, gamePhase, gv.idx, gv.secondsLeft, myCurrent]);
+    // Przerwa planowa (po module 2/4) vs ręczna pauza — obie mają fazę „paused”.
+    document.body.dataset.fueBreak = gv.plannedBreak ? "1" : "0";
+  }, [screen, gamePhase, gv.idx, gv.secondsLeft, myCurrent, gv.plannedBreak]);
 
   // #5 — wypchnij stan podium na Live View (projektor). Anon nie ma dostępu do
   // wyników, więc admin rozgłasza ranking + krok odsłaniania na kanale miasta.
@@ -294,18 +296,32 @@ export default function App() {
           correctTotal={game.correctTotal} isDesktop={isDesktop} isPractice={isPracticeSession}
           participantCode={participant.code} sessionId={game.session?.id} onPick={game.pick} />;
 
-      case "paused":
+      case "paused": {
+        // Przerwa planowa (06-12): „Przerwa” + następny moduł — z projekcji lokalnej, także
+        // zanim zamiatacz zapisze pauzę. Ręczna pauza admina: „Wstrzymano”.
+        if (gv.plannedBreak) {
+          const nm = gv.nextModule != null ? MODULES.find((m) => m.id === gv.nextModule) : null;
+          return <Break participant={participant} nextModule={gv.nextModule} nextModuleName={nm?.name ?? null} nextModuleIcon={nm?.icon ?? null} />;
+        }
         return <Break participant={participant} nextModule={gv.item?.m} isAdminPause />;
+      }
 
+      // Jeden ekran końca gry (G4): od finished (koniec pytań) przez results do ended —
+      // bez „czekaj na admina”. Mianownik = liczba pytań w planie (G6); poprawność tylko
+      // z danych odsłoniętych przez serwer (hook dociąga snapshot przy wejściu w finished).
       case "finished":
-        return <WaitingResults participant={participant} />;
-
       case "results":
       case "ended": {
-        const allAnswers = Object.entries(game.myAnswers).map(([qId, a]) => ({
-          qId, module: gamePlan.find((x) => x.id === qId)?.m, picked: a.chosen, correct: a.correct === true, pts: 0,
+        const planIds = new Set(gamePlan.map((x) => x.id));
+        const totalQ = gamePlan.length || Object.keys(game.myAnswers).length;
+        const correctN = Object.entries(game.myAnswers)
+          .filter(([qid, a]) => a?.correct === true && (!gamePlan.length || planIds.has(qid))).length;
+        const pending = gamePlan.some((x) => { const a = game.myAnswers[x.id]; return a && a.chosen != null && a.correct == null; });
+        const perModule = [...new Set(gamePlan.map((x) => x.m))].map((m) => ({
+          id: m, total: gamePlan.filter((x) => x.m === m).length,
+          ok: gamePlan.filter((x) => x.m === m && game.myAnswers[x.id]?.correct === true).length,
         }));
-        return <Ended participant={participant} myPts={0} allAnswers={allAnswers} isPractice={isPracticeSession} onGoHome={resetApp} />;
+        return <Ended participant={participant} correctN={correctN} totalQ={totalQ} perModule={perModule} pending={pending} isPractice={isPracticeSession} onGoHome={resetApp} />;
       }
 
       case "legacy":

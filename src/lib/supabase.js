@@ -1041,15 +1041,19 @@ function demoParticipantState(rawCode, sessionId, includePlan) {
 }
 
 // Jeden snapshot stanu uczestnika. t0/t1 wokół wywołania → próbka zegara (server_now).
-export async function getParticipantState(code, { sessionId = null, includePlan = true } = {}) {
+// signal (AbortController) — hook porzuca zawieszone żądanie po limicie czasu (G7, 06-17);
+// anulowanie zwalnia połączenie przeglądarki zamiast trzymać je do odpowiedzi.
+export async function getParticipantState(code, { sessionId = null, includePlan = true, signal = null } = {}) {
   const t0 = Date.now();
   if (DEMO) {
     const data = demoParticipantState(code, sessionId, includePlan);
     return { data, error: null, t0, t1: Date.now() };
   }
-  const { data, error } = await supabase.rpc("get_participant_state", {
+  let req = supabase.rpc("get_participant_state", {
     p_code: code, p_session_id: sessionId, p_include_plan: includePlan,
   });
+  if (signal && typeof req.abortSignal === "function") req = req.abortSignal(signal);
+  const { data, error } = await req;
   const t1 = Date.now();
   if (error) {
     return { data: null, error: isMissingFn(error) ? "Na bazie brak sekcji 39 (get_participant_state) — wgraj SQL." : error.message, t0, t1 };

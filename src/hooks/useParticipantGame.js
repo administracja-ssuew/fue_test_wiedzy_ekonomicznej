@@ -22,6 +22,12 @@ const RETRY_MS = 700;
 // Maksymalne opóźnienie zmiany fazy przez View Transition (callback bywa odkładany przy
 // zdławionym renderze) — po tym czasie przejście jest pomijane, a widok ustawiany wprost.
 const VT_MAX_DELAY_MS = 150;
+// G7 (06-17, przebieg 05): jedno żądanie snapshotu utknęło na 20,9 s i zablokowało pobranie
+// planu po starcie. Snapshot w locie żyje najwyżej SNAPSHOT_TIMEOUT_MS, a gdy telefon ma kotwicę
+// bez planu, snapshot wysłany PRZED ostatnim wierszem Realtime — najwyżej STALE_PLAN_WAIT_MS.
+const SNAPSHOT_TIMEOUT_MS = 4000;
+const STALE_PLAN_WAIT_MS = 1500;
+const STALL_RETRY_MAX_MS = 8000;
 
 // Liczba poprawnych = wpisy z correct === true (snapshot + lokalnie odsłonięte), więc
 // odpowiedź nigdy nie jest liczona dwa razy.
@@ -101,6 +107,9 @@ export default function useParticipantGame(participant) {
   const finishedSnapRef = useRef(null);       // session.id, dla której pobrano snapshot końca gry
   const rowSeqRef = useRef(0);                // licznik wierszy Realtime (świeżość snapshotu, G2/H1)
   const vtRef = useRef(null);                 // trwające View Transition (bez nakładania przejść)
+  const flightRef = useRef(null);             // snapshot w locie: { sentAt, seq, expireAt }
+  const stallRef = useRef(0);                 // kolejne przekroczenia limitu (rozrzut ponowień)
+  const retryTimerRef = useRef(null);         // ponowienie po przekroczeniu limitu
 
   const later = useCallback((fn, ms) => {
     const t = setTimeout(() => { timeoutsRef.current.delete(t); fn(); }, ms);
@@ -166,11 +175,22 @@ export default function useParticipantGame(participant) {
         includePlan: !!(prev?.includePlan || includePlan),
         sessionIdHint: sessionIdHint ?? prev?.sessionIdHint,
       };
+      // G7 (06-17): kotwica bez planu = brak fazy (ekran ładowania). Snapshot w locie wysłany
+      // PRZED ostatnim wierszem Realtime (np. siatka bezpieczeństwa z lobby, a potem start) nie
+      // może trzymać planu dłużej niż STALE_PLAN_WAIT_MS od wysłania — porzucamy go i od razu
+      // idzie oczekujące wywołanie z planem.
+      const g = gameRef.current;
+      const f = flightRef.current;
+      if (f && !g.plan && g.session?.plan_anchor_at != null && f.seq !== rowSeqRef.current) {
+        f.expireAt(f.sentAt + STALE_PLAN_WAIT_MS);
+      }
       return;
     }
     inFlightRef.current = true;
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     let needPlan = false;
     let needFresh = false;
+    let stalled = false;
     try {
       const cur = gameRef.current;
       let inc = includePlan ?? !cur.plan;
@@ -179,16 +199,59 @@ export default function useParticipantGame(participant) {
       // Świeżość (G2/H1): wiersz Realtime odebrany w trakcie RPC może być nowszy niż stan
       // w odpowiedzi — wtedy pola sterujące zostają z Realtime, a snapshot jest dociągany ponownie.
       const seq0 = rowSeqRef.current;
-      const { data, error, t0, t1 } = await getParticipantState(p.code, {
-        sessionId: snapshotSessionId(sessionIdHint, cur.session), includePlan: inc,
+      // Limit czasu (G7): wyścig odpowiedzi z terminem. Po terminie żądanie jest anulowane,
+      // a jego późniejsza odpowiedź — ignorowana (obietnica już rozstrzygnięta), więc stary
+      // stan nigdy nie nadpisze nowszego. Zwykły setTimeout (nie `later`): sprzątanie
+      // odmontowania w StrictMode nie może skasować terminu żądania, które wciąż wisi.
+      const res = await new Promise((resolve) => {
+        const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+        const sentAt = Date.now();
+        let due = sentAt + SNAPSHOT_TIMEOUT_MS;
+        let settled = false;
+        let timer = null;
+        const flight = { sentAt, seq: seq0, expireAt: null };
+        const finish = (r) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (flightRef.current === flight) flightRef.current = null;
+          resolve(r);
+        };
+        const expire = () => {
+          finish({ data: null, error: "timeout", timedOut: true });
+          try { ctrl?.abort(); } catch (_) { /* nieistotne */ }
+        };
+        flight.expireAt = (at) => {
+          if (settled || at >= due) return;
+          due = at;
+          clearTimeout(timer);
+          timer = setTimeout(expire, Math.max(0, at - Date.now()));
+        };
+        flightRef.current = flight;
+        timer = setTimeout(expire, SNAPSHOT_TIMEOUT_MS);
+        let req;
+        try {
+          req = getParticipantState(p.code, {
+            sessionId: snapshotSessionId(sessionIdHint, cur.session), includePlan: inc, signal: ctrl?.signal ?? null,
+          });
+        } catch (e) { req = Promise.reject(e); }
+        Promise.resolve(req).then(finish, (e) => finish({ data: null, error: String(e?.message || e) }));
       });
+      const { data, error, t0, t1 } = res;
       if (disposedRef.current || participantRef.current?.code !== p.code) return;
+      if (res.timedOut) {
+        // Stan w pamięci zostaje (projekcja z planu działa dalej); ponowienie w finally.
+        stalled = true;
+        stallRef.current += 1;
+        return;
+      }
       if (error || !data) {
         // Offline / błąd: projekcja z planu w pamięci działa dalej; „error” tylko gdy
         // nie mamy czego pokazać.
         if (!gameRef.current.session) setLoad("error");
         return;
       }
+      stallRef.current = 0;
       addClockSample({ t0, t1, serverMs: Number(data.server_now) });
       if (data.error === "invalid code") { setLoad("invalid_code"); return; }
 
@@ -223,6 +286,21 @@ export default function useParticipantGame(participant) {
       const pend = pendingRef.current;
       pendingRef.current = null;
       if (pend && !disposedRef.current) snapshot(pend);
+      else if (stalled && !disposedRef.current) {
+        // Ponowienie po przekroczeniu limitu. Bez sesji albo z kotwicą bez planu telefon nie ma
+        // czego pokazać → pierwsze od razu, kolejne z rozrzutem 0–1 s. Inaczej projekcja działa,
+        // więc z rozrzutem i narastającą przerwą (0,5–1 s, 1–2 s, … do 8 s) — 500 telefonów
+        // na przeciążonym serwerze nie może ponawiać wszystkie naraz.
+        const g = gameRef.current;
+        const n = stallRef.current;
+        const urgent = !g.session || (!g.plan && g.session.plan_anchor_at != null);
+        const base = Math.min(STALL_RETRY_MAX_MS, 1000 * 2 ** Math.max(0, n - 1));
+        const delay = urgent ? (n > 1 ? Math.random() * 1000 : 0) : base * (0.5 + Math.random() / 2);
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          if (!disposedRef.current) snapshot({});
+        }, delay);
+      }
     }
   }, [commit, setLoad]);
 
@@ -288,6 +366,7 @@ export default function useParticipantGame(participant) {
     for (const t of timeoutsRef.current) clearTimeout(t);
     timeoutsRef.current.clear();
     jitterRef.current = null;
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
   }, []);
 
   // ── Ticker rAF ─────────────────────────────────────────────────────────────

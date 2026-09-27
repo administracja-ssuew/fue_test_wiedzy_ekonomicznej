@@ -502,11 +502,14 @@ export async function getSessionResults(sessionId) {
       if (a.isCorrect) grouped[a.participantCode].correct += 1;
       if (a.responseTimeS != null) { grouped[a.participantCode].totalTime += a.responseTimeS; grouped[a.participantCode].timedAnswers += 1; }
     }
+    // Mianownik z planu sesji (G6, lustro sekcji 43) — brak odpowiedzi = błędna.
+    const planLen = demoPlan(sessionId)?.length || 0;
     return Object.values(grouped)
       .sort((a, b) => (b.correct - a.correct) || ((a.timedAnswers ? a.totalTime / a.timedAnswers : 1e9) - (b.timedAnswers ? b.totalTime / b.timedAnswers : 1e9)))
       .map((g) => ({
-        code: g.code, name: g.name, city: g.city, correct: g.correct, total: g.total,
-        avgResponseTime: g.timedAnswers ? Math.round(g.totalTime / g.timedAnswers) : null,
+        code: g.code, name: g.name, city: g.city, correct: g.correct, total: planLen || g.total,
+        // W MS — tak jak zwraca get_session_results (sekcja 31/43); panel dzieli przez 1000.
+        avgResponseTime: g.timedAnswers ? Math.round((g.totalTime / g.timedAnswers) * 1000) : null,
       }));
   }
   // Use RPC to aggregate on DB side — avoids PostgREST 1000-row default limit

@@ -13,6 +13,7 @@ import {
   getSessionPlan, getSweeperStatus, adminSweepSession,
 } from "../lib/supabase.js";
 import { planPosition, toMs } from "../lib/plan.js";
+import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
 import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
@@ -859,8 +860,8 @@ function SesjaTab({ city, adminId, onPodium }) {
       const s = String(v ?? "");
       return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime ?? ""])];
-    const csv = "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n");
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(2).replace(".", ",") : ""])];
+    const csv ="﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -883,74 +884,10 @@ function SesjaTab({ city, adminId, onPodium }) {
       if (error) { alert("Nie udało się pobrać szczegółowych wyników: " + error); return; }
       if (!rows.length) { alert("Brak danych do eksportu — nikt jeszcze nie odpowiadał w tej sesji."); return; }
 
-      const { buildXlsx } = await import("../lib/xlsx.js");
-      const secs = (ms) => (ms == null ? "" : Math.round(ms / 100) / 10);
-
-      // Arkusz 1 — ranking (ta sama kolejność co na podium).
-      const ranking = [
-        ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Skuteczność %", "Śr. czas (s)"],
-        ...results.map((r, i) => [
-          i + 1, r.code, r.name, r.city || city, r.correct, r.total,
-          r.total ? Math.round((r.correct / r.total) * 1000) / 10 : 0,
-          secs(r.avgResponseTime),
-        ]),
-      ];
-
-      // Arkusz 2 — wszystko płasko, jeden wiersz = jedna odpowiedź.
-      const flat = [
-        ["Kod", "Uczestnik", "Miasto", "Nr pyt.", "Moduł", "Pytanie", "Odp.", "Treść odpowiedzi", "Poprawna", "Treść poprawnej", "Trafione", "Czas (s)"],
-        ...rows.map((r) => [
-          r.participantCode, r.participantName, r.city, r.qNo, r.moduleName, r.question,
-          r.chosenLabel, r.chosenText, r.correctLabel, r.correctText,
-          r.chosenLabel ? (r.isCorrect ? "TAK" : "NIE") : "brak odp.", secs(r.responseTimeMs),
-        ]),
-      ];
-
-      // Arkusze 3..N — karta każdego uczestnika.
-      const byCode = new Map();
-      for (const r of rows) {
-        if (!byCode.has(r.participantCode)) byCode.set(r.participantCode, []);
-        byCode.get(r.participantCode).push(r);
-      }
-      const perPerson = [...byCode.entries()].map(([code, list]) => {
-        const p = list[0];
-        const answered = list.filter((r) => r.chosenLabel);
-        const correct = list.filter((r) => r.isCorrect).length;
-        const times = answered.map((r) => r.responseTimeMs).filter((t) => t != null);
-        const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
-        return {
-          name: `${p.participantName} ${code}`,
-          rows: [
-            ["Uczestnik", p.participantName],
-            ["Kod", code],
-            ["Miasto", p.city],
-            ["Poprawne odpowiedzi", correct, `z ${list.length}`],
-            ["Bez odpowiedzi", list.length - answered.length],
-            ["Średni czas odpowiedzi (s)", secs(avg)],
-            [],
-            ["Nr", "Moduł", "Pytanie", "Twoja odp.", "Treść", "Poprawna", "Treść poprawnej", "Wynik", "Czas (s)"],
-            ...list.sort((a, b) => a.qNo - b.qNo).map((r) => [
-              r.qNo, r.moduleName, r.question,
-              r.chosenLabel, r.chosenText, r.correctLabel, r.correctText,
-              r.chosenLabel ? (r.isCorrect ? "✓ dobrze" : "✗ źle") : "— brak odpowiedzi",
-              secs(r.responseTimeMs),
-            ]),
-          ],
-        };
-      });
-
-      const blob = buildXlsx([
-        { name: "Ranking", rows: ranking },
-        { name: "Wszystkie odpowiedzi", rows: flat },
-        ...perPerson,
-      ]);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `wyniki_${city}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-      logEvent({ type: "results_exported_xlsx", sessionId: session.id, city, actor: adminId, detail: { participants: perPerson.length, rows: rows.length } });
+      // Budowa arkuszy (ranking, płaska tabela, karta per uczestnik) — src/lib/resultsXlsx.js,
+      // ta sama funkcja co w zakładce Historia.
+      await downloadResultsXlsx({ results, rows, city, fileName: resultsFileName({ city, dateIso: session.created_at }) });
+      logEvent({ type: "results_exported_xlsx", sessionId: session.id, city, actor: adminId, detail: { participants: new Set(rows.map((r) => r.participantCode)).size, rows: rows.length } });
     } finally {
       setXlsxBusy(false);
     }
@@ -960,7 +897,7 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   const st     = session?.status || "waiting";
   const stCol  = STATUS_COLOR[st];
-  const totalQ = cityQuestions.length;
+  const totalQ = plan?.length || cityQuestions.length;
   const curQ   = (session?.current_question_idx ?? 0) + 1;
   const openLive = () => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank");
 
@@ -1311,7 +1248,7 @@ function SesjaTab({ city, adminId, onPodium }) {
                   {i < 5 && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px", flexShrink: 0 }}>FINAŁ</span>}
                   <div style={{ textAlign: "right" }}>
                     <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#10D9A0", lineHeight: 1 }}>{r.correct}<span style={{ fontSize: 13, color: "#9B89CC" }}>/{r.total}</span></p>
-                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${r.avgResponseTime}s` : "—"}</p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(1).replace(".", ",")} s` : "—"}</p>
                   </div>
                 </div>
               ))}
@@ -1639,6 +1576,7 @@ function HistoriaTab({ city }) {
   const [sel, setSel]           = useState(null);
   const [results, setResults]   = useState([]);
   const [loading, setLoading]   = useState(false);
+  const [xlsxBusy, setXlsxBusy] = useState(false);
 
   const reload = () => getEndedSessions(city).then(setSessions);
   useEffect(() => { reload(); setSel(null); setResults([]); }, [city]);
@@ -1668,6 +1606,24 @@ function HistoriaTab({ city }) {
     const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Śr. czas (s)"];
     const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(2).replace(".", ",") : ""])];
     downloadCsv(`historia_${sel?.city || city}_${(sel?.created_at || "").slice(0, 10)}.csv`, "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n"));
+  };
+
+  // XLSX per uczestnik dla sesji z archiwum — uczestnicy z answers tej sesji (sekcja 43),
+  // więc kody przepięte później na nowszą sesję nie znikają z raportu.
+  const exportXlsx = async () => {
+    if (!sel?.id) return;
+    setXlsxBusy(true);
+    try {
+      const { rows, error } = await getSessionDetailedResults(sel.id);
+      if (error) { alert("Nie udało się pobrać szczegółowych wyników: " + error); return; }
+      if (!rows.length) { alert("Brak danych do eksportu — w tej sesji nie ma odpowiedzi."); return; }
+      await downloadResultsXlsx({
+        results, rows, city: sel.city || city,
+        fileName: resultsFileName({ city: sel.city || city, dateIso: sel.created_at, name: sel.name }),
+      });
+    } finally {
+      setXlsxBusy(false);
+    }
   };
 
   const fmt = (iso) => { try { return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" }); } catch { return iso; } };
@@ -1701,8 +1657,9 @@ function HistoriaTab({ city }) {
                 {loading ? <p style={{ color: "#9B89CC" }}>Ładowanie rankingu…</p>
                   : results.length === 0 ? <p style={{ color: "#9B89CC" }}>Brak wyników w tej sesji.</p>
                   : <>
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginBottom: 10 }}>
                         <button onClick={exportCsv} style={C.btn("ghost", { fontSize: 12, padding: "6px 12px" })}>📥 CSV</button>
+                        <button disabled={xlsxBusy} onClick={exportXlsx} title="Skoroszyt z arkuszem dla każdego uczestnika: pytanie po pytaniu, odpowiedź, poprawna, czas" style={C.btn("ghost", { fontSize: 12, padding: "6px 12px", opacity: xlsxBusy ? .5 : 1 })}>{xlsxBusy ? "⏳ Buduję…" : "📊 XLSX (per uczestnik)"}</button>
                       </div>
                       {results.map((r, i) => (
                         <div key={r.code} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, marginBottom: 6,

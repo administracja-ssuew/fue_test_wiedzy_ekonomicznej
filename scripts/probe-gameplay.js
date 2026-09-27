@@ -803,13 +803,22 @@ function attachWsTrace(page, pi) {
     ws.on("framereceived", (f) => {
       const d = dec(f.payload);
       if (!/postgres_changes/.test(d) || !d.includes("plan_anchor_at")) return;
+      if ((trace.raw ||= []).length < 4) trace.raw.push({ pi, frame: d.slice(0, 3000) });
+      // Ramka to JSON: vsn 2.0 → [join_ref, ref, topic, event, payload], vsn 1.0 → { payload }.
+      // Rekord Realtime ma spacje po dwukropku ("status": "running") — regex tylko jako fallback.
+      let rec = null;
+      try { const j = JSON.parse(d); rec = (Array.isArray(j) ? j[4] : j?.payload)?.data?.record ?? null; } catch {}
       const i = d.indexOf('"record"');
       const body = i >= 0 ? d.slice(i) : d;
       const g = (k) => {
-        const m = body.match(new RegExp(`"${k}":(null|"[^"]*"|-?\\d+(?:\\.\\d+)?)`));
+        if (rec) return rec[k] == null ? null : String(rec[k]);
+        const m = body.match(new RegExp(`"${k}":\\s*(null|"[^"]*"|-?\\d+(?:\\.\\d+)?)`));
         return !m || m[1] === "null" ? null : m[1].replace(/"/g, "");
       };
-      trace.rows.push({ pi, t: Date.now(), status: g("status"), pausedMs: num(g("plan_paused_at")), anchorMs: num(g("plan_anchor_at")), holdIdx: g("plan_hold_idx") });
+      // Ramka bez rozpoznanego wiersza (np. odpowiedź systemowa z listą kolumn) nie jest
+      // stanem sesji — bez tego H1 liczyło fałszywe „stare snapshoty” (status ?, kotwica ∅).
+      if (g("status") == null) return;
+      trace.rows.push({ pi, t: Date.now(), status: g("status"),pausedMs: num(g("plan_paused_at")), anchorMs: num(g("plan_anchor_at")), holdIdx: g("plan_hold_idx") });
     });
   });
 }
@@ -1313,7 +1322,7 @@ function dumpTrace(samples) {
     }));
     fs.writeFileSync(file, JSON.stringify({
       mode, clockOff: state.clockOff, anchorMs: state.anchorMs, plan: state.plan,
-      startDevs: state.startDevs, pause: modeRes.pause, samples, monitor: state.monitor, phones,
+      startDevs: state.startDevs, pause: modeRes.pause, samples, monitor: state.monitor, phones, rawFrames: trace.raw || [],
     }));
     console.log(`   💾 zrzut: ${file}`);
   } catch (e) {

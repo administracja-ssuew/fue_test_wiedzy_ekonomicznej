@@ -73,6 +73,7 @@
  * czasu pytania ani submit_answer_v2, ani snapshot, ani summary nie ujawniają poprawności.
  */
 
+import fs from "node:fs";
 import { chromium } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { planPosition, toMs } from "../src/lib/plan.js";
@@ -172,6 +173,9 @@ const scenariosDone = () => scenarios.every((s) => s.done);
 const blind = {};
 const wsLog = [];
 const wsFrames = { n: 0 };
+// PROBE_TRACE: snapshoty get_participant_state (wysłanie/odbiór/stan) i wiersze Realtime
+// quiz_sessions — per telefon (pi), czasy w zegarze maszyny sondy (Date.now()).
+const trace = { snaps: [], rows: [] };
 const consoleLog = [];
 
 // ─── SETUP ───────────────────────────────────────────────────────────────────
@@ -545,10 +549,27 @@ async function main() {
         // `document`, nie documentElement — ten ostatni nie istnieje jeszcze w chwili init scriptu.
         }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-fue-phase", "data-fue-q", "data-fue-locked"] });
       });
+      if (TRACE) {
+        // Ślad przyczynowy: dziennik próbek zegara (serverClock.js pisze tylko, gdy tablica
+        // istnieje) i owinięcie startViewTransition (call → callback → updateCallbackDone).
+        await ctx.addInitScript(() => {
+          window.__fueClockLog = [];
+          window.__fueVT = [];
+          const orig = document.startViewTransition ? document.startViewTransition.bind(document) : null;
+          if (orig) document.startViewTransition = (cb) => {
+            const rec = { call: Date.now(), cb: null, done: null, overlap: window.__fueVT.some((r) => r.done == null) };
+            window.__fueVT.push(rec);
+            const vt = orig(() => { rec.cb = Date.now(); return cb && cb(); });
+            vt?.updateCallbackDone?.then(() => { rec.done = Date.now(); }, () => { rec.done = -1; });
+            return vt;
+          };
+        });
+      }
       const p = await ctx.newPage();
       // Podsłuch WebSocket na PIERWSZYM telefonie — to jedyny sposób, żeby odróżnić
       // "aplikacja nie zareagowała" od "zdarzenie w ogóle nie dotarło".
       if (pages.length === 0) { attachWs(p); attachConsole(p); attachSubmitGuard(p); }
+      if (TRACE) attachTrace(p, pages.length);
       await p.goto(APP, { waitUntil: "domcontentloaded" });
       pages.push({ code: c.code, page: p, ctx });
     }
@@ -685,6 +706,13 @@ async function main() {
   } finally {
     monStop.stop = true;
     try { await monDone; } catch {}
+    // Historia faz z DOM (zawsze — start pytań z DOM) oraz VT / dziennik zegara (PROBE_TRACE).
+    const emptyTrace = { phases: [], vt: [], clock: [] };
+    state.phoneTrace = await Promise.all(pages.map((x) => Promise.race([
+      x.page.evaluate("({ phases: window.__fuePhases || [], vt: window.__fueVT || [], clock: window.__fueClockLog || [] })")
+        .catch(() => emptyTrace),
+      sleep(5000).then(() => emptyTrace),
+    ])));
     try { await browser.close(); } catch {}
   }
 
@@ -736,6 +764,52 @@ function attachWs(page) {
       // a nie "event":"postgres_changes" (vsn 1.0.0). Obsługujemy oba formaty — inaczej
       // zmiany wiersza sesji od zamiatacza były niewidoczne i sonda krzyczała „GŁUCHY”.
       else if (/"event":"postgres_changes"|,"postgres_changes",/.test(d)) wsLog.push({ at: Date.now(), kind: "PG_CHANGES", info: "" });
+    });
+  });
+}
+
+// PROBE_TRACE, KAŻDY telefon: snapshoty get_participant_state (wysłanie → odbiór → stan sesji)
+// i wiersze Realtime quiz_sessions. Z nich H1: „stary snapshot” = odpowiedź wysłana PRZED
+// wierszem Realtime, odebrana PO nim, z innym stanem (status / plan_paused_at / plan_anchor_at).
+function attachTrace(page, pi) {
+  const pend = new Map();
+  page.on("request", (rq) => {
+    if (rq.url().includes("/rpc/get_participant_state")) pend.set(rq, { pi, req: Date.now() });
+  });
+  page.on("response", async (rs) => {
+    const rec = pend.get(rs.request());
+    if (!rec) return;
+    pend.delete(rs.request());
+    rec.resp = Date.now();
+    rec.http = rs.status();
+    try {
+      const s = (await rs.json())?.session;
+      rec.status = s?.status ?? null;
+      rec.pausedMs = toMs(s?.plan_paused_at ?? null);
+      rec.anchorMs = toMs(s?.plan_anchor_at ?? null);
+      rec.holdIdx = s?.plan_hold_idx ?? null;
+    } catch {}
+    trace.snaps.push(rec);
+  });
+  attachWsTrace(page, pi);
+}
+// Osobny nasłuch WebSocket (nie rusza licznika wsLog telefonu 1): pola wiersza quiz_sessions
+// z ramek postgres_changes (regex na tekście ramki; oba formaty protokołu vsn 1.0/2.0).
+function attachWsTrace(page, pi) {
+  const dec = (pl) => (typeof pl === "string" ? pl : Buffer.isBuffer(pl) ? pl.toString("utf8") : String(pl ?? ""));
+  const num = (v) => (v == null ? null : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : toMs(v));
+  page.on("websocket", (ws) => {
+    if (!ws.url().includes("realtime")) return;
+    ws.on("framereceived", (f) => {
+      const d = dec(f.payload);
+      if (!/postgres_changes/.test(d) || !d.includes("plan_anchor_at")) return;
+      const i = d.indexOf('"record"');
+      const body = i >= 0 ? d.slice(i) : d;
+      const g = (k) => {
+        const m = body.match(new RegExp(`"${k}":(null|"[^"]*"|-?\\d+(?:\\.\\d+)?)`));
+        return !m || m[1] === "null" ? null : m[1].replace(/"/g, "");
+      };
+      trace.rows.push({ pi, t: Date.now(), status: g("status"), pausedMs: num(g("plan_paused_at")), anchorMs: num(g("plan_anchor_at")), holdIdx: g("plan_hold_idx") });
     });
   });
 }
@@ -1152,6 +1226,101 @@ function reportModes(fail) {
   }
 }
 
+// ─── DIAGNOZA PRZYCZYNOWA (tylko z PROBE_TRACE=1) ────────────────────────────
+// Wskaźniki hipotez G2/G7 (06-13): H1 stary snapshot vs Realtime, H2 View Transitions,
+// H5 skok offsetu zegara telefonu, H6 artefakt próbkowania (DOM vs próbka), H4 (pauza).
+function diagnose(t0) {
+  const tr = state.phoneTrace || [];
+  const rel = (t) => `${((t - t0) / 1000).toFixed(1)}s`;
+  const sgn = (v) => `${v >= 0 ? "+" : ""}${v}`;
+  const devs = state.startDevs || [];
+  console.log("\n🔍 DIAGNOZA (PROBE_TRACE)");
+
+  console.log("   H2 — View Transitions (startViewTransition: call → callback):");
+  tr.forEach((t, pi) => {
+    const vt = t.vt || [];
+    const lat = vt.filter((r) => r.cb != null).map((r) => r.cb - r.call);
+    const noCb = vt.filter((r) => r.cb == null).length;
+    const ov = vt.filter((r) => r.overlap).length;
+    console.log(`     telefon ${pi + 1}: ${vt.length} VT, maks. cb−call ${lat.length ? Math.max(...lat) : "—"} ms, bez callbacku ${noCb}, nakładające się ${ov}`);
+    const starts = devs.filter((d) => d.pi === pi && d.tLocal != null).map((d) => {
+      const v = [...vt].reverse().find((r) => r.call <= d.tLocal);
+      return v ? `q${d.q}: VT ${d.tLocal - v.call} ms przed DOM, cb−call ${v.cb != null ? v.cb - v.call : "∞"} ms${v.overlap ? " (overlap)" : ""}` : `q${d.q}: brak VT`;
+    });
+    if (starts.length) console.log(`       starty: ${starts.join("  ")}`);
+  });
+
+  console.log("   H5 — zegar telefonu (serverNow offset) vs sonda:");
+  tr.forEach((t, pi) => {
+    const cl = t.clock || [];
+    let jump = 0;
+    for (let i = 1; i < cl.length; i++) jump = Math.max(jump, Math.abs((cl[i].offset ?? 0) - (cl[i - 1].offset ?? 0)));
+    const rtts = cl.map((c) => c.rtt).filter((x) => x != null);
+    const at = devs.filter((d) => d.pi === pi).map((d) => {
+      const tl = d.tLocal ?? d.tSampleLocal;
+      const c = tl != null ? [...cl].reverse().find((x) => x.t <= tl) : null;
+      if (!c) return `q${d.q}: —`;
+      const diff = c.offset - state.clockOff;
+      return `q${d.q}: ${sgn(diff)}ms${Math.abs(diff) > 300 ? " ⚠️" : ""}`;
+    });
+    console.log(`     telefon ${pi + 1}: ${cl.length} próbek, maks. skok offsetu ${jump} ms, maks. RTT ${rtts.length ? Math.max(...rtts) : "—"} ms`);
+    if (at.length) console.log(`       offset telefonu − sondy przy starcie: ${at.join("  ")}`);
+  });
+
+  console.log("   H1 — stare snapshoty (wysłane przed wierszem Realtime, odebrane po nim, inny stan):");
+  const neq = (a, b) => (a == null) !== (b == null) || (a != null && Math.abs(a - b) > 2);
+  const st = (x) => `${x.status ?? "?"}/p=${x.pausedMs != null ? rel(x.pausedMs - state.clockOff) : "∅"}/a=${x.anchorMs != null ? rel(x.anchorMs - state.clockOff) : "∅"}`;
+  state.staleSnaps = [];
+  for (let pi = 0; pi < state.codes.length; pi++) {
+    const snaps = trace.snaps.filter((s) => s.pi === pi && s.resp != null);
+    const rows = trace.rows.filter((r) => r.pi === pi);
+    const stale = [];
+    for (const s of snaps) {
+      for (const r of rows) {
+        if (s.req < r.t && r.t < s.resp && (s.status !== r.status || neq(s.pausedMs, r.pausedMs) || neq(s.anchorMs, r.anchorMs))) stale.push({ s, r });
+      }
+    }
+    state.staleSnaps.push(stale.length);
+    console.log(`     telefon ${pi + 1}: ${snaps.length} snapshotów, ${rows.length} wierszy Realtime, starych snapshotów: ${stale.length}`);
+    for (const { s, r } of stale.slice(0, 5)) {
+      console.log(`       snapshot ${rel(s.req)}→${rel(s.resp)} ${st(s)}  vs  wiersz ${rel(r.t)} ${st(r)}`);
+    }
+  }
+
+  console.log("   H6 — start pytania: DOM (MutationObserver) vs próbka co 250 ms:");
+  for (let pi = 0; pi < state.codes.length; pi++) {
+    const ds = devs.filter((d) => d.pi === pi);
+    if (!ds.length) continue;
+    console.log(`     telefon ${pi + 1}: ${ds.map((d) => `q${d.q} DOM ${d.devDom != null ? sgn(d.devDom) : "—"} / próbka ${d.devSample != null ? sgn(d.devSample) : "—"}`).join("  ")}`);
+  }
+
+  const p = modeRes.pause;
+  if (p) console.log(`   H4 — pauza: klik→baza ${p.clickToDbMs ?? "—"} ms, lądowanie ${p.landed ? `${p.landed.phase} q${p.landed.idx + 1}` : "—"} (cel ${p.wantPhase ?? PAUSE_PHASE} q${p.expQ})`);
+}
+
+// Zrzut surowych danych do test-results/ (katalog w .gitignore) — wejście dla 06-DIAG-G2-G7.md.
+function dumpTrace(samples) {
+  try {
+    const mode = [FULL && "full", PAUSE_PHASE && `pauza-${PAUSE_PHASE}`, ADMIN_EXIT && "adminexit",
+      REFRESH && "refresh", OFFLINE && "offline"].filter(Boolean).join("-") || "podst";
+    fs.mkdirSync("test-results", { recursive: true });
+    const file = `test-results/probe-trace-${new Date().toISOString().replace(/:/g, "")}-${mode}.json`;
+    const phones = state.codes.map((_, pi) => ({
+      phases: state.phoneTrace?.[pi]?.phases || [], vt: state.phoneTrace?.[pi]?.vt || [],
+      clock: state.phoneTrace?.[pi]?.clock || [],
+      snaps: trace.snaps.filter((s) => s.pi === pi), rows: trace.rows.filter((r) => r.pi === pi),
+      blind: blind[pi] || [],
+    }));
+    fs.writeFileSync(file, JSON.stringify({
+      mode, clockOff: state.clockOff, anchorMs: state.anchorMs, plan: state.plan,
+      startDevs: state.startDevs, pause: modeRes.pause, samples, monitor: state.monitor, phones,
+    }));
+    console.log(`   💾 zrzut: ${file}`);
+  } catch (e) {
+    console.log(`   ⚠️ zrzut śladu nieudany: ${e.message}`);
+  }
+}
+
 // ─── RAPORT ──────────────────────────────────────────────────────────────────
 // Etap FULL: przerwy planowe (sekcja 42) — każda obsłużona, a w jej trakcie wszystkie
 // telefony w fazie „paused” (i data-fue-break="1", jeśli klient wystawia ten atrybut — 06-15).
@@ -1260,24 +1429,40 @@ function report(samples, tpq, t0) {
 
   // 5. start każdego pytania względem planu (anchor + o), każdy telefon.
   // Pomijamy telefon, który w chwili otwarcia pytania był w trakcie reloadu (REFRESH).
+  // Odchylenie liczymy z chwili zmiany data-fue-phase w DOM (devDom, MutationObserver) — próbka
+  // co 250 ms + page.evaluate na zdławionym telefonie potrafi przyjść SEKUNDY po faktycznej
+  // zmianie ekranu (H6). Z próbki (devSample) tylko wtedy, gdy historia DOM nie obejmuje startu
+  // (np. reload po otwarciu pytania wyczyścił window.__fuePhases).
   let devMax = 0;
   const devLines = [];
+  state.startDevs = [];
+  const fmtDev = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v}ms`);
   for (let pi = 0; pi < state.codes.length; pi++) {
     const parts = [];
+    const hist = state.phoneTrace?.[pi]?.phases || [];
     for (let q = 1; q <= plan.length; q++) {
       const first = samples.find((s) => s.phones[pi]?.phase === "quiz" && s.phones[pi]?.q === q);
       const { anchorMs } = anchorAt(first?.srv ?? srvNow());
       const opens = anchorMs + plan[q - 1].o;
       if ((blind[pi] || []).some(([a, b]) => opens >= a - 500 && opens <= b + 500)) { parts.push(`q${q}: reload`); continue; }
-      if (!first) { fail.push(`telefon ${pi + 1} nie widział pytania ${q} w fazie quiz`); parts.push(`q${q}: —`); continue; }
-      const dev = Math.round(first.srv - opens);
+      const covers = hist.length > 0 && hist[0].t + state.clockOff <= opens;
+      const hDom = covers ? hist.find((h) => h.phase === "quiz" && h.q === q) : null;
+      let devDom = null;
+      if (hDom) {
+        const srvD = hDom.t + state.clockOff;
+        devDom = Math.round(srvD - (anchorAt(srvD).anchorMs + plan[q - 1].o));
+      }
+      const devSample = first ? Math.round(first.srv - opens) : null;
+      if (!first && devDom == null) { fail.push(`telefon ${pi + 1} nie widział pytania ${q} w fazie quiz`); parts.push(`q${q}: —`); continue; }
+      const dev = devDom ?? devSample;
+      state.startDevs.push({ pi, q, devDom, devSample, tLocal: hDom ? hDom.t : null, tSampleLocal: first ? Math.round(first.srv - state.clockOff) : null });
       devMax = Math.max(devMax, Math.abs(dev));
-      parts.push(`q${q}: ${dev >= 0 ? "+" : ""}${dev}ms`);
-      if (Math.abs(dev) > 1500) fail.push(`telefon ${pi + 1}: pytanie ${q} wystartowało ${dev} ms od planu`);
+      parts.push(`q${q}: ${fmtDev(devDom)} (próbka ${fmtDev(devSample)})`);
+      if (Math.abs(dev) > 1500) fail.push(`telefon ${pi + 1}: pytanie ${q} wystartowało ${dev} ms od planu (${devDom != null ? "DOM" : "próbka"})`);
     }
     devLines.push(`   telefon ${pi + 1}: ${parts.join("  ")}`);
   }
-  console.log(`\n🗓️  Start pytań względem planu (maks. |odchylenie| ${devMax} ms, limit 1500) ${devMax > 1500 ? "❌" : "✅"}`);
+  console.log(`\n🗓️  Start pytań względem planu — DOM (próbka) (maks. |odchylenie| ${devMax} ms, limit 1500) ${devMax > 1500 ? "❌" : "✅"}`);
   for (const l of devLines) console.log(l);
 
   // 6. baza: current_question_idx zgodny z planem, status='results' od zamiatacza
@@ -1385,8 +1570,10 @@ function report(samples, tpq, t0) {
   // 10. tryby REFRESH / OFFLINE
   reportModes(fail);
 
-  // PROBE_TRACE=1 — ślad zmian stanu.
-  if (process.env.PROBE_TRACE === "1") {
+  // PROBE_TRACE=1 — ślad zmian stanu + diagnoza przyczynowa + zrzut surowych danych.
+  if (TRACE) {
+    diagnose(t0);
+    dumpTrace(samples);
     console.log("\n🔍 ŚLAD (tylko zmiany):");
     let prev = "";
     for (const s of samples) {

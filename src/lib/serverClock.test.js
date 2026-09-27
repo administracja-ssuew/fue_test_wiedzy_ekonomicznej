@@ -76,3 +76,25 @@ describe("addClockSample — próbki z odpowiedzi snapshotu", () => {
     expect(getClockOffset()).toBe(1000); // 9. próbka wypycha najstarszą
   });
 });
+
+describe("dziennik próbek dla sondy (globalThis.__fueClockLog)", () => {
+  it("brak tablicy → nic; tablica → wpis {kind:'snap', rtt, off, offset}", () => {
+    delete globalThis.__fueClockLog;
+    addClockSample({ t0: 0, t1: 20, serverMs: 1010 });
+    expect(globalThis.__fueClockLog).toBeUndefined();
+
+    globalThis.__fueClockLog = [];
+    try {
+      addClockSample({ t0: 100, t1: 140, serverMs: 1120 });   // rtt 40, off 1120 − 120 = 1000
+      expect(globalThis.__fueClockLog).toHaveLength(1);
+      const e = globalThis.__fueClockLog[0];
+      expect(e.kind).toBe("snap");
+      expect(e.rtt).toBe(40);
+      expect(e.off).toBe(1000);
+      expect(e.offset).toBe(getClockOffset());
+      expect(typeof e.t).toBe("number");
+    } finally {
+      delete globalThis.__fueClockLog;
+    }
+  });
+});

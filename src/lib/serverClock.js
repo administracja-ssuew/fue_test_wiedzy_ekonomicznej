@@ -41,6 +41,16 @@ export function computeOffset(samples) {
   return Math.round(median);
 }
 
+// Dziennik próbek dla sondy (PROBE_TRACE): aktywny tylko, gdy ktoś wcześniej ustawił
+// globalThis.__fueClockLog = [] (init script sondy). W produkcji tablicy nie ma → brak kosztu.
+function traceClock(kind, sample, next) {
+  const log = typeof globalThis !== "undefined" ? globalThis.__fueClockLog : null;
+  if (!Array.isArray(log)) return;
+  log.push({ t: Date.now(), kind, rtt: sample ? sample.t1 - sample.t0 : null,
+             off: sample ? Math.round(sample.serverMs - (sample.t0 + sample.t1) / 2) : null, offset: next });
+  if (log.length > 400) log.splice(0, log.length - 400);
+}
+
 // Próbka z dowolnej odpowiedzi serwera niosącej jego czas (np. snapshot sesji) —
 // darmowa synchronizacja bez dodatkowych wywołań server_now.
 export function addClockSample(sample) {
@@ -49,6 +59,7 @@ export function addClockSample(sample) {
   if (samples.length > SAMPLE_BUFFER) samples = samples.slice(-SAMPLE_BUFFER);
   offset = computeOffset(samples);
   synced = true;
+  traceClock("snap", sample, offset);
 }
 
 async function measureOnce() {
@@ -73,6 +84,7 @@ export async function syncServerClock(rounds = 6) {
     samples = fresh.slice(-SAMPLE_BUFFER);
     offset = computeOffset(samples);
     synced = true;
+    traceClock("sync", fresh[fresh.length - 1] ?? null, offset);
   }
   return offset;
 }

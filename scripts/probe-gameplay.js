@@ -1359,7 +1359,31 @@ function report(samples, tpq, t0) {
   const fail = [];
   const plan = state.plan || [];
   const lastIt = plan[plan.length - 1];
-  const expOf = (q) => { const it = plan[q - 1]; return it ? (it.r - it.o) / 1000 : tpq + 6; };
+  // Auto-skrót panelu (tpq ≥ 45 s, wszyscy odpowiedzieli) i „⏭ Następne” przesuwają kotwicę
+  // WSTECZ bez pauzy — pytanie legalnie trwa krócej niż r − o. W monitorze: dwa kolejne odczyty
+  // running bez plan_paused_at, kotwica mniejsza o > 500 ms. Wznowienie po pauzie/przerwie
+  // przesuwa kotwicę do PRZODU (i poprzedni odczyt ma pausedMs) — tego tu nie liczymy.
+  // Pytanie skrótu: pozycja pod NOWĄ kotwicą (odsłona tego samego pytania), fallback — pod starą
+  // kotwicą w chwili poprzedniego odczytu (faza quiz).
+  const shortcutMs = new Map();
+  const shortcuts = [];
+  for (let i = 1; i < state.monitor.length; i++) {
+    const a = state.monitor[i - 1], b = state.monitor[i];
+    if (a.status !== "running" || b.status !== "running" || a.pausedMs != null || b.pausedMs != null) continue;
+    if (a.anchorMs == null || b.anchorMs == null || b.anchorMs - a.anchorMs >= -500) continue;
+    const posNew = planPosition(plan, b.anchorMs, null, b.srv);
+    const posOld = planPosition(plan, a.anchorMs, null, a.srv);
+    const idx = posNew?.phase === "reveal" ? posNew.idx : posOld?.idx;
+    if (idx == null) continue;
+    const q = idx + 1, d = b.anchorMs - a.anchorMs;
+    shortcutMs.set(q, (shortcutMs.get(q) || 0) + d);
+    shortcuts.push({ q, d });
+  }
+  const expOf = (q) => {
+    const it = plan[q - 1];
+    return it ? (it.r - it.o + (shortcutMs.get(q) || 0)) / 1000 : tpq + 6;
+  };
+  const planOf = (q) => { const it = plan[q - 1]; return it ? (it.r - it.o) / 1000 : tpq + 6; };
   console.log("\n" + "═".repeat(60));
   console.log("📈 RAPORT SONDY");
   console.log("═".repeat(60));
@@ -1378,7 +1402,8 @@ function report(samples, tpq, t0) {
     } else { prevSeenQ = null; prevAt = null; }
   }
   const seg = [...byQ.entries()].sort((a, b) => a[0] - b[0]).map(([q, ms]) => ({ q, ms }));
-  console.log(`\n⏱️  Czas widoczności pytań (pytanie + odsłonięcie; oczekiwany z planu):`);
+  console.log(`\n⏱️  Czas widoczności pytań (pytanie + odsłonięcie; oczekiwany z planu${shortcuts.length ? " − auto-skrót" : ""}):`);
+  if (shortcuts.length) console.log(`   auto-skrót/Następne (kotwica wstecz bez pauzy): ${shortcuts.map((s) => `pyt.${s.q} ${(s.d / 1000).toFixed(1)}s`).join(", ")}`);
   const runEnd = samples[samples.length - 1]?.at ?? 0;
   const lastPhase = samples[samples.length - 1]?.phones?.[0]?.phase;
   const truncated = (lastPhase === "quiz" || lastPhase === "reveal") && runEnd >= RUN_MS - 1000;
@@ -1386,8 +1411,9 @@ function report(samples, tpq, t0) {
     const d = g.ms / 1000, exp = expOf(g.q);
     const skip = i === seg.length - 1 && truncated;
     const bad = !skip && Math.abs(d - exp) > 2;
-    if (bad) fail.push(`pytanie ${g.q} było widoczne ${d.toFixed(1)}s zamiast ~${exp}s`);
-    console.log(`   pyt.${g.q}: ${d.toFixed(1)}s / plan ${exp}s ${skip ? "(ucięte limitem czasu — pomijam)" : bad ? "❌" : "✅"}`);
+    const expTxt = shortcutMs.has(g.q) ? `${exp.toFixed(1)}s (plan ${planOf(g.q)}s, skrót)` : `${exp}s`;
+    if (bad) fail.push(`pytanie ${g.q} było widoczne ${d.toFixed(1)}s zamiast ~${expTxt}`);
+    console.log(`   pyt.${g.q}: ${d.toFixed(1)}s / plan ${expTxt} ${skip ? "(ucięte limitem czasu — pomijam)" : bad ? "❌" : "✅"}`);
   });
   if (seg.length < NQ) fail.push(`telefon 1 widział ${seg.length}/${NQ} pytań`);
   const legacySeen = samples.some((s) => s.phones.some((p) => p?.phase === "legacy"));

@@ -18,7 +18,7 @@ import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
-import { shouldEndEarly } from "../lib/gameLogic.js";
+import { shouldEndEarly, PAUSE_ARM_MS, pauseClickAction } from "../lib/gameLogic.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -505,6 +505,8 @@ function KodyTab({ city, adminId }) {
 
 // ─── Tab: Sesja ───────────────────────────────────────────────────────────────
 
+const PAUSE_ARMED_TEXT = "Kliknij ponownie, aby wstrzymać";
+
 function SesjaTab({ city, adminId, onPodium }) {
   const [session, setSession]           = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -534,6 +536,12 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [violAlert, setViolAlert]           = useState(null);
   const [answersSettled, setAnswersSettled] = useState(false); // odpowiedzi przestały napływać
   const [xlsxBusy, setXlsxBusy]             = useState(false); // trwa budowanie skoroszytu
+  // Pauza z dwóch kliknięć (06-16, H4): chwila, do której drugie kliknięcie pauzuje (0 = nieuzbrojony).
+  const [pauseArmedUntil, setPauseArmedUntil] = useState(0);
+  const pauseArmTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(pauseArmTimerRef.current), []);
+  // Zmiana statusu (np. pauza z innego panelu, przerwa planowa) rozbraja przycisk.
+  useEffect(() => { clearTimeout(pauseArmTimerRef.current); setPauseArmedUntil(0); }, [session?.status]);
   const totalSeenRef     = useRef(0);
   const totalChangedAtRef = useRef(0);
 
@@ -1094,10 +1102,22 @@ function SesjaTab({ city, adminId, onPodium }) {
           )}
           {st === "running" && <>
             {isPlan && <>
-              <button style={{ ...C.btn("pause", { flex: 1 }) }} onClick={async () => {
-                if (!confirm("Czy na pewno chcesz zatrzymać quiz?")) return;
-                applyV2(await adminPauseSession(sessionRef.current.id), "session_paused");
-              }}>⏸ Pauza</button>
+              {/* confirm() blokował wątek i przesuwał moment pauzy o czas czytania okna (06-DIAG H4);
+                  podwójne kliknięcie chroni przed przypadkiem bez okna modalnego. Pierwszy klik
+                  NICZEGO nie zapisuje w bazie. Nazwa dostępna zawsze zawiera „Pauza” (sonda). */}
+              <button
+                style={pauseArmedUntil ? C.btn("danger", { flex: 1 }) : { ...C.btn("pause", { flex: 1 }) }}
+                aria-label={pauseArmedUntil ? `⏸ Pauza — ${PAUSE_ARMED_TEXT}` : undefined}
+                onClick={async () => {
+                  clearTimeout(pauseArmTimerRef.current);
+                  if (pauseClickAction(pauseArmedUntil, Date.now()) === "arm") {
+                    setPauseArmedUntil(Date.now() + PAUSE_ARM_MS);
+                    pauseArmTimerRef.current = setTimeout(() => setPauseArmedUntil(0), PAUSE_ARM_MS);
+                    return;
+                  }
+                  setPauseArmedUntil(0);
+                  applyV2(await adminPauseSession(sessionRef.current.id), "session_paused");
+                }}>{pauseArmedUntil ? `⏸ ${PAUSE_ARMED_TEXT}` : "⏸ Pauza"}</button>
               <button
                 disabled={!allAnswered}
                 title={allAnswered ? "Można przejść dalej bez czekania na czas" : "Aktywne, gdy wszyscy odpowiedzą (lub gdy odpowiedzi przestaną napływać)"}

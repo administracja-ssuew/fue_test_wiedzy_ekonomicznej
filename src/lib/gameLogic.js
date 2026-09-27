@@ -91,3 +91,10 @@ export function shouldEndEarly({ total, expected, issued, elapsedS, timePerQ, si
 export const cityInfo = (n) => CITIES.find((c) => c.name === n) || { abbr: "?", color: "#888" };
 // Accepts optional modules array (from context); falls back to hardcoded MODULES
 export const getModule = (id, modules = MODULES) => modules.find((m) => m.id === id);
+
+// ─── Pauza z dwóch kliknięć (06-16, H4 — decyzja użytkownika) ─────────────────
+// confirm() blokował wątek i przesuwał moment pauzy o czas czytania okna (06-DIAG H4).
+// Pierwsze kliknięcie tylko uzbraja przycisk (nic nie zapisuje), drugie w ciągu
+// PAUSE_ARM_MS pauzuje od razu. armedUntil = 0 → nieuzbrojony.
+export const PAUSE_ARM_MS = 3000;
+export const pauseClickAction = (armedUntil, nowMs) => (armedUntil > 0 && nowMs < armedUntil ? "pause" : "arm");

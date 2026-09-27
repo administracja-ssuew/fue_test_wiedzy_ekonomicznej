@@ -685,6 +685,9 @@ async function main() {
           flow.before = ps.map((p) => ({ phase: p.phase, q: p.q, timer: p.timer }));
           console.log(`   ⏸  pauza (pytanie ${ps[0].q}, licznik ${ps[0].timer}s)`);
           await admin.getByRole("button", { name: /Pauza/ }).click({ timeout: 10000 }).catch((e) => console.log("   ⚠️ pauza:", e.message.slice(0, 60)));
+          // Od 06-16 pauza wymaga drugiego kliknięcia uzbrojonego przycisku (≤ 3 s).
+          const armedFull = admin.getByRole("button", { name: /Kliknij ponownie, aby wstrzymać/ });
+          if (await armedFull.count().catch(() => 0)) await armedFull.first().click({ timeout: 1000 }).catch(() => {});
         } else if (flow.paused && !flow.resumed && at - flow.pausedAt > 10000) {
           flow.resumed = true; flow.resumedAt = at;
           flow.pauseSeen = samples.some((s) => s.at > flow.pausedAt && s.phones[0]?.phase === "paused");

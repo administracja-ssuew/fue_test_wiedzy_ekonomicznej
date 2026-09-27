@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { cityInfo, REVEAL_SECONDS, REVEAL_MS, BREAK_AFTER_MODULES,
-  shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS, AUTO_SKIP_MIN_TPQ } from "./gameLogic.js";
+  shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS, AUTO_SKIP_MIN_TPQ,
+  PAUSE_ARM_MS, pauseClickAction } from "./gameLogic.js";
 
 describe("stałe planu (G1/G3)", () => {
   it("okno odsłony 11,5 s = bramka 1,5 s + 10 s widoczności poprawnej odpowiedzi", () => {
@@ -98,5 +99,17 @@ describe("AUTO_SKIP_MIN_TPQ — auto-skrót wyłączony przy krótkich pytaniach
     const at = { ...all, timePerQ: AUTO_SKIP_MIN_TPQ, elapsedS: earlySkipFloorSeconds(AUTO_SKIP_MIN_TPQ) };
     expect(shouldEndEarly(at)).toBe(true);
     expect(shouldEndEarly({ ...at, timePerQ: AUTO_SKIP_MIN_TPQ - 1 })).toBe(false);
+  });
+});
+
+describe("pauseClickAction (pauza z dwóch kliknięć)", () => {
+  it("nieuzbrojony → arm; drugi klik w oknie → pause; po oknie → znów arm", () => {
+    expect(PAUSE_ARM_MS).toBe(3000);
+    expect(pauseClickAction(0, 1000)).toBe("arm");
+    const armedUntil = 1000 + PAUSE_ARM_MS;
+    expect(pauseClickAction(armedUntil, 1300)).toBe("pause");
+    expect(pauseClickAction(armedUntil, armedUntil - 1)).toBe("pause");
+    expect(pauseClickAction(armedUntil, armedUntil)).toBe("arm");
+    expect(pauseClickAction(armedUntil, armedUntil + 5000)).toBe("arm");
   });
 });

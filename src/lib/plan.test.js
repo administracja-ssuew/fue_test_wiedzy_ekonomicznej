@@ -306,6 +306,65 @@ describe("pauza — wznowienie po 60 s daje ten sam stan", () => {
   });
 });
 
+describe("pauza na granicach faz (G2)", () => {
+  // Pauza dokładnie na granicy (zamknięcie, bramka odsłony, koniec odsłony, otwarcie
+  // następnego) i ±1 ms: po wznowieniu (60 s) ta sama faza, pytanie i remaining co tuż przed.
+  const cases = [["legacy", ITEMS], ["v2", V2.items]];
+  for (const [name, items] of cases) {
+    for (const N of [0, 1]) {
+      const it0 = items[N];
+      const nx = items[N + 1];
+      const ts = [it0.c, it0.c + REVEAL_GATE_MS, it0.r - 1, it0.r, nx.o - 1, nx.o];
+      for (const t of ts) {
+        it(`${name}: pytanie ${N}, pauza w t=${t}`, () => {
+          const pausedAt = A + t;
+          const ref = projectPlanState({ items, anchorMs: A, status: "running", nowMs: pausedAt, holdIdx: null });
+          const during = projectPlanState({ items, anchorMs: A, pausedAtMs: pausedAt, status: "paused", nowMs: pausedAt + 60000, holdIdx: null });
+          expect(during.phase).toBe("paused");
+          expect(during.plannedBreak).toBe(false);
+          expect(during.underPhase).toBe(ref.phase);
+          expect(during.idx).toBe(ref.idx);
+          expect(during.remainingMs).toBe(ref.remainingMs);
+
+          const now = pausedAt + 60000;
+          const a2 = resumeAnchor(A, pausedAt, now);
+          const after = projectPlanState({ items, anchorMs: a2, status: "running", nowMs: now, holdIdx: null });
+          expect(after.phase).toBe(ref.phase);
+          expect(after.idx).toBe(ref.idx);
+          expect(after.remainingMs).toBe(ref.remainingMs);
+        });
+      }
+    }
+  }
+
+  it("v2: ręczna pauza w odsłonie ostatniego pytania modułu 2 → po wznowieniu reveal 2, a przerwa planowa nie przepada", () => {
+    const pausedAt = A + 147000;
+    const now = pausedAt + 60000;
+    const a2 = resumeAnchor(A, pausedAt, now);
+    const after = projectPlanState({ items: V2.items, anchorMs: a2, status: "running", nowMs: now, holdIdx: null });
+    expect(after.phase).toBe("reveal");
+    expect(after.idx).toBe(2);
+    expect(after.remainingMs).toBe(1500);
+    const atBreak = projectPlanState({ items: V2.items, anchorMs: a2, status: "running", nowMs: a2 + V2.items[2].r, holdIdx: null });
+    expect(atBreak.phase).toBe("paused");
+    expect(atBreak.plannedBreak).toBe(true);
+    expect(atBreak.breakAfterModule).toBe(2);
+  });
+
+  it("v2: przerwa zużyta, ręczna pauza w zapowiedzi modułu 3 → po wznowieniu intro 3, bez przerwy", () => {
+    const pausedAt = A + 160000;
+    const during = projectPlanState({ items: V2.items, anchorMs: A, pausedAtMs: pausedAt, status: "paused", nowMs: pausedAt + 60000, holdIdx: 2 });
+    expect(during.plannedBreak).toBe(false);
+    const now = pausedAt + 60000;
+    const a2 = resumeAnchor(A, pausedAt, now);
+    const after = projectPlanState({ items: V2.items, anchorMs: a2, status: "running", nowMs: now, holdIdx: 2 });
+    expect(after.phase).toBe("intro");
+    expect(after.idx).toBe(3);
+    expect(after.plannedBreak).toBe(false);
+    expect(after.remainingMs).toBe(18500);
+  });
+});
+
 describe("przesunięcie kotwicy (Następne / Powtórz)", () => {
   it("skip w t=15000 → reveal, closesAt===now, kolejne terminy przesunięte", () => {
     const now = A + 15000;

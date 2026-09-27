@@ -4,8 +4,9 @@ import {
   loadParticipant, saveParticipant, clearParticipant,
   saveGameCache, loadGameCache,
   normalizeSnapshot, mergeSessionRow, revealAnsFor, planChanged,
-  snapshotSessionId, applySnapshot,
+  snapshotSessionId, applySnapshot, CONTROL_FIELDS,
 } from "./participantState.js";
+import { projectPlanState } from "./plan.js";
 
 const P = { code: "KRK-123456", name: "Jan", surname: "Kowalski", city: "Kraków" };
 
@@ -215,5 +216,73 @@ describe("applySnapshot", () => {
     expect(next.myAnswers).toEqual({});
     expect(next.reveal).toBeNull();
     expect(next.correctTotal).toBe(0);
+  });
+});
+
+describe("applySnapshot — keepControl (stary snapshot nie cofa pauzy, G2/H1)", () => {
+  const plan = [
+    { i: 0, id: "q1", m: 1, tpq: 20, lead: 10, o: 10000, c: 30000, r: 41500 },
+    { i: 1, id: "q2", m: 1, tpq: 20, lead: 4, o: 45500, c: 65500, r: 77000 },
+  ];
+  const prev = {
+    session: { id: "s1", status: "paused", plan_paused_at: 5000, plan_anchor_at: 1000, plan_hold_idx: null, bg: "stare" },
+    plan, myAnswers: {}, reveal: null, correctTotal: 0,
+  };
+  const stale = {
+    session: { id: "s1", status: "running", plan_paused_at: null, plan_anchor_at: 1000, bg: "nowe" },
+    plan: null,
+    myAnswers: { q1: { chosen: 1, status: "saved", correct: null } },
+    reveal: { idx: 0, ans: 1 }, correctTotal: 0,
+  };
+
+  it("CONTROL_FIELDS = pola sterujące wiersza quiz_sessions", () => {
+    expect(CONTROL_FIELDS).toEqual(["status", "plan_anchor_at", "plan_paused_at", "plan_hold_idx", "revealed_idx", "revealed_ans"]);
+  });
+
+  it("keepControl: pola sterujące z prev, reszta (odpowiedzi, reveal, plan, pola nie-sterujące) ze snapshotu", () => {
+    const next = applySnapshot(prev, stale, { keepControl: true });
+    expect(next.switched).toBe(false);
+    expect(next.session.status).toBe("paused");
+    expect(next.session.plan_paused_at).toBe(5000);
+    expect(next.session.plan_anchor_at).toBe(1000);
+    expect(next.session.plan_hold_idx).toBeNull();
+    expect(next.session.bg).toBe("nowe");
+    expect(next.myAnswers.q1).toEqual({ chosen: 1, status: "saved", correct: null });
+    expect(next.reveal).toEqual({ idx: 0, ans: 1 });
+    expect(next.plan).toBe(plan);
+  });
+
+  it("keepControl nadpisuje tylko klucze obecne w prev.session", () => {
+    const next = applySnapshot({ ...prev, session: { id: "s1", status: "paused" } }, stale, { keepControl: true });
+    expect(next.session.status).toBe("paused");
+    expect(next.session.plan_paused_at).toBeNull();
+    expect("plan_hold_idx" in next.session).toBe(false);
+  });
+
+  it("bez keepControl → stan ze snapshotu (dotychczasowe zachowanie)", () => {
+    const next = applySnapshot(prev, stale);
+    expect(next.session.status).toBe("running");
+    expect(next.session.plan_paused_at).toBeNull();
+  });
+
+  it("keepControl ignorowane przy switched (inna sesja) — stan w całości ze snapshotu", () => {
+    const other = { ...stale, session: { ...stale.session, id: "s2" } };
+    const next = applySnapshot(prev, other, { keepControl: true });
+    expect(next.switched).toBe(true);
+    expect(next.session.id).toBe("s2");
+    expect(next.session.status).toBe("running");
+    expect(next.session.plan_paused_at).toBeNull();
+  });
+
+  it("projekcja po keepControl → phase paused (stary snapshot nie „odpauzował” telefonu)", () => {
+    const next = applySnapshot(prev, stale, { keepControl: true });
+    const s = next.session;
+    const v = projectPlanState({
+      items: next.plan, anchorMs: s.plan_anchor_at, pausedAtMs: s.plan_paused_at,
+      status: s.status, nowMs: 60000, holdIdx: s.plan_hold_idx ?? null,
+    });
+    expect(v.phase).toBe("paused");
+    expect(v.idx).toBe(0);
+    expect(v.underPhase).toBe("intro");
   });
 });

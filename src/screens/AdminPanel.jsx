@@ -12,7 +12,7 @@ import {
   startQuizSessionV2, adminPauseSession, adminResumeSession, adminSkipQuestion, adminRepeatQuestion,
   getSessionPlan, getSweeperStatus, adminSweepSession,
 } from "../lib/supabase.js";
-import { planPosition, toMs } from "../lib/plan.js";
+import { planPosition, breakIdxAt, toMs } from "../lib/plan.js";
 import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
 import { CITIES } from "../data/questions.js";
 import { useModules } from "../context/ModulesContext.jsx";
@@ -732,6 +732,12 @@ function SesjaTab({ city, adminId, onPodium }) {
         const tpqNow = pos.item.tpq; // czas z planu (zamrożony przy starcie), nie z modułów
 
         const stats = await getLiveAnswerSummary(s.id, q.id);
+        // H3 (06-DIAG): statystyki są dla pytania idx — jeśli w trakcie await pytanie się
+        // zmieniło, nic nie liczymy; skrót tylko, gdy to pytanie nadal jest w fazie quiz
+        // (koniec czasu / pauza / wznowienie w trakcie await → bez skrótu).
+        const posNow = planPos();
+        if (!posNow || posNow.idx !== idx) return;
+        const canSkip = posNow.phase === "quiz" && sessionRef.current?.status === "running";
         if (stats) {
           setLiveStats(stats);
           // #3 — wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
@@ -748,10 +754,11 @@ function SesjaTab({ city, adminId, onPodium }) {
             timePerQ: tpqNow,
             sinceLastAnswerMs: Date.now() - plAtRef.current,
           });
-          if (endEarly && autoAdvancedRef.current !== idx) {
+          if (endEarly && canSkip && autoAdvancedRef.current !== idx) {
             autoAdvancedRef.current = idx;
-            // Skrócenie = adminSkipQuestion (przesunięcie kotwicy planu w RPC).
-            goToNextRef.current();
+            // Skrócenie = adminSkipQuestion (przesunięcie kotwicy planu w RPC) — wyłącznie
+            // pytania idx, dla którego policzono statystyki (idx sprzed await, sprawdzony po await).
+            goToNextRef.current(idx);
           }
         }
       } finally {
@@ -928,11 +935,28 @@ function SesjaTab({ city, adminId, onPodium }) {
   };
 
   // „⏭ Następne” = skrócenie bieżącego pytania do teraz (przesunięcie kotwicy w RPC).
-  const goToNextQuestion = async () => {
+  // expectedIdx z auto-skrótu (pytanie ocenione przed await); przycisk woła bez argumentu —
+  // idx z chwili kliknięcia. SQL i tak odrzuca idx spoza fazy quiz (noop).
+  const goToNextQuestion = async (expectedIdx) => {
     if (!sessionRef.current?.plan_anchor_at) return;
-    applyV2(await adminSkipQuestion(sessionRef.current.id, planPos()?.idx), "question_skipped");
+    const idx = Number.isInteger(expectedIdx) ? expectedIdx : planPos()?.idx;
+    if (idx == null) return;
+    applyV2(await adminSkipQuestion(sessionRef.current.id, idx), "question_skipped");
   };
   goToNextRef.current = goToNextQuestion; // #3 — efekt auto-przejścia (nad early-return) woła zawsze aktualną wersję
+
+  // Przerwa planowa (G3): sesja stoi (albo za ≤ 1 s stanie — zamiatacz) na przerwie po module.
+  const breakIdx = isPlan && plan ? breakIdxAt({ items: plan, anchorMs: toMs(session.plan_anchor_at),
+    pausedAtMs: toMs(session.plan_paused_at), status: st, holdIdx: session.plan_hold_idx ?? null, nowMs: serverNow() }) : null;
+  // Pauza ręczna: w jakiej fazie i przy którym pytaniu quiz realnie stanął (06-DIAG H4 —
+  // spóźniona pauza nie może wyglądać jak „zniknięte pytanie”).
+  const pausedUnder = st === "paused" && isPlan && plan && session.plan_paused_at
+    ? planPosition(plan, toMs(session.plan_anchor_at), null, toMs(session.plan_paused_at)) : null;
+  const PHASE_LABEL = { intro: "zapowiedź modułu przed pytaniem", countdown: "odliczanie przed pytaniem", quiz: "pytanie", reveal: "odsłona pytania" };
+  const pausedLeftS = pausedUnder ? Math.max(0, Math.ceil(((
+    pausedUnder.phase === "quiz" ? pausedUnder.closesAt
+      : pausedUnder.phase === "reveal" ? pausedUnder.revealUntil
+      : pausedUnder.opensAt) - toMs(session.plan_paused_at)) / 1000)) : null;
 
   return (
     <div>
@@ -995,6 +1019,12 @@ function SesjaTab({ city, adminId, onPodium }) {
             <p style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: stCol, letterSpacing: 1, lineHeight: 1.1, marginTop: 2 }}>
               {STATUS_LABEL[st]}
             </p>
+            {st === "paused" && breakIdx == null && pausedUnder && (
+              <p style={{ fontSize: 12, color: "#C4B5FD", marginTop: 4 }}>
+                Wstrzymano: {PHASE_LABEL[pausedUnder.phase] ?? pausedUnder.phase} {pausedUnder.idx + 1}
+                {pausedUnder.phase !== "finished" && pausedLeftS != null ? ` · zostało ${pausedLeftS} s` : ""}
+              </p>
+            )}
           </div>
           <div style={{ textAlign: "right" }}>
             {st === "waiting" ? (
@@ -1041,6 +1071,14 @@ function SesjaTab({ city, adminId, onPodium }) {
           </div>
         )}
 
+        {/* Baner przerwy planowej (G3) — quiz czeka na wznowienie przez admina */}
+        {breakIdx != null && (
+          <div style={{ margin: "12px 20px 0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
+            background: "rgba(245,197,24,.12)", border: "1px solid rgba(245,197,24,.5)", color: "#F5C518" }}>
+            ☕ Przerwa planowa po module {plan[breakIdx].m} — quiz czeka. Następny: Moduł {plan[breakIdx + 1]?.m}. Wciśnij „▶ Wznów quiz”, gdy sala jest gotowa.
+          </div>
+        )}
+
         {/* Action buttons */}
         <div style={{ padding: "14px 20px", borderTop: `1px solid ${stCol}20`, display: "flex", gap: 10, flexWrap: "wrap" }}>
           {st === "waiting" && (
@@ -1076,7 +1114,9 @@ function SesjaTab({ city, adminId, onPodium }) {
           </>}
           {st === "paused" && <>
             {isPlan && <>
-              <button style={{ ...C.btn("success", { flex: 1 }) }} onClick={async () => {
+              <button style={breakIdx != null
+                ? C.btn("gold", { flex: 2, fontSize: 18, padding: "16px 24px" })
+                : { ...C.btn("success", { flex: 1 }) }} onClick={async () => {
                 // Wznowienie = kotwica przesunięta o czas pauzy (w RPC, zegar bazy).
                 applyV2(await adminResumeSession(sessionRef.current.id), "session_running");
               }}>▶ Wznów quiz</button>
@@ -1437,7 +1477,7 @@ function LiveTab({ city }) {
   // Pure projection of DB state — same hook as the standalone LiveView, so the
   // admin embed stays perfectly in sync with participants (incl. pause/resume,
   // live module times and the 5s reveal countdown). No local quiz state machine.
-  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, liveCount, participantsTotal } =
+  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, liveCount, participantsTotal, breakNext } =
     useLiveProjection(city, { detailed: true });
 
   // Odliczanie: dla pierwszego pytania modułu zapowiedź modułu (30 s), w innym
@@ -1470,6 +1510,16 @@ function LiveTab({ city }) {
     <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
       <div style={{ fontSize: 40, marginBottom: 12 }}>👁️</div>
       <p style={{ fontSize: 14 }}>Widok duchy — oczekiwanie na pytanie…</p>
+    </div>
+  );
+
+  // Przerwa planowa: po przerwie następny moduł (06-15 deferred) — nie ogólne „wstrzymany”.
+  if (phase === "paused" && breakNext) return (
+    <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>☕</div>
+      <p style={{ fontSize: 14, color: "#F5C518", fontWeight: 700 }}>
+        {`☕ Przerwa — po przerwie: ${breakNext.icon ?? ""} Moduł ${breakNext.id} — ${breakNext.name}`}
+      </p>
     </div>
   );
 

@@ -32,12 +32,13 @@ function computeView(g) {
   if (!s) return { phase: "no_session" };
   return projectPlanState({
     items: g.plan, anchorMs: s.plan_anchor_at, pausedAtMs: s.plan_paused_at,
-    status: s.status, nowMs: serverNow(),
+    status: s.status, nowMs: serverNow(), holdIdx: s.plan_hold_idx ?? null,
   });
 }
 
+// Znacznik przerwy planowej w kluczu: przejście ręczna pauza ↔ przerwa planowa zmienia ekran.
 function viewKey(g, v) {
-  return `${g.session?.id ?? ""}|${v.phase}|${v.idx ?? ""}|${v.secondsLeft ?? ""}|${v.opensAt ?? ""}`;
+  return `${g.session?.id ?? ""}|${v.phase}|${v.idx ?? ""}|${v.secondsLeft ?? ""}|${v.opensAt ?? ""}|${v.plannedBreak ? "B" : ""}`;
 }
 
 // View Transitions tylko gdy przeglądarka je ma, karta jest widoczna i użytkownik nie
@@ -94,6 +95,7 @@ export default function useParticipantGame(participant) {
   const revealMissRef = useRef(new Set());    // idx, dla których dociągnięto brakujący reveal
   const planLoadRef = useRef(null);           // kotwica, dla której dociągamy plan
   const submitsRef = useRef(new Set());       // item.id z zapisem odpowiedzi w locie
+  const finishedSnapRef = useRef(null);       // session.id, dla której pobrano snapshot końca gry
 
   // Publikacja nowego widoku. Zmiana fazy lub pytania (nie sam tik sekund) idzie przez
   // View Transitions. Pułapka 10: w React 18 setState jest asynchroniczny — bez flushSync
@@ -172,6 +174,7 @@ export default function useParticipantGame(participant) {
         emptySentRef.current.clear();
         revealMissRef.current.clear();
         planLoadRef.current = null;
+        finishedSnapRef.current = null;
         if (g.session?.plan_anchor_at != null && !g.plan) needPlan = true;
       }
       commit(withCorrectTotal(g));
@@ -226,6 +229,7 @@ export default function useParticipantGame(participant) {
       // po refreshu poczekalnię zamiast bieżącej fazy (sonda 06-08, REFRESH w intro).
       mountedCodeRef.current = code;
       emptySentRef.current.clear(); revealMissRef.current.clear(); planLoadRef.current = null;
+      finishedSnapRef.current = null;
       const g0 = initialGame(participantRef.current);
       const v0 = computeView(g0);
       gameRef.current = g0; setGame(g0);
@@ -394,6 +398,12 @@ export default function useParticipantGame(participant) {
         snapshotJittered({ includePlan: true }, 1000);
       }
       return;
+    }
+    // Koniec pytań (finished, ≤ 1 s przed status 'results' od zamiatacza): jeden rozrzucony
+    // snapshot na sesję — is_correct ostatnich pytań odsłonięte przez serwer, bez czekania na Realtime.
+    if (v.phase === "finished" && finishedSnapRef.current !== g.session?.id) {
+      finishedSnapRef.current = g.session?.id ?? null;
+      snapshotJittered({ includePlan: false }, 1500);
     }
     if (!v.item || loadStateRef.current !== "ready") return;
     const underReveal = v.phase === "reveal" || (v.phase === "paused" && v.underPhase === "reveal");

@@ -93,11 +93,13 @@ export function normalizeSnapshot(json) {
   };
 }
 
-const ROW_FIELDS = ["status", "plan_anchor_at", "plan_paused_at", "revealed_idx", "revealed_ans"];
+const ROW_FIELDS = ["status", "plan_anchor_at", "plan_paused_at", "plan_hold_idx", "revealed_idx", "revealed_ans"];
 const MS_FIELDS = new Set(["plan_anchor_at", "plan_paused_at"]);
 
 // UPDATE quiz_sessions z Realtime → scal do sesji. Pole nieobecne w wierszu zostaje;
-// jawny null nadpisuje (wznowienie zeruje plan_paused_at).
+// jawny null nadpisuje (wznowienie zeruje plan_paused_at). plan_hold_idx (sekcja 42) to
+// indeks przerwy planowej już obsłużonej/trwającej — bez niego telefon po wznowieniu
+// przerwy wróciłby do niej z projekcji lokalnej. To indeks, nie znacznik czasu (bez toMs).
 export function mergeSessionRow(session, row) {
   const out = { ...(session || {}) };
   for (const k of ROW_FIELDS) {

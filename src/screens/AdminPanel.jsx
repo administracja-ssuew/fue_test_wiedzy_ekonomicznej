@@ -15,6 +15,7 @@ import {
 import { planPosition, breakIdxAt, toMs } from "../lib/plan.js";
 import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
 import { CITIES } from "../data/questions.js";
+import { CITY_PREFIX, parseCodesCsv, assignNumbers, takenNumbersFromCodes } from "../lib/codeFormat.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
@@ -333,8 +334,9 @@ function PytaniaTab({ city }) {
 // ─── Tab: Kody ────────────────────────────────────────────────────────────────
 
 function KodyTab({ city, adminId }) {
+  const prefix = CITY_PREFIX[city] || "XXX";
   const [codes, setCodes] = useState([]);
-  const [form, setForm] = useState({ name: "", surname: "" });
+  const [form, setForm] = useState({ name: "", surname: "", number: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [csvPreview, setCsvPreview] = useState(null); // [{name, surname}] or null
@@ -354,10 +356,14 @@ function KodyTab({ city, adminId }) {
   };
 
   const generate = async () => {
+    if (busy) return;
     if (!form.name.trim() || !form.surname.trim()) return setErr("Podaj imię i nazwisko.");
+    if (form.number && !/^\d{4}$/.test(form.number)) return setErr("Kod musi mieć 4 cyfry (np. 0042) — albo zostaw pole puste, a numer zostanie wylosowany.");
     setErr(""); setBusy(true);
-    await generateParticipantCode({ name: form.name.trim(), surname: form.surname.trim(), city, createdBy: adminId });
-    setBusy(false); setForm({ name: "", surname: "" }); reload();
+    const { error } = await generateParticipantCode({ name: form.name.trim(), surname: form.surname.trim(), city, createdBy: adminId, number: form.number || null });
+    setBusy(false);
+    if (error) return setErr(error); // pola zostają — admin poprawia numer
+    setForm({ name: "", surname: "", number: "" }); reload();
   };
 
   const handleCsvFile = (e) => {
@@ -412,11 +418,27 @@ function KodyTab({ city, adminId }) {
             <span style={C.lbl}>Nazwisko</span>
             <input value={form.surname} onChange={(e) => { setForm((p) => ({ ...p, surname: e.target.value })); setErr(""); }} style={C.input()} placeholder="Kowalski" onKeyDown={(e) => e.key === "Enter" && generate()} />
           </div>
+          <div style={{ minWidth: 120, flex: "0 0 140px" }}>
+            <span style={C.lbl}>Kod (opcjonalnie)</span>
+            <div style={{ ...C.input(), display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
+              <span style={{ fontSize: 14, color: "#9B89CC", paddingLeft: 14 }}>{prefix}-</span>
+              <input
+                value={form.number}
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="losowy"
+                aria-label={`Kod — 4 cyfry po ${prefix}-`}
+                onChange={(e) => { setForm((p) => ({ ...p, number: e.target.value.replace(/\D/g, "").slice(0, 4) })); setErr(""); }}
+                onKeyDown={(e) => e.key === "Enter" && generate()}
+                style={{ background: "transparent", border: "none", outline: "none", color: "#EDE9FE", fontSize: 14, padding: "11px 14px 11px 0", width: "100%", fontFamily: "inherit" }}
+              />
+            </div>
+          </div>
           <button onClick={generate} disabled={busy} style={{ ...C.btn("primary"), whiteSpace: "nowrap" }}>
-            {busy ? "…" : "🎟️ Generuj"}
+            {busy ? "…" : "🎟️ Generuj kod"}
           </button>
         </div>
-        {err && <p style={{ color: "#E8376B", fontSize: 13, marginTop: 8 }}>{err}</p>}
+        {err && <p role="alert" style={{ color: "#E8376B", fontSize: 13, marginTop: 8 }}>{err}</p>}
       </div>
 
       {/* CSV import */}

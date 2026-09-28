@@ -339,10 +339,11 @@ function KodyTab({ city, adminId }) {
   const [form, setForm] = useState({ name: "", surname: "", number: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [csvPreview, setCsvPreview] = useState(null); // [{name, surname}] or null
+  const [csvPreview, setCsvPreview] = useState(null); // { valid, errors } z parseCodesCsv albo null
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvProgress, setCsvProgress] = useState(0);
   const [csvErr, setCsvErr] = useState("");
+  const [importReport, setImportReport] = useState(null); // { ok, raced: [{ line, code }], failed: [{ line, name, error }] } albo null
   const csvFileRef = useRef(null);
 
   useEffect(() => { getParticipantCodes(city).then(setCodes); }, [city]);
@@ -371,33 +372,38 @@ function KodyTab({ city, adminId }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = String(ev.target.result).replace(/^﻿/, ""); // strip BOM (Excel)
-      const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-      const parsed = [];
-      for (const row of rows) {
-        // Support comma and semicolon separators; skip header-like rows
-        const parts = row.split(/[,;]/).map((p) => p.trim().replace(/^["']|["']$/g, ""));
-        if (parts.length < 2) continue;
-        const [name, surname] = parts;
-        if (!name || !surname || name.toLowerCase() === "imię" || name.toLowerCase() === "imie") continue;
-        parsed.push({ name, surname });
-      }
-      setCsvPreview(parsed.length ? parsed : null);
-      setCsvErr(parsed.length ? "" : "Nie znaleziono wierszy w formacie Imię,Nazwisko.");
+      // parseCodesCsv: BOM, separator ; lub ,, nagłówek, numeracja linii, błędy wierszy (UI-SPEC §5)
+      const res = parseCodesCsv(String(ev.target.result), { prefix, city, takenNumbers: takenNumbersFromCodes(codes, prefix) });
+      const any = res.valid.length || res.errors.length;
+      setCsvPreview(any ? res : null);
+      setCsvErr(any ? "" : "Nie znaleziono wierszy w formacie Imię;Nazwisko;Kod.");
+      setImportReport(null);
     };
     reader.readAsText(file, "UTF-8");
     e.target.value = "";
   };
 
   const importCsv = async () => {
-    if (!csvPreview?.length) return;
+    if (!csvPreview?.valid?.length || csvImporting) return;
+    // Puste numery → losowe wolne (rozłączne z zajętymi w mieście i z numerami z pliku).
+    const rows = assignNumbers(csvPreview.valid, takenNumbersFromCodes(codes, prefix));
     setCsvImporting(true); setCsvProgress(0);
-    for (let i = 0; i < csvPreview.length; i++) {
-      const { name, surname } = csvPreview[i];
-      await generateParticipantCode({ name, surname, city, createdBy: adminId });
+    let ok = 0;
+    const raced = [];
+    const failed = []; // inne błędy (np. sieć) — też pokazane, żeby nikt nie zniknął po cichu
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const { error, conflict } = await generateParticipantCode({ name: r.name, surname: r.surname, city, createdBy: adminId, number: r.number });
+      if (!error) ok++;
+      // Wyścig 23505 (ktoś zajął numer między podglądem a importem) — bez ponawiania, raport wiersza.
+      else if (conflict) raced.push({ line: r.line, code: `${prefix}-${r.number}` });
+      else { console.error("[import CSV] wiersz", r.line, error); failed.push({ line: r.line, name: `${r.name} ${r.surname}`, error }); }
       setCsvProgress(i + 1);
     }
-    setCsvImporting(false); setCsvPreview(null); reload();
+    setCsvImporting(false);
+    setImportReport({ ok, raced, failed });
+    setCsvPreview(null);
+    reload();
   };
 
   const remove = async (id) => { if (!confirm("Usunąć kod?")) return; await deleteParticipantCode(id); reload(); };
@@ -446,7 +452,7 @@ function KodyTab({ city, adminId }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <p style={{ fontWeight: 700, color: "#10D9A0", fontSize: 13 }}>📥 Import z CSV / Excel</p>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => downloadCsv("przyklad_uczestnicy.csv", "Imię;Nazwisko\nJan;Kowalski\nAnna;Nowak\nPiotr;Wiśniewski\n")} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
+            <button onClick={() => downloadCsv("przyklad_uczestnicy.csv", "Imię;Nazwisko;Kod\nJan;Kowalski;1111\nAnna;Nowak;0042\nPiotr;Wiśniewski;\n")} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
               📄 Pobierz przykład
             </button>
             <button onClick={() => csvFileRef.current?.click()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>
@@ -456,35 +462,80 @@ function KodyTab({ city, adminId }) {
           <input ref={csvFileRef} type="file" accept=".csv,.txt" onChange={handleCsvFile} style={{ display: "none" }} />
         </div>
         <p style={{ fontSize: 11, color: "rgba(155,137,204,.7)" }}>
-          Format pliku: nagłówek <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>Imię;Nazwisko</span>, potem każdy wiersz = jeden uczestnik (separator: przecinek lub średnik). Najłatwiej: pobierz przykład, uzupełnij w Excelu, zapisz jako CSV i wgraj.
+          Format pliku: nagłówek <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>Imię;Nazwisko;Kod</span>, potem jeden uczestnik w wierszu (separator: średnik lub przecinek). <strong style={{ color: "#EDE9FE" }}>Kod</strong> to 4 cyfry bez prefiksu miasta, np. <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>1111</span> → <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>{prefix}-1111</span>. Puste pole = losowy wolny numer. <strong style={{ color: "#EDE9FE" }}>W Excelu sformatuj kolumnę Kod jako Tekst</strong>, inaczej Excel usunie zera z przodu (<span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>0042</span> → <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>42</span>).
         </p>
         {csvErr && <p style={{ color: "#E8376B", fontSize: 12, marginTop: 6 }}>{csvErr}</p>}
 
-        {csvPreview && (
-          <div style={{ marginTop: 12 }}>
-            <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 8 }}>
-              Znaleziono <strong style={{ color: "#10D9A0" }}>{csvPreview.length}</strong> uczestników — podgląd (max 5):
-            </p>
-            {csvPreview.slice(0, 5).map((p, i) => (
-              <div key={i} style={{ fontSize: 12, padding: "3px 8px", background: "rgba(16,217,160,.08)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 6, marginBottom: 4, color: "#EDE9FE" }}>
-                {p.name} {p.surname}
-              </div>
-            ))}
-            {csvPreview.length > 5 && <p style={{ fontSize: 11, color: "#9B89CC" }}>… i {csvPreview.length - 5} więcej</p>}
-            <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
-              {csvImporting ? (
-                <p style={{ fontSize: 13, color: "#10D9A0" }}>Importuję {csvProgress}/{csvPreview.length}…</p>
-              ) : (
+        {csvPreview && (() => {
+          const { valid, errors } = csvPreview;
+          const n = valid.length, m = errors.length;
+          return (
+            <div style={{ marginTop: 12 }}>
+              <p style={{ fontSize: 13, color: "#9B89CC", marginBottom: 8 }}>
+                Do importu: <strong style={{ color: "#10D9A0" }}>{n}</strong>
+                {m > 0 && <> · Błędy: <strong style={{ color: "#E8376B" }}>{m}</strong></>}
+              </p>
+              {valid.slice(0, 5).map((v) => (
+                <div key={v.line} style={{ fontSize: 12, padding: "3px 8px", background: "rgba(16,217,160,.08)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 6, marginBottom: 4, color: "#EDE9FE" }}>
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#C4B5FD", letterSpacing: 1 }}>{v.number ? `${prefix}-${v.number}` : `${prefix}-····`}</span>
+                  {" "}{v.name} {v.surname}
+                  {!v.number && <> <span style={{ color: "#9B89CC" }}>(losowy)</span></>}
+                </div>
+              ))}
+              {n > 5 && <p style={{ fontSize: 11, color: "#9B89CC" }}>… i {n - 5} więcej</p>}
+
+              {m > 0 && (
                 <>
-                  <button onClick={importCsv} style={{ ...C.btn("success", { fontSize: 12, padding: "8px 18px" }) }}>
-                    ✅ Importuj wszystkich
-                  </button>
-                  <button onClick={() => setCsvPreview(null)} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>
-                    Anuluj
-                  </button>
+                  <div style={{ maxHeight: 240, overflowY: "auto", marginTop: 8 }}>
+                    {errors.map((e, i) => (
+                      <div key={`${e.line}-${i}`} style={{ background: "rgba(232,55,107,.08)", border: "1px solid rgba(232,55,107,.25)", borderRadius: 6, padding: "4px 8px", fontSize: 13, color: "#EDE9FE", marginBottom: 4 }}>
+                        Wiersz {e.line}: {e.name || "—"} — <span style={{ color: "#E8376B" }}>{e.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 11, color: "#F5C518", marginTop: 6 }}>
+                    Błędne wiersze zostaną pominięte. Popraw je w pliku i wgraj go ponownie albo dodaj te osoby ręcznie.
+                  </p>
                 </>
               )}
+
+              {n === 0 && <p style={{ fontSize: 13, color: "#E8376B", marginTop: 8 }}>Brak wierszy do importu — popraw plik i wgraj ponownie.</p>}
+
+              <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+                {csvImporting ? (
+                  <p style={{ fontSize: 13, color: "#10D9A0" }}>Importuję {csvProgress}/{n}…</p>
+                ) : (
+                  <>
+                    <button onClick={importCsv} disabled={!n} style={{ ...C.btn("success", { fontSize: 12, padding: "8px 18px", opacity: n ? 1 : .5, cursor: n ? "pointer" : "not-allowed" }) }}>
+                      ✅ Importuj {n} poprawnych
+                    </button>
+                    <button onClick={() => { setCsvPreview(null); setCsvErr(""); setImportReport(null); }} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>
+                      Odrzuć plik
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
+          );
+        })()}
+
+        {importReport && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 13, color: "#10D9A0", marginBottom: 8 }}>Zaimportowano {importReport.ok}.</p>
+            {(importReport.raced.length > 0 || importReport.failed.length > 0) && (
+              <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                {importReport.raced.map((r) => (
+                  <div key={`r${r.line}`} style={{ background: "rgba(232,55,107,.08)", border: "1px solid rgba(232,55,107,.25)", borderRadius: 6, padding: "4px 8px", fontSize: 13, color: "#EDE9FE", marginBottom: 4 }}>
+                    Wiersz {r.line}: <span style={{ color: "#E8376B" }}>kod {r.code} został zajęty w międzyczasie — dodaj tę osobę ręcznie.</span>
+                  </div>
+                ))}
+                {importReport.failed.map((f) => (
+                  <div key={`f${f.line}`} style={{ background: "rgba(232,55,107,.08)", border: "1px solid rgba(232,55,107,.25)", borderRadius: 6, padding: "4px 8px", fontSize: 13, color: "#EDE9FE", marginBottom: 4 }}>
+                    Wiersz {f.line}: {f.name} — <span style={{ color: "#E8376B" }}>{f.error}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

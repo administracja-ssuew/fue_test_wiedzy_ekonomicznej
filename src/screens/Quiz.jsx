@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { ANSWER_BG, ANSWER_LABELS } from "../lib/gameLogic.js";
 import { serverNow } from "../lib/serverClock.js";
 import useAntiCheat from "../hooks/useAntiCheat.js";
+import { hasSwitchHaptics, vibrateTap } from "../lib/haptics.js";
 
 const W = {
   wrap: {
@@ -74,12 +75,17 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
   const r = 22, circ = 2 * Math.PI * r;
   const tColor = timer > tpq * 0.5 ? "#10D9A0" : timer > tpq * 0.25 ? "#FF9A3C" : "#E8376B";
   const total = totalQuestions || 1;
+  // iOS 18+: nakładka z przełącznikiem w kafelku (haptyka) — tylko gdy wybór jest jeszcze możliwy.
+  const haptic = hasSwitchHaptics() && !answered && picked === null;
 
   // Plain JSX value (not a nested component) — rendering <QuizContent /> created a
   // brand-new component type every render, remounting the whole subtree on each
   // 1-second timer tick. Computing it as a value keeps the DOM stable.
   const quizContent = (
-    <div className="fue-quiz-main" style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+    // Wejście pytania po odliczaniu = zamontowanie Quiz → animacja CSS fi zamiast View Transition
+    // (P7-VT-SMOOTH: nie opóźnia zmiany DOM; reduced-motion wyłącza ją globalnie). quiz → reveal
+    // nie remontuje Quiz, więc animacja nie odpala się ponownie.
+    <div className="fue-quiz-main" style={{ display: "flex", flexDirection: "column", flex: 1, animation: "fi .18s ease-out both" }}>
       {/* Top bar */}
       <div style={{ background: "rgba(0,0,0,.45)", backdropFilter: "blur(8px)", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
@@ -160,12 +166,25 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
               onClick={() => {
                 if (answered || picked !== null) return;
                 // Optymistyczny lock-in: hook ustawia `picked` synchronicznie (ta sama klatka),
-                // krótka wibracja potwierdza dotyk tam, gdzie działa (Android; iOS — brak, bez szkody).
-                try { navigator.vibrate?.(15); } catch (_) { /* nieistotne */ }
+                // krótka wibracja potwierdza dotyk na Androidzie; na iOS 18+ tyknięcie daje
+                // przełącznik w nakładce poniżej (vibrate tam nie istnieje — bez szkody).
+                vibrateTap();
                 onPick(i);
               }}
               style={{ background: bg, border, borderRadius: 14, padding: "16px 12px", color: "#fff", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, cursor: (answered || picked !== null) ? "default" : "pointer", opacity, minHeight: 100, textAlign: "left", boxShadow: "0 4px 18px rgba(0,0,0,.35)", position: "relative", overflow: "hidden", animation: pendingPulse ? "pulse 1s infinite" : undefined }}
               disabled={answered || picked !== null}>
+              {/* Haptyka iOS 18+ (P7-IOS-HAPTIC): prawdziwe dotknięcie przezroczystej nakładki
+                  przełącza ukryty przełącznik (tyknięcie), a kliknięcie labela bąbelkuje do
+                  przycisku → onPick raz. Syntetyczne kliknięcie przełącznika zatrzymane
+                  w jego onClick, żeby nie wywołać wyboru drugi raz. */}
+              {haptic && (
+                <label aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 1, background: "transparent", WebkitTapHighlightColor: "transparent", touchAction: "manipulation", cursor: "inherit" }}>
+                  <input type="checkbox" tabIndex={-1}
+                    ref={(el) => { if (el && !el.hasAttribute("switch")) el.setAttribute("switch", ""); }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ position: "absolute", width: 1, height: 1, margin: 0, visibility: "hidden" }} />
+                </label>
+              )}
               <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(0,0,0,.28)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>{ANSWER_LABELS[i]}</div>
               <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{opt}</span>
               {!hasReveal && sel && <div style={{ position: "absolute", top: 8, right: 10, fontSize: 13, color: "rgba(255,255,255,.7)" }}>✔ wybrano</div>}

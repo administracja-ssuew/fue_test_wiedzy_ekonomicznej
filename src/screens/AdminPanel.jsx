@@ -11,6 +11,7 @@ import {
   logEvent,
   startQuizSessionV2, adminPauseSession, adminResumeSession, adminSkipQuestion, adminRepeatQuestion,
   getSessionPlan, getSweeperStatus, adminSweepSession,
+  getRecentCodeConflicts, getQuestionAnswerPresence,
 } from "../lib/supabase.js";
 import { planPosition, breakIdxAt, toMs } from "../lib/plan.js";
 import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
@@ -18,6 +19,8 @@ import { CITIES } from "../data/questions.js";
 import { CITY_PREFIX, parseCodesCsv, assignNumbers, takenNumbersFromCodes } from "../lib/codeFormat.js";
 import { moveItem, moveById, applyModuleOrder } from "../lib/reorder.js";
 import useWindowWidth from "../hooks/useWindowWidth.js";
+import ParticipantRoster from "../components/ParticipantRoster.jsx";
+import { lastClosedIndex } from "../lib/roster.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
@@ -782,6 +785,49 @@ function SesjaTab({ city, adminId, onPodium }) {
     ? planPosition(planRef.current, toMs(sessionRef.current.plan_anchor_at), toMs(sessionRef.current.plan_paused_at), serverNow())
     : null;
 
+  // ── Lista uczestników „kto utknął” (07-11, P7-ADMIN-STUCK) ─────────────────
+  // Bez presence w grze: stan z wierszy answers OSTATNIEGO ZAMKNIĘTEGO pytania — jedno RPC
+  // na pytanie (wynik po zamknięciu się nie zmienia → cache po indeksie), plus lekkie
+  // zapytanie o konflikty kodu co 6 s.
+  const [closedPresence, setClosedPresence] = useState(null); // { idx, map: Map<code, hasChoice> }
+  const [conflicts, setConflicts] = useState(() => new Map());
+  const [rosterNow, setRosterNow] = useState(() => Date.now());
+  const closedIdxRef = useRef(null);
+  useEffect(() => { closedIdxRef.current = null; setClosedPresence(null); setConflicts(new Map()); }, [session?.id]);
+  useEffect(() => {
+    const status = session?.status;
+    if (status !== "waiting" && status !== "running" && status !== "paused") return;
+    let alive = true;
+    const tick = () => {
+      setRosterNow(Date.now());
+      const s = sessionRef.current;
+      const items = planRef.current;
+      if (!items || !s?.plan_anchor_at) return;
+      const i = lastClosedIndex(items, toMs(s.plan_anchor_at), toMs(s.plan_paused_at), serverNow());
+      if (i == null || i === closedIdxRef.current) return;
+      closedIdxRef.current = i;
+      const sid = s.id;
+      getQuestionAnswerPresence(sid, items[i].id).then((m) => {
+        if (!alive || closedIdxRef.current !== i || sessionRef.current?.id !== sid) return;
+        // Stan nieznany (błąd) → spróbuj ponownie w następnym tiku, nie oznaczaj nikogo jako rozłączonego.
+        if (!m) { closedIdxRef.current = null; return; }
+        setClosedPresence({ idx: i, map: m });
+      });
+    };
+    const pullConflicts = () => getRecentCodeConflicts(city).then((m) => { if (alive) setConflicts(m); });
+    tick();
+    pullConflicts();
+    const iv = setInterval(tick, 3000);
+    const ivC = setInterval(pullConflicts, 6000);
+    return () => { alive = false; clearInterval(iv); clearInterval(ivC); };
+  }, [session?.id, session?.status, city]);
+
+  const releaseFromRoster = async (p) => {
+    const { error } = await releaseCode(p.id);
+    if (error) return alert(`Nie udało się zwolnić kodu: ${error}. Spróbuj ponownie.`);
+    setParticipants(await getParticipantsInSession(city, sessionRef.current?.id));
+  };
+
   useEffect(() => { load(isPractice); return () => clearInterval(pollRef.current); }, [city, isPractice]);
 
   // Keep questions ref current for the realtime INSERT handler (avoids stale closure).
@@ -1101,6 +1147,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
 
   const st     = session?.status || "waiting";
+  // Presence lobby może nie działać dla miast z polskimi znakami (07-RESEARCH Pułapka 3):
+  // pusta lista = stan nieznany → „W poczekalni”, nie fałszywe „Rozłączony”.
+  const lobbyCodes = st === "waiting" && lobbyPresenceList.length ? new Set(lobbyPresenceList.map((x) => x.code)) : null;
   const stCol  = STATUS_COLOR[st];
   const totalQ = plan?.length || cityQuestions.length;
   const curQ   = (session?.current_question_idx ?? 0) + 1;
@@ -1435,27 +1484,11 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       )}
 
-      {/* ── Participants grid ────────────────────────────────────────── */}
-      {participants.length > 0 && st !== "ended" && st !== "results" && (
-        <div style={{ marginBottom: 14 }}>
-          <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
-            Uczestnicy ({participants.length})
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 7 }}>
-            {participants.map((p) => (
-              <div key={p.id} style={{ ...C.card({ padding: "9px 12px" }), display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(107,33,232,.25)", border: "1px solid rgba(107,33,232,.4)",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0 }}>
-                  {p.name?.[0]}{p.surname?.[0]}
-                </div>
-                <div style={{ overflow: "hidden" }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name} {p.surname}</p>
-                  <p style={{ fontSize: 10, color: "#9B89CC" }}>{p.code}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* ── Lista uczestników „kto utknął” (07-11) ───────────────────── */}
+      {(st === "waiting" || st === "running" || st === "paused") && (
+        <ParticipantRoster status={st} participants={participants} lobbyCodes={lobbyCodes}
+          closedPresence={closedPresence?.map ?? null} conflicts={conflicts} nowMs={rosterNow}
+          onRelease={releaseFromRoster} />
       )}
 
       {/* ── Results ─────────────────────────────────────────────────── */}

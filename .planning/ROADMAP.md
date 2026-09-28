@@ -216,10 +216,22 @@ Gap closure (luki G1–G7 z 06-VERIFICATION.md):
   8. Kolejność pytań w module zmieniana przeciąganiem (komputer) albo strzałkami ↑↓ (telefon), bez usuwania i ponownego dodawania; plan startu quizu używa nowej kolejności
   9. Panel admina pokazuje uczestników rozłączonych lub utkniętych, z przyciskiem 🔓 przy każdym
   10. Każda migracja SQL jest addytywna — obecny front działa bez zmian do wdrożenia nowego
-**Plans:** 0 plans
+**Plans:** 13 plans (6 fal)
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 7 to break down)
+- [ ] 07-01-PLAN.md — SQL sekcja 44 (limit prób kodów, naruszenia per typ, admin_reorder_questions, dane rostera, pg_cron, echo IP) + verify-code-limit + blok 44 w verify-prod (fala 1)
+- [ ] 07-02-PLAN.md — Projektor „Koniec testu” (projector.js, useLiveProjection, LiveView) (fala 1)
+- [ ] 07-03-PLAN.md — Wake lock iOS: kontroler z uzbrajaniem gestem + fallback mp4, pasek w Lobby, CodeEntry, fazy w App (fala 1)
+- [ ] 07-04-PLAN.md — Haptyka przełącznika w kafelkach + VT: bez VT na starcie pytania, licznik porażek (fala 1)
+- [ ] 07-05-PLAN.md — codeFormat.js, violations.js + supabase.js (limit, teksty, 4 cyfry, record_violation, agregat) (fala 1)
+- [ ] 07-06-PLAN.md — Ręczne wgranie sekcji 44 + test nagłówka IP + 44.Z (fala 2, checkpoint)
+- [ ] 07-07-PLAN.md — useAntiCheat: trwały licznik per typ + dosłanie; XLSX: styles 0.00, naruszenia (fala 2)
+- [ ] 07-08-PLAN.md — CodeEntry: auto-myślnik, walidacja formatu, odliczanie limitu (fala 2)
+- [ ] 07-09-PLAN.md — Admin Kody: import Imię;Nazwisko;Kod z błędami wierszy + pole Kod (fala 2)
+- [ ] 07-10-PLAN.md — Admin Pytania: przeciąganie i ↑/↓, zapis RPC, blokada w trakcie quizu (fala 3)
+- [ ] 07-11-PLAN.md — Admin Sesja: lista „kto utknął” z 🔓, średnia 2 miejsca, naruszenia w eksporcie (fala 4)
+- [ ] 07-12-PLAN.md — Bramka: sondy (SC10 na starym froncie, 5× podstawowa, ADMIN_EXIT), wdrożenie, test na iPhonie (fala 5, checkpoint)
+- [ ] 07-13-PLAN.md — Decyzja i sekcja 45: code_exists i INSERT violations bez anona (fala 6, checkpoint)
 
 ---
 

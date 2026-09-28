@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "g7-zawieszony-snapshot-blokuje-plan — w przebiegu gate-05 (06-17) telefon 2 wszedł w pytanie 1 7,7 s po planie, bo zawieszone żądanie get_participant_state (wysłane w lobby 3,2 s przed startem, odpowiedź po 20,9 s) zablokowało pobranie planu po sygnale startu z Realtime. Dodatkowo: limit 150 ms View Transition z 06-16 w praktyce nie działa."
 created: 2026-09-27T20:00:00Z
 updated: 2026-09-27T20:00:00Z
@@ -88,7 +88,7 @@ fix: |
   5) VT: nowy src/lib/viewTransition.js (czyste shouldStartViewTransition / isSlowViewTransition). pushView nie startuje przejścia, gdy przerwa między klatkami rAF przekracza 100 ms. Pierwsze przejście ponad limit 150 ms (późny callback albo zadziałanie limitu) wyłącza VT do końca życia hooka. Limit 150 ms zostaje jako siatka.
 verification: |
   Lokalnie: test regresyjny (replika przebiegu 05) na starym kodzie FAIL („expected 2 to be ≥ 3”), po poprawce PASS. npm test 214/214, npm run build OK. Abort sprawdzony na prawdziwym kliencie supabase-js. Eksperyment VT w headless Chromium potwierdził mechanizm.
-  Do zrobienia: powtórzenie serii sond 06-17 (5 przebiegów podstawowych + tryby pauzy), za zgodą użytkownika.
+  Produkcja (2026-09-28, seria 3 w 06-17-GATE.md): 16/16 przebiegów z kodem 0. 5 podstawowych: maks. start DOM 304 ms, maks. RTT snapshotu 2,4 s. Pauza 6/6, ADMIN_EXIT 2/2, REFRESH, OFFLINE, FULL ✅. Seria 2 przerwana ze względów środowiskowych (resztki po przerwanym przebiegu, uśpienie komputera), nie przez aplikację.
 files_changed:
   - src/lib/supabase.js
   - src/hooks/useParticipantGame.js

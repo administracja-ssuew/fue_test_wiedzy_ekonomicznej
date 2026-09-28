@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { cityInfo } from "../lib/gameLogic.js";
 import { supabase, DEMO, getSessionForCity, getQuestions } from "../lib/supabase.js";
 import JoinQR from "../components/JoinQR.jsx";
+import { useWakeLockState } from "../hooks/useWakeLock.js";
+import { armWakeLockFromGesture } from "../lib/wakeLock.js";
 
 // Broadcast presence so the admin lobby counter shows real-time waiting count
 import { useModules } from "../context/ModulesContext.jsx";
@@ -19,6 +21,10 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
   const onStartQuizRef          = useRef(onStartQuiz);
   const city                    = participant?.city;
   const color                   = cityInfo(city).color || "#6B21E8";
+  // P7-IOS-WAKE: iOS przyznaje blokadę ekranu tylko w geście — dopóki jej nie ma,
+  // prosimy o dotknięcie (każde dotknięcie ekranu uzbraja; pasek to podpowiedź).
+  const wake                    = useWakeLockState();
+  const showWakeBar             = wake.wanted && !wake.held;
 
   useEffect(() => { onStartQuizRef.current = onStartQuiz; }, [onStartQuiz]);
 
@@ -143,7 +149,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     : { icon: "🏁", text: "Sesja zakończona", color: "#E8376B" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
+    <div data-fue-wake={wake.held ? "held" : "off"} style={{ minHeight: "100vh", background: "var(--fue-bg)", display: "flex", justifyContent: "center", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
       <div className="fue-page" style={{ padding: isDesktop ? "40px 0 48px" : "40px 24px 32px", position: "relative" }}>
 
         {/* Header */}
@@ -217,7 +223,17 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
         <p style={{ color: "rgba(155,137,204,.3)", fontSize: 11, textAlign: "center", marginTop: 20 }}>
           Forum Uczelni Ekonomicznych · {new Date().getFullYear()}
         </p>
+        {showWakeBar && <div style={{ height: 80 }} aria-hidden="true" />}
       </div>
+
+      {showWakeBar && (
+        <div className="fi" role="button" tabIndex={0} aria-label="Dotknij, aby ekran nie gasł" aria-live="polite"
+          onClick={() => armWakeLockFromGesture()}
+          style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.96)", borderTop: "1px solid rgba(245,197,24,.4)", padding: "12px 16px", textAlign: "center", cursor: "pointer", fontFamily: '"Space Grotesk",sans-serif' }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#F5C518", lineHeight: 1.5 }}>{wake.failed ? "⚠️ Ekran może się wygasić" : "💡 Dotknij ekranu, aby nie gasł"}</p>
+          <p style={{ fontSize: 11, fontWeight: 400, color: "#9B89CC", lineHeight: 1.4 }}>{wake.failed ? "Wyłącz tryb oszczędzania energii i nie blokuj telefonu do końca testu." : "Telefon nie może się wygasić w trakcie testu."}</p>
+        </div>
+      )}
     </div>
   );
 }

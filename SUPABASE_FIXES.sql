@@ -2741,6 +2741,302 @@ RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
 REVOKE EXECUTE ON FUNCTION public.schema_marker_43() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.schema_marker_43() TO anon, authenticated;
 
+-- ─── 44. FAZA 7: LIMIT PRÓB KODÓW, NARUSZENIA PER TYP, KOLEJNOŚĆ PYTAŃ, WIDOK UCZESTNIKÓW ──
+-- Addytywnie (SC10): nowe obiekty + CREATE OR REPLACE z IDENTYCZNYMI sygnaturami
+-- claim_participant_code / validate_participant_code (bez DROP — granty zostają).
+-- Stary front po wgraniu działa bez zmian; dla nowego powodu 'rate_limited' pokazuje
+-- swój domyślny komunikat „Nie znaleziono kodu.” (nowy front ma własny tekst z odliczaniem).
+-- Wgrywać RĘCZNIE w SQL Editorze projektu ytbwmmqwbfcugouourih — podsekcje 44.1–44.14
+-- w całości, jednym wklejeniem. Bloku 44.Z (na końcu, w komentarzu) NIE wgrywać razem
+-- z sekcją — to osobny krok po `npm run verify-code-limit` (plan 07-06).
+
+-- 44.1 — tabela prób kodów (zapisywane WYŁĄCZNIE porażki: not_found / taken).
+-- Dostęp tylko z funkcji SECURITY DEFINER; anon/authenticated nie widzą tabeli.
+CREATE TABLE IF NOT EXISTS public.code_attempts (
+  id     BIGSERIAL PRIMARY KEY,
+  at     TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  device TEXT,
+  ip     TEXT,
+  code   TEXT,
+  reason TEXT NOT NULL CHECK (reason IN ('not_found', 'taken'))
+);
+CREATE INDEX IF NOT EXISTS idx_code_attempts_device ON public.code_attempts (device, at DESC) WHERE reason = 'not_found';
+CREATE INDEX IF NOT EXISTS idx_code_attempts_ip     ON public.code_attempts (ip, at DESC)     WHERE reason = 'not_found';
+CREATE INDEX IF NOT EXISTS idx_code_attempts_taken  ON public.code_attempts (code, at DESC)   WHERE reason = 'taken';
+CREATE INDEX IF NOT EXISTS idx_code_attempts_at     ON public.code_attempts (at);
+CREATE INDEX IF NOT EXISTS idx_participant_codes_device ON public.participant_codes (device_id);
+ALTER TABLE public.code_attempts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.code_attempts FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON SEQUENCE public.code_attempts_id_seq FROM PUBLIC, anon, authenticated;
+
+-- 44.2 — request_ip(): IP wołającego z nagłówków PostgREST. NULL poza PostgREST
+-- (SQL Editor, pg_cron) i przy śmieciach w nagłówku. Funkcja wewnętrzna.
+CREATE OR REPLACE FUNCTION public.request_ip()
+RETURNS TEXT LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE h JSON;
+BEGIN
+  BEGIN
+    h := NULLIF(current_setting('request.headers', true), '')::json;
+  EXCEPTION WHEN others THEN RETURN NULL;
+  END;
+  IF h IS NULL THEN RETURN NULL; END IF;
+  RETURN NULLIF(btrim(COALESCE(h->>'cf-connecting-ip', h->>'x-real-ip', split_part(h->>'x-forwarded-for', ',', 1))), '');
+END $$;
+REVOKE EXECUTE ON FUNCTION public.request_ip() FROM PUBLIC, anon, authenticated;
+
+-- 44.3 — przełącznik warstwy limitu po IP. Domyślnie WYŁĄCZONY do czasu testu
+-- nagłówka (44.Z). STABLE, nie IMMUTABLE — wynik zmienia się po 44.Z i nie może
+-- zostać wpieczony w plany zapytań.
+CREATE OR REPLACE FUNCTION public.code_limit_ip_enabled()
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$ SELECT false $$;
+REVOKE EXECUTE ON FUNCTION public.code_limit_ip_enabled() FROM PUBLIC, anon, authenticated;
+
+-- 44.4 — code_limit_retry_after: sekundy do odblokowania albo NULL (wolno próbować).
+--   * urządzenie: ≥ 5 porażek not_found w ostatnich 60 s → blokada do 60 s po OSTATNIEJ porażce,
+--   * IP (tylko gdy 44.Z włączył warstwę): ≥ 100 porażek w 10 min; wyjątek dla urządzeń,
+--     które mają już przypięty kod (uczciwy uczestnik za NAT-em sali nie jest blokowany).
+CREATE OR REPLACE FUNCTION public.code_limit_retry_after(p_device TEXT, p_ip TEXT)
+RETURNS INT LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now     TIMESTAMPTZ := clock_timestamp();
+  v_cnt     INT;
+  v_last    TIMESTAMPTZ;
+  v_until   TIMESTAMPTZ;
+  v_ip_cnt  INT;
+  v_ip_last TIMESTAMPTZ;
+BEGIN
+  IF p_device IS NOT NULL THEN
+    SELECT COUNT(*), MAX(ca.at) INTO v_cnt, v_last
+    FROM public.code_attempts ca
+    WHERE ca.device = p_device AND ca.reason = 'not_found' AND ca.at > v_now - interval '60 seconds';
+    IF v_cnt >= 5 THEN
+      v_until := v_last + interval '60 seconds';
+    END IF;
+  END IF;
+
+  IF public.code_limit_ip_enabled() AND p_ip IS NOT NULL
+     AND NOT (p_device IS NOT NULL AND EXISTS (SELECT 1 FROM public.participant_codes WHERE device_id = p_device)) THEN
+    SELECT COUNT(*), MAX(ca.at) INTO v_ip_cnt, v_ip_last
+    FROM public.code_attempts ca
+    WHERE ca.ip = p_ip AND ca.reason = 'not_found' AND ca.at > v_now - interval '10 minutes';
+    IF v_ip_cnt >= 100 THEN
+      v_until := GREATEST(v_until, v_ip_last + interval '10 minutes');
+    END IF;
+  END IF;
+
+  IF v_until IS NULL OR v_until <= v_now THEN RETURN NULL; END IF;
+  RETURN GREATEST(1, CEIL(EXTRACT(epoch FROM (v_until - v_now)))::INT);
+END $$;
+REVOKE EXECUTE ON FUNCTION public.code_limit_retry_after(TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+
+-- 44.5 — zapis porażki (funkcja wewnętrzna; długości przycięte — dane od klienta).
+CREATE OR REPLACE FUNCTION public.code_attempt_log(p_device TEXT, p_ip TEXT, p_code TEXT, p_reason TEXT)
+RETURNS VOID LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+  INSERT INTO public.code_attempts (device, ip, code, reason)
+  VALUES (left(p_device, 100), left(p_ip, 64), left(p_code, 32), p_reason);
+$$;
+REVOKE EXECUTE ON FUNCTION public.code_attempt_log(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;
+
+-- 44.6 — claim_participant_code z limitem prób. Sygnatura i kształt JSON jak §34,
+-- nowy powód: {ok:false, reason:'rate_limited', retry_after_s:N}.
+CREATE OR REPLACE FUNCTION public.claim_participant_code(p_code TEXT, p_device TEXT)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_row  public.participant_codes;
+  v_code TEXT := upper(btrim(p_code));
+  v_ip   TEXT := public.request_ip();
+  v_wait INT;
+BEGIN
+  -- Odrzucenia z powodu limitu NIE są zapisywane, więc blokada wygasa 60 s
+  -- po ostatniej prawdziwej porażce (a nie przedłuża się przy każdym kliknięciu).
+  v_wait := public.code_limit_retry_after(p_device, v_ip);
+  IF v_wait IS NOT NULL THEN
+    RETURN json_build_object('ok', false, 'reason', 'rate_limited', 'retry_after_s', v_wait);
+  END IF;
+
+  SELECT * INTO v_row FROM public.participant_codes WHERE code = v_code LIMIT 1;
+  IF v_row.id IS NULL THEN
+    PERFORM public.code_attempt_log(p_device, v_ip, NULL, 'not_found');
+    RETURN json_build_object('ok', false, 'reason', 'not_found');
+  END IF;
+
+  IF v_row.device_id IS NOT NULL AND p_device IS NOT NULL AND v_row.device_id <> p_device THEN
+    PERFORM public.code_attempt_log(p_device, v_ip, v_row.code, 'taken');
+    RETURN json_build_object('ok', false, 'reason', 'taken');
+  END IF;
+
+  IF p_device IS NOT NULL AND v_row.device_id IS DISTINCT FROM p_device THEN
+    UPDATE public.participant_codes SET device_id = p_device WHERE id = v_row.id;
+  END IF;
+  RETURN json_build_object('ok', true, 'data', json_build_object(
+    'id', v_row.id, 'code', v_row.code, 'name', v_row.name, 'surname', v_row.surname,
+    'city', v_row.city, 'used', v_row.used, 'session_id', v_row.session_id));
+END $$;
+REVOKE EXECUTE ON FUNCTION public.claim_participant_code(TEXT, TEXT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.claim_participant_code(TEXT, TEXT) TO anon, authenticated;
+
+-- 44.7 — validate_participant_code: ta sama RETURNS TABLE co §27, ale plpgsql VOLATILE
+-- (funkcja STABLE wołana przez PostgREST działa READ ONLY → INSERT porażki by się wysypał).
+-- Limit tylko po IP (brak urządzenia w sygnaturze).
+CREATE OR REPLACE FUNCTION public.validate_participant_code(p_code TEXT)
+RETURNS TABLE (id UUID, code TEXT, name TEXT, surname TEXT, city TEXT, used BOOLEAN, session_id UUID)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+#variable_conflict use_column
+DECLARE v_ip TEXT := public.request_ip();
+BEGIN
+  IF public.code_limit_retry_after(NULL, v_ip) IS NOT NULL THEN RETURN; END IF;
+  RETURN QUERY
+    SELECT pc.id, pc.code, pc.name, pc.surname, pc.city, pc.used, pc.session_id
+    FROM public.participant_codes pc
+    WHERE pc.code = upper(btrim(p_code))
+    LIMIT 1;
+  IF NOT FOUND THEN
+    PERFORM public.code_attempt_log(NULL, v_ip, NULL, 'not_found');
+  END IF;
+END $$;
+
+-- 44.7b — odebranie validate anonowi. Żaden front nie woła validate przy istniejącym
+-- claim (fallback tylko przy PGRST202 claim, a claim jest na prod od §34), a bez tego
+-- validate byłby obejściem limitu prób z imieniem i nazwiskiem w odpowiedzi.
+-- authenticated zachowuje EXECUTE (grant z §27).
+REVOKE EXECUTE ON FUNCTION public.validate_participant_code(TEXT) FROM anon;
+
+-- 44.8 — naruszenia per typ. Kolumna type_count = licznik danego typu po stronie
+-- telefonu (count zostaje sumą wszystkich typów, jak dotąd).
+ALTER TABLE public.violations ADD COLUMN IF NOT EXISTS type_count INT;
+
+-- record_violation: zapis przez RPC zamiast bezpośredniego INSERT. Bez wyroczni
+-- istnienia kodu: zawsze VOID, niezależnie od tego, czy kod istnieje.
+CREATE OR REPLACE FUNCTION public.record_violation(p_code TEXT, p_session_id UUID, p_type TEXT, p_count INT, p_type_count INT)
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF p_type IS NULL OR p_type NOT IN ('tab_switch', 'screenshot_attempt') THEN RETURN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.participant_codes WHERE code = p_code) THEN RETURN; END IF;
+  IF p_session_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.quiz_sessions WHERE id = p_session_id) THEN RETURN; END IF;
+  INSERT INTO public.violations (participant_code, session_id, type, count, type_count)
+  VALUES (p_code, p_session_id, p_type,
+          LEAST(GREATEST(COALESCE(p_count, 1), 1), 100000),
+          CASE WHEN p_type_count IS NULL THEN NULL ELSE LEAST(GREATEST(p_type_count, 0), 100000) END);
+END $$;
+REVOKE EXECUTE ON FUNCTION public.record_violation(TEXT, UUID, TEXT, INT, INT) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.record_violation(TEXT, UUID, TEXT, INT, INT) TO anon, authenticated;
+
+-- get_session_violation_summary: agregat naruszeń sesji dla raportu (tylko admini).
+-- total = największy łączny licznik; tab_switch / screenshot_attempt = największy
+-- licznik danego typu (0 dla starych wierszy bez type_count — front dolicza wtedy z rows_*).
+CREATE OR REPLACE FUNCTION public.get_session_violation_summary(p_session_id UUID)
+RETURNS TABLE (participant_code TEXT, total INT, tab_switch INT, screenshot_attempt INT, rows_tab INT, rows_shot INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT v.participant_code,
+         MAX(v.count)::INT,
+         COALESCE(MAX(v.type_count) FILTER (WHERE v.type = 'tab_switch'), 0)::INT,
+         COALESCE(MAX(v.type_count) FILTER (WHERE v.type = 'screenshot_attempt'), 0)::INT,
+         COUNT(*) FILTER (WHERE v.type = 'tab_switch')::INT,
+         COUNT(*) FILTER (WHERE v.type = 'screenshot_attempt')::INT
+  FROM public.violations v
+  WHERE v.session_id = p_session_id
+    AND COALESCE(public.get_my_role(), '') IN ('city_admin', 'superadmin')
+  GROUP BY v.participant_code;
+$$;
+REVOKE EXECUTE ON FUNCTION public.get_session_violation_summary(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_session_violation_summary(UUID) TO authenticated;
+
+-- 44.9 — atomowa zmiana kolejności pytań (SECURITY INVOKER — autoryzację robi RLS
+-- questions_city_admin_write / questions_superadmin). Gęsta numeracja 0..n-1 usuwa
+-- remisy sort_order. RAISE = rollback całości (RLS odfiltrował pytanie innego miasta
+-- albo pytanie nie istnieje) — nic nie zostaje przestawione częściowo.
+CREATE OR REPLACE FUNCTION public.admin_reorder_questions(p_ids UUID[])
+RETURNS INT LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE n INT;
+BEGIN
+  UPDATE public.questions q SET sort_order = t.ord - 1
+    FROM unnest(p_ids) WITH ORDINALITY AS t(id, ord) WHERE q.id = t.id;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n <> COALESCE(array_length(p_ids, 1), 0) THEN RAISE EXCEPTION 'forbidden or missing question'; END IF;
+  RETURN n;
+END $$;
+REVOKE EXECUTE ON FUNCTION public.admin_reorder_questions(UUID[]) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_reorder_questions(UUID[]) TO authenticated;
+
+-- 44.10 — kody miasta z próbami „kod zajęty” w ostatnich 5 min (widok uczestników:
+-- ktoś próbuje wejść na cudzy kod albo uczestnik zmienił telefon → admin zwalnia 🔓).
+CREATE OR REPLACE FUNCTION public.admin_recent_code_conflicts(p_city TEXT)
+RETURNS TABLE (code TEXT, last_at TIMESTAMPTZ, attempts INT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT ca.code, MAX(ca.at), COUNT(*)::INT
+  FROM public.code_attempts ca
+  JOIN public.participant_codes pc ON pc.code = ca.code AND pc.city = p_city
+  WHERE ca.reason = 'taken' AND ca.at > clock_timestamp() - interval '5 minutes'
+    AND (public.get_my_role() = 'superadmin'
+         OR (public.get_my_role() = 'city_admin' AND public.get_my_city() = p_city))
+  GROUP BY ca.code;
+$$;
+REVOKE EXECUTE ON FUNCTION public.admin_recent_code_conflicts(TEXT) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_recent_code_conflicts(TEXT) TO authenticated;
+
+-- 44.11 — obecność odpowiedzi na pytanie (widok „kto utknął”, Wzorzec 10):
+--   * wiersz z chosen       = żywy telefon z odpowiedzią,
+--   * wiersz z chosen NULL  = żywy telefon bez odpowiedzi (pusty zapis po czasie),
+--   * brak wiersza          = telefon rozłączony / utknął.
+CREATE OR REPLACE FUNCTION public.admin_question_answer_presence(p_session_id UUID, p_question_id UUID)
+RETURNS TABLE (participant_code TEXT, has_choice BOOLEAN)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT a.participant_code, bool_or(a.chosen IS NOT NULL)
+  FROM public.answers a
+  WHERE a.session_id = p_session_id AND a.question_id = p_question_id
+    AND COALESCE(public.get_my_role(), '') IN ('city_admin', 'superadmin')
+  GROUP BY a.participant_code;
+$$;
+REVOKE EXECUTE ON FUNCTION public.admin_question_answer_presence(UUID, UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_question_answer_presence(UUID, UUID) TO authenticated;
+
+-- 44.12 — sprzątanie code_attempts co 10 min (wiersze starsze niż 1 h). Blok
+-- powtarzalny (unschedule + schedule), wzorzec §40.
+DO $do$ BEGIN
+  PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'fue-code-attempts-cleanup';
+END $do$;
+SELECT cron.schedule('fue-code-attempts-cleanup', '*/10 * * * *',
+  $cmd$DELETE FROM public.code_attempts WHERE at < now() - interval '1 hour'$cmd$);
+
+-- 44.13 — TYMCZASOWA funkcja-echo do testu nagłówka IP (usuwana w 44.Z). Zwraca
+-- wyłącznie IP wołającego (nic nie ujawnia); służy `npm run verify-code-limit`.
+CREATE OR REPLACE FUNCTION public.debug_request_ip_echo()
+RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$ SELECT public.request_ip() $$;
+REVOKE EXECUTE ON FUNCTION public.debug_request_ip_echo() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.debug_request_ip_echo() TO anon, authenticated;
+
+-- 44.14 — znacznik wgrania sekcji 44 (dla `npm run verify-prod`) + przeładowanie
+-- cache schematu PostgREST (nowe funkcje i zmiana STABLE → VOLATILE validate).
+CREATE OR REPLACE FUNCTION public.schema_marker_44()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_44() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_44() TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';
+
+/* ─── 44.Z — ZAMKNIĘCIE TESTU NAGŁÓWKA IP (wgrać OSOBNO, po `npm run verify-code-limit`) ──
+   Ten blok jest w komentarzu i NIE wykonuje się przy wklejeniu całej sekcji 44.
+   Wybierz wariant według linii werdyktu wypisanej przez `npm run verify-code-limit`
+   i wklej TYLKO jego treść (bez ograniczników komentarza) w SQL Editorze.
+
+   -- Wariant A — werdykt „IP: niepodrabialne” (→ wariant 44.Z-A): włącz warstwę IP.
+   CREATE OR REPLACE FUNCTION public.code_limit_ip_enabled()
+   RETURNS BOOLEAN LANGUAGE sql STABLE AS $$ SELECT true $$;
+   DROP FUNCTION IF EXISTS public.debug_request_ip_echo();
+   NOTIFY pgrst, 'reload schema';
+
+   -- Wariant B — werdykt „IP: podrabialne” albo „IP: brak” (→ wariant 44.Z-B):
+   -- warstwa IP zostaje wyłączona, usuwamy tylko echo.
+   DROP FUNCTION IF EXISTS public.debug_request_ip_echo();
+   NOTIFY pgrst, 'reload schema';
+
+   Ryzyko rezydualne: limit chroni ścieżkę UI (claim). Inne wyrocznie istnienia kodu —
+   get_participant_state („invalid code”), submit_answer_v2, code_exists (RPC) i INSERT
+   do violations — nie mają limitu i pozwalają skryptowi przejrzeć kody miasta w kilka
+   minut. Ich utwardzenie (REVOKE code_exists od anona, usunięcie polityki anon INSERT
+   na violations po przejściu frontu na record_violation) zostaje do decyzji o sekcji 45,
+   wgrywanej PO wdrożeniu frontu fazy 7 (jak sekcja 41).
+*/
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

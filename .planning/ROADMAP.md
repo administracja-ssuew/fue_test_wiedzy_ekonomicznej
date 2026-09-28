@@ -196,7 +196,30 @@ Gap closure (luki G1–G7 z 06-VERIFICATION.md):
 - [x] 06-14-PLAN.md — Wyniki: mianownik z planu i brak odpowiedzi = błędna (SQL sekcja 43), resultsXlsx.js + XLSX w Historii (fala G2, checkpoint SQL)
 - [x] 06-15-PLAN.md — Ekrany: „Przerwa – Moduł X” na telefonie i projektorze, jeden ekran „Koniec testu” z wynikiem z planu (fala G2)
 - [x] 06-16-PLAN.md — Naprawy G2/G7 wg 06-DIAG (świeżość snapshotu, View Transitions, auto-skrót, zabezpieczenie pauzy wg werdyktu H4) + panel przerwy planowej i testy regresyjne (fala G3)
-- [ ] 06-17-PLAN.md — Bramka: sondy zamykające (5× podstawowa, ADMIN_EXIT, pauza, FULL), wdrożenie, test na telefonach (fala G4, checkpoint)
+- [x] 06-17-PLAN.md — Bramka: sondy zamykające (5× podstawowa, ADMIN_EXIT, pauza, FULL), wdrożenie, test na telefonach (fala G4, checkpoint)
+
+### Phase 7: Poprawki po teście na telefonach i organizacja konkursu
+
+**Goal:** Domknięcie uwag z testu na telefonach (06-17: G8 projektor po końcu testu, G9 iPhone — wygaszanie ekranu i brak wibracji) oraz narzędzia organizacyjne, o które poprosili koordynatorzy: 4-cyfrowe kody z pliku z limitem prób, automatyczny myślnik, naruszenia w raporcie, średni czas z 2 miejscami po przecinku, przeciąganie kolejności pytań i widok uczestników, którzy utknęli.
+**Context:** `.planning/phases/07-poprawki-po-tescie-na-telefonach-i-organizacja-konkursu/07-CONTEXT.md`
+**Requirements**: P7-PROJ-END, P7-IOS-WAKE, P7-IOS-HAPTIC, P7-VT-SMOOTH, P7-CODE-4, P7-CODE-DASH, P7-CODE-RATE, P7-VIOL-REPORT, P7-AVG-2DP, P7-Q-REORDER, P7-ADMIN-STUCK
+**Depends on:** Phase 6
+**Deadline:** wydarzenie TWE ~koniec października 2026
+**Success Criteria** (what must be TRUE):
+  1. Po zakończeniu testu projektor pokazuje „Koniec testu” (nie „Oczekiwanie”) aż do wypchnięcia podium z panelu
+  2. Na iPhonie (Chrome i Safari, najnowszy iOS) ekran nie gaśnie w trakcie gry, a wybór odpowiedzi daje odczuwalne tyknięcie haptyczne (iOS 18+)
+  3. Import CSV `Imię;Nazwisko;Kod` z `Jan;Kowalski;1111` w Krakowie tworzy kod `KRK-1111`; numer zajęty w mieście albo nie-4-cyfrowy = błąd wiersza w podglądzie; puste pole kodu = losowy wolny 4-cyfrowy
+  4. Po wpisaniu 3 liter prefiksu myślnik dopisuje się sam
+  5. Po 5 błędnych kodach z jednego telefonu kolejne próby są odrzucane przez serwer przez 60 s, a poprawny kod innego uczestnika z innego telefonu działa bez przeszkód
+  6. XLSX: kolumna „Naruszenia” w Rankingu i rozbicie naruszeń per typ w karcie uczestnika, z łączną liczbą zgodną z licznikiem na telefonie
+  7. Średni czas z 2 miejscami po przecinku w panelu, XLSX i CSV
+  8. Kolejność pytań w module zmieniana przeciąganiem (komputer) albo strzałkami ↑↓ (telefon), bez usuwania i ponownego dodawania; plan startu quizu używa nowej kolejności
+  9. Panel admina pokazuje uczestników rozłączonych lub utkniętych, z przyciskiem 🔓 przy każdym
+  10. Każda migracja SQL jest addytywna — obecny front działa bez zmian do wdrożenia nowego
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 7 to break down)
 
 ---
 

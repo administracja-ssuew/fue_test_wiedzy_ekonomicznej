@@ -219,11 +219,11 @@ Gap closure (luki G1–G7 z 06-VERIFICATION.md):
 **Plans:** 13 plans (6 fal)
 
 Plans:
-- [ ] 07-01-PLAN.md — SQL sekcja 44 (limit prób kodów, naruszenia per typ, admin_reorder_questions, dane rostera, pg_cron, echo IP) + verify-code-limit + blok 44 w verify-prod (fala 1)
-- [ ] 07-02-PLAN.md — Projektor „Koniec testu” (projector.js, useLiveProjection, LiveView) (fala 1)
-- [ ] 07-03-PLAN.md — Wake lock iOS: kontroler z uzbrajaniem gestem + fallback mp4, pasek w Lobby, CodeEntry, fazy w App (fala 1)
-- [ ] 07-04-PLAN.md — Haptyka przełącznika w kafelkach + VT: bez VT na starcie pytania, licznik porażek (fala 1)
-- [ ] 07-05-PLAN.md — codeFormat.js, violations.js + supabase.js (limit, teksty, 4 cyfry, record_violation, agregat) (fala 1)
+- [x] 07-01-PLAN.md — SQL sekcja 44 (limit prób kodów, naruszenia per typ, admin_reorder_questions, dane rostera, pg_cron, echo IP) + verify-code-limit + blok 44 w verify-prod (fala 1)
+- [x] 07-02-PLAN.md — Projektor „Koniec testu” (projector.js, useLiveProjection, LiveView) (fala 1)
+- [x] 07-03-PLAN.md — Wake lock iOS: kontroler z uzbrajaniem gestem + fallback mp4, pasek w Lobby, CodeEntry, fazy w App (fala 1)
+- [x] 07-04-PLAN.md — Haptyka przełącznika w kafelkach + VT: bez VT na starcie pytania, licznik porażek (fala 1)
+- [x] 07-05-PLAN.md — codeFormat.js, violations.js + supabase.js (limit, teksty, 4 cyfry, record_violation, agregat) (fala 1)
 - [ ] 07-06-PLAN.md — Ręczne wgranie sekcji 44 + test nagłówka IP + 44.Z (fala 2, checkpoint)
 - [ ] 07-07-PLAN.md — useAntiCheat: trwały licznik per typ + dosłanie; XLSX: styles 0.00, naruszenia (fala 2)
 - [ ] 07-08-PLAN.md — CodeEntry: auto-myślnik, walidacja formatu, odliczanie limitu (fala 2)

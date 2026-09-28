@@ -33,9 +33,9 @@ progress:
 ## Current Position
 
 Phase: 07 (poprawki-po-tescie-na-telefonach-i-organizacja-konkursu) — EXECUTING
-Plan: 1 of 13
-**Phase:** 06
-**Plan:** 06-17
+Plan: 6 of 13 (fala 1 = 07-01…07-05 done, scalone w main, 284/284 testów, build OK; sekcja 44 NIE wgrana — to 07-06)
+**Phase:** 07
+**Plan:** 07-06
 **Status:** Executing Phase 07
 
 ```
@@ -91,6 +91,10 @@ Plan: 1 of 13
 | W object copied per-screen (Plan 02) | Consolidation deferred to Plan 04 when App.jsx is thinned |
 | 06-14: session_question_set — wspólny zbiór pytań sesji (plan / pula miasta) | Ranking i raport XLSX liczą z tego samego zbioru; brak odpowiedzi = błędna z pełnym czasem pytania; sygnatury RPC bez zmian (SC6) |
 | 06-16: pauza z dwóch kliknięć zamiast confirm() (decyzja użytkownika) + panel pokazuje fazę, w której pauza wylądowała | confirm() przesuwał moment pauzy o czas czytania okna (06-DIAG H4, najbardziej prawdopodobna przyczyna G2) |
+| 07-01: sekcja 44 odbiera anonowi `validate_participant_code` (44.7b) | Inaczej validate omijałby limit prób i zwracał imię i nazwisko |
+| 07-03: `armWakeLockFromGesture({ force: true })` musi zostać pierwszą instrukcją `submit` w CodeEntry (07-08 tego pilnuje); fallback wideo tylko po odmowie w geście | WebKit przyznaje wake lock tylko w tymczasowej aktywacji |
+| 07-04: start pytania bez View Transitions (animacja CSS 180 ms); VT wyłączane na chwilę po wolnym przejściu, na stałe dopiero po drugiej wpadce | Płynność bez opóźniania pokazania pytania |
+| 07-05: nowe RPC z sekcji 44 mają fallback na PGRST202 (brak funkcji) | Front działa przed i po wgraniu sekcji 44 |
 | 06-16: wiersz Realtime w trakcie snapshotu ma pierwszeństwo dla pól sterujących (keepControl) + natychmiastowy ponowny snapshot | Tania ochrona przed H1 przy dużym RTT i 500 telefonach, bez porównywania znaczników czasu |
 
 ### Open Decisions (must resolve before Phase 2)

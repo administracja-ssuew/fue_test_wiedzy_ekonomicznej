@@ -697,6 +697,43 @@ export async function getLiveAnswerCount(sessionId, questionId) {
   return data || 0;
 }
 
+// ─── LISTA UCZESTNIKÓW „KTO UTKNĄŁ” (P7-ADMIN-STUCK, sekcja 44) ─────────────────
+
+// Kody miasta, na które w ostatnich 5 min próbował wejść INNY telefon (code_attempts
+// reason='taken') → Map(code → lastAtMs). Przed wgraniem sekcji 44 (PGRST202) i przy
+// każdym innym błędzie → pusta Map (lista po prostu nie pokaże stanu „Inny telefon”).
+export async function getRecentCodeConflicts(city) {
+  if (DEMO) return new Map();
+  const { data, error } = await supabase.rpc("admin_recent_code_conflicts", { p_city: city });
+  if (error || !Array.isArray(data)) return new Map();
+  return new Map(data.map((r) => [r.code, Date.parse(r.last_at)]));
+}
+
+// Kto zostawił wiersz w answers dla (zamkniętego) pytania → Map(code → czy wybrał odpowiedź).
+// Brak kodu w mapie = telefon nie zapisał nic = rozłączony. Przed sekcją 44 (PGRST202):
+// fallback na get_admin_question_stats bez rozróżnienia pustego zapisu (każdy wiersz = true).
+// Inny błąd albo pusty wynik fallbacku (nie da się odróżnić od błędu) → null (stan nieznany).
+export async function getQuestionAnswerPresence(sessionId, questionId) {
+  if (!sessionId || !questionId) return null;
+  if (DEMO) {
+    const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
+      .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
+    return new Map(raw.map((a) => [a.participantCode, a.chosen != null]));
+  }
+  const { data, error } = await supabase.rpc("admin_question_answer_presence", {
+    p_session_id: sessionId, p_question_id: questionId,
+  });
+  if (!error) return new Map((data || []).map((r) => [r.participant_code, !!r.has_choice]));
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) {
+    console.error("[getQuestionAnswerPresence]", error.message);
+    return null;
+  }
+  const stats = await getLiveQuestionStats(sessionId, questionId);
+  if (!stats.answers.length) return null;
+  return new Map(stats.answers.map((a) => [a.code, true]));
+}
+
 // ─── PER-CITY BACKGROUND ──────────────────────────────────────────────────────
 
 const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";

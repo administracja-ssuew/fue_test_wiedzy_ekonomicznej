@@ -2,11 +2,15 @@
  * FUE Quiz — weryfikacja PRODUKCJI (read-only)
  *
  * Sprawdza z perspektywy ANON, czy na produkcyjnej bazie są wgrane funkcje z
- * SUPABASE_FIXES.sql (sekcje 16–42) oraz czy funkcje admina faktycznie blokują anona.
+ * SUPABASE_FIXES.sql (sekcje 16–44) oraz czy funkcje admina faktycznie blokują anona.
  * Sekcje 16–38 = kontrakt obecnie wdrożonego frontu (nie ruszać); sekcje 39–40 =
  * plan sesji, RPC v2, zamiatacz pg_cron (żywotność przez sweeper_status); sekcja 41 =
  * utwardzenie starych RPC (znacznik schema_marker_41 + stare sygnatury, SC6); sekcja 42 =
  * reveal 11,5 s + przerwy planowe (schema_marker_42, build_plan_items, plan_hold_due).
+ * Sekcja 44 = limit prób kodów, naruszenia per typ, kolejność pytań, widok uczestników
+ * (schema_marker_44, odmowy anona na funkcjach admina/wewnętrznych, record_violation);
+ * RPC wiązania kodu (claim) NIE jest tu wołane (zapisałoby porażkę) — pełny test limitu
+ * robi `npm run verify-code-limit`.
  * Woła RPC z nieistniejącymi UUID/kodami → żadnego zapisu (UPDATE-y nie trafiają
  * w żaden wiersz). Bezpieczne do uruchomienia na produkcji.
  *
@@ -336,6 +340,59 @@ async function main() {
       const { error: e } = await callRpc(name, { p_session_id: DUMMY });
       if (isMissing(e))        bad(`${name} — BRAK`, "⚠️ SC6 — sygnatura zniknęła");
       else                     ok(`${name} — sygnatura istnieje`, `sekcja 43 / SC6 (${e ? (e.code || e.message) : "brak błędu"})`);
+    }
+  }
+
+  console.log("\n🎟️  SEKCJA 44 (limit prób kodów, naruszenia per typ, kolejność, widok uczestników):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_44", {});
+    if (isMissing(error))      bad("schema_marker_44 — BRAK", "→ uruchom sekcję 44 (plan 07-06)");
+    else if (error)            bad("schema_marker_44 — błąd", error.message);
+    else if (data === true)    ok("schema_marker_44 — sekcja 44 wgrana", "limit prób + naruszenia per typ");
+    else                       bad("schema_marker_44 — nieoczekiwana odpowiedź", JSON.stringify(data));
+
+    // Funkcje admina i wewnętrzne — anon MUSI dostać odmowę uprawnień.
+    // validate_participant_code: od 44.7b anon nie ma EXECUTE (obejście limitu prób).
+    for (const [name, args] of [
+      ["admin_reorder_questions",        { p_ids: [] }],
+      ["get_session_violation_summary",  { p_session_id: DUMMY }],
+      ["admin_recent_code_conflicts",    { p_city: "Kraków" }],
+      ["admin_question_answer_presence", { p_session_id: DUMMY, p_question_id: DUMMY }],
+      ["request_ip",                     {}],
+      ["code_limit_ip_enabled",          {}],
+      ["code_limit_retry_after",         { p_device: "x", p_ip: null }],
+      ["code_attempt_log",               { p_device: null, p_ip: null, p_code: null, p_reason: "not_found" }],
+      ["validate_participant_code",      { p_code: "PROBE-0000" }],
+    ]) {
+      const { error: e } = await callRpc(name, args);
+      if (isDenied(e))       ok(`${name} — anon ZABLOKOWANY`, "(sekcja 44 OK)");
+      else if (isMissing(e)) bad(`${name} — BRAK`, "→ sekcja 44");
+      else                   bad(`${name} — anon MA DOSTĘP`, "⚠️ REVOKE z sekcji 44 nie wgrany — dziura!");
+    }
+
+    // Tabela prób — tylko z funkcji SECURITY DEFINER.
+    {
+      const { error: e } = await anon.from("code_attempts").select("id").limit(1);
+      if (isDenied(e))  ok("code_attempts niedostępne dla anon", "sekcja 44.1");
+      else if (e)       note("code_attempts — niejednoznaczne", `${e.message} (→ sekcja 44?)`);
+      else              bad("code_attempts — anon CZYTA tabelę", "⚠️ REVOKE z 44.1 nie wgrany");
+    }
+
+    // record_violation: działa dla anona, zawsze VOID (nieistniejący kod → cisza, bez zapisu).
+    {
+      const { error: e } = await callRpc("record_violation", {
+        p_code: "PROBE-0000", p_session_id: null, p_type: "tab_switch", p_count: 1, p_type_count: 1,
+      });
+      if (isMissing(e)) bad("record_violation — BRAK", "→ sekcja 44.8");
+      else if (e)       bad("record_violation — błąd", e.message);
+      else              ok("record_violation — działa dla anon, bez wyroczni", "sekcja 44.8");
+    }
+
+    // Echo IP — tymczasowe, usuwane przez 44.Z po `npm run verify-code-limit`.
+    {
+      const { error: e } = await callRpc("debug_request_ip_echo", {});
+      if (isMissing(e)) ok("debug_request_ip_echo — usunięte", "44.Z wgrany");
+      else              note("debug_request_ip_echo — jeszcze istnieje", "→ po teście wgraj 44.Z (07-06)");
     }
   }
 

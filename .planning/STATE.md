@@ -33,7 +33,7 @@ progress:
 ## Current Position
 
 Phase: 07 (poprawki-po-tescie-na-telefonach-i-organizacja-konkursu) — EXECUTING
-Plan: 6 of 13 (fala 1 = 07-01…07-05 done, scalone w main, 284/284 testów, build OK; sekcja 44 NIE wgrana — to 07-06)
+Plan: 07-06 w toku (fale 1–2 bez 07-06 scalone: 07-01…07-05, 07-07, 07-08, 07-09; 310/310 testów; sekcja 44 czeka na ręczne wgranie)
 **Phase:** 07
 **Plan:** 07-06
 **Status:** Executing Phase 07

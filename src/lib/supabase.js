@@ -351,6 +351,37 @@ export async function deleteQuestion(id) {
   return { error: error?.message || null };
 }
 
+// Zmiana kolejności pytań modułu (P7-Q-REORDER). ids = pełna lista id modułu w nowej kolejności.
+// RPC admin_reorder_questions (sekcja 44) — atomowo, gęsto 0..n-1; soft-fallback: N × update.
+export async function reorderQuestions(ids, { city, isPractice = false } = {}) {
+  if (DEMO) {
+    const key = isPractice ? `fue_practice_${city}` : `fue_questions_${city}`;
+    const qs = JSON.parse(localStorage.getItem(key) || "[]");
+    ids.forEach((id, i) => { const q = qs.find((x) => x.id === id); if (q) q.sort_order = i; });
+    qs.sort((a, b) => (a.module - b.module) || ((a.sort_order ?? 0) - (b.sort_order ?? 0)));
+    localStorage.setItem(key, JSON.stringify(qs));
+    return { error: null };
+  }
+  const { error } = await supabase.rpc("admin_reorder_questions", { p_ids: ids });
+  if (!error) return { error: null };
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) return { error: error.message };
+  const res = await Promise.all(ids.map((id, i) => supabase.from("questions").update({ sort_order: i }).eq("id", id)));
+  const failed = res.find((r) => r.error);
+  return { error: failed?.error?.message || null };
+}
+
+// Trwająca sesja miasta dla danej puli (blokada zmiany kolejności).
+export async function getActiveQuizSession(city, isPractice = false) {
+  if (DEMO) {
+    const s = JSON.parse(localStorage.getItem(`fue_session_${city}${isPractice ? "_practice" : ""}`) || "null");
+    return s && (s.status === "running" || s.status === "paused") ? s : null;
+  }
+  const { data } = await supabase.from("quiz_sessions").select("id,status,is_practice")
+    .eq("city", city).eq("is_practice", isPractice).in("status", ["running", "paused"]).limit(1);
+  return data?.[0] || null;
+}
+
 // ─── SESSIONS ─────────────────────────────────────────────────────────────────
 
 export async function getOrCreateSession(city, adminId, isPractice = false) {

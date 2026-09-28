@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { validateParticipantCode } from "../lib/supabase.js";
+import { armWakeLockFromGesture } from "../lib/wakeLock.js";
 
 export default function CodeEntry({ onBack, onSuccess }) {
   const [code, setCode] = useState("");
@@ -7,6 +8,7 @@ export default function CodeEntry({ onBack, onSuccess }) {
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    armWakeLockFromGesture({ force: true }); // iOS: blokada ekranu tylko w geście (P7-IOS-WAKE)
     if (!code.trim()) return setErr("Wprowadź kod uczestnika.");
     setLoading(true);
     const { data, error } = await validateParticipantCode(code);

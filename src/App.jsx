@@ -54,8 +54,10 @@ export default function App() {
   else if (gamePhase === "ended" && isPracticeSession) gamePhase = "lobby"; // próba wraca do poczekalni
   const myCurrent = gv.item ? game.myAnswers[gv.item.id] : null;
 
-  // Ekran telefonu nie gaśnie w poczekalni i przez całą rozgrywkę (ponawiane po powrocie karty).
-  useWakeLock(screen === "game" && ["lobby", "no_session", "plan_loading", "intro", "countdown", "quiz", "reveal", "paused", "finished"].includes(gv.phase));
+  // Ekran telefonu nie gaśnie od poczekalni do końca testu (także wyniki / koniec).
+  // Na iOS prośba o blokadę wymaga gestu — uzbraja ją CodeEntry („Dołącz do quizu →”)
+  // i globalny nasłuch dotknięć w kontrolerze src/lib/wakeLock.js (P7-IOS-WAKE).
+  useWakeLock(screen === "game" && ["lobby", "no_session", "plan_loading", "intro", "countdown", "quiz", "reveal", "paused", "finished", "results", "ended"].includes(gv.phase));
 
   // Tło miasta z localStorage od razu — bez mignięcia domyślnego tła po refreshu.
   useEffect(() => {

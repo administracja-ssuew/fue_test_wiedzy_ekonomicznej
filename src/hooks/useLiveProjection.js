@@ -8,6 +8,7 @@ import { useModules } from "../context/ModulesContext.jsx";
 import { REVEAL_MS } from "../lib/gameLogic.js";
 import { toMs, projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow } from "../lib/serverClock.js";
+import { projectorIdlePhase } from "../lib/projector.js";
 
 const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";
 
@@ -25,7 +26,7 @@ const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)"
 // LiveView (anon) uses detailed=false → only aggregate counts via an anon-safe RPC,
 // so no participant's individual answers are ever exposed to anon (anti-cheat).
 //
-// phase: "waiting" | "paused" | "quiz" | "reveal"
+// phase: "waiting" | "ended" | "paused" | "quiz" | "reveal"
 export default function useLiveProjection(city, { detailed = false } = {}) {
   const MODULES = useModules();
   // tickPlan żyje w efekcie z pustymi zależnościami — moduły czyta przez ref, nie z domknięcia.
@@ -179,8 +180,8 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         holdIdx: s.plan_hold_idx ?? null, // przerwa już obsłużona → brak powrotu do niej po wznowieniu
       });
       if (!v.item) {
-        // lobby / results / ended / legacy
-        setPhase("waiting"); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
+        // lobby/legacy → waiting; results/ended → ended (G8) — do wypchnięcia podium
+        setPhase(projectorIdlePhase(v, s.status)); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
         return;
       }
       if (v.phase === "paused" && v.plannedBreak) {
@@ -224,9 +225,10 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     const tick = () => {
       const s = sessionRef.current;
       if (planRef.current?.length && s?.plan_anchor_at) { tickPlan(s); return; }
-      // Sesja bez planu albo plan jeszcze się pobiera → poczekalnia, bez licznika.
+      // Sesja bez planu albo plan jeszcze się pobiera → poczekalnia, bez licznika;
+      // sesja już zakończona (results/ended) → ekran końca testu (G8).
       setPlanTpq(null);
-      setPhase("waiting"); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
+      setPhase(projectorIdlePhase(null, s?.status)); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
     };
 
     tick();

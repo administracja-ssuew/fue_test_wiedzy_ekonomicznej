@@ -60,7 +60,7 @@ export default function LiveView({ city }) {
     : <Countdown num={cdNum} />;
 
   return (
-    <div style={{
+    <div data-fue-live-phase={phase} style={{
       minHeight: "100vh", background: bg,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE",
@@ -88,6 +88,15 @@ export default function LiveView({ city }) {
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Oczekiwanie</p>
           <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8, marginBottom: 28 }}>Quiz dla {city} zaraz się rozpocznie.</p>
           <JoinQR size={240} label="Nie masz jeszcze dostępu? Zeskanuj i dołącz" />
+        </div>
+      )}
+
+      {/* Koniec testu (G8) — do wypchnięcia podium z panelu */}
+      {phase === "ended" && (
+        <div className="fi" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🏁</div>
+          <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Koniec testu</p>
+          <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8 }}>Dziękujemy! Wyniki za chwilę.</p>
         </div>
       )}
 

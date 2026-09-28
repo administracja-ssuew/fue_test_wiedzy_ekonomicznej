@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { CITY_PREFIX } from "./codeFormat.js";
+import { summarizeViolations } from "./violations.js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -33,13 +35,13 @@ export function keepRealtimeAlive() {
   try { keepAliveCh = supabase.channel("fue-keepalive").subscribe(); } catch (_) { /* nieistotne */ }
 }
 
-const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
-
-// Kod uczestnika: 6 cyfr (np. KRK-482910). Numeryczny — łatwy do wpisania i
-// podyktowania — a jednocześnie 1 000 000 kombinacji, czyli ~110× więcej niż dawne
-// 4 cyfry (9000). To zamyka realne ryzyko: przy device-bindingu (claim_participant_code)
-// zgadnięty kod BLOKUJE prawowitego uczestnika, więc mała pula = łatwe griefowanie.
-function randomCodeBody(len = 6) {
+// Kod uczestnika: 4 cyfry (np. KRK-1111) — decyzja użytkownika (07-CONTEXT): 4 cyfry
+// łatwiej podyktować i wpisać na telefonie. Zgadywanie (zgadnięty kod przy
+// device-bindingu blokuje prawowitego uczestnika) ogranicza limit prób w SQL
+// (sekcja 44: 5 porażek / 60 s z jednego urządzenia), a nie długość kodu.
+// Stare kody 6-cyfrowe (KRK-482910) pozostają ważne — SQL porównuje pełny tekst.
+// CITY_PREFIX pochodzi z codeFormat.js (jedno źródło prefiksów).
+function randomCodeBody(len = 4) {
   const bytes = (typeof crypto !== "undefined" && crypto.getRandomValues)
     ? crypto.getRandomValues(new Uint8Array(len)) : null;
   let out = "";
@@ -101,30 +103,45 @@ export function getDeviceId() {
   } catch { return null; }
 }
 
+// Teksty UI-SPEC §4 (pole kodu). Limit prób: dosłownie, z półpauzą, bez kropki.
+const CODE_NOT_FOUND = "Nie znaleziono kodu. Sprawdź litery i cyfry na karcie od organizatora.";
+const CODE_RATE_LIMITED = "Za dużo prób — spróbuj za minutę";
+
+// DEMO: znaczniki czasu nieudanych prób (ten sam limit co SQL: 5 porażek / 60 s).
+const demoFails = [];
+
 export async function validateParticipantCode(rawCode) {
-  const code = rawCode.trim().toUpperCase();
+  const code = String(rawCode ?? "").trim().toUpperCase();
   if (DEMO) {
+    const now = Date.now();
+    while (demoFails.length && demoFails[0] < now - 60000) demoFails.shift();
+    if (demoFails.length >= 5) {
+      return { error: CODE_RATE_LIMITED, rateLimited: true, retryAfterS: Math.max(1, Math.ceil((demoFails[demoFails.length - 1] + 60000 - now) / 1000)) };
+    }
     const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
     const entry = codes.find((c) => c.code === code);
-    if (!entry) return { error: "Nie znaleziono kodu." };
+    if (!entry) { demoFails.push(now); return { error: CODE_NOT_FOUND }; }
     return { data: entry, error: null };
   }
-  // claim_participant_code (sekcja 34): waliduje + wiąże kod z urządzeniem. To samo
-  // urządzenie wchodzi ponownie; inne dostaje 'taken'. Soft-fallback gdy nie wgrane.
+  // claim_participant_code (sekcja 34, limit prób od sekcji 44): waliduje + wiąże kod
+  // z urządzeniem. To samo urządzenie wchodzi ponownie; inne dostaje 'taken'; po
+  // 5 porażkach w 60 s z urządzenia — 'rate_limited' z retry_after_s.
+  // Soft-fallback gdy nie wgrane.
   const device = getDeviceId();
   const { data, error } = await supabase.rpc("claim_participant_code", { p_code: code, p_device: device });
   if (!error && data) {
     if (data.ok) return { data: data.data, error: null };
     if (data.reason === "taken") return { error: "Ten kod jest już używany na innym urządzeniu. Poproś organizatora o jego zwolnienie." };
-    return { error: "Nie znaleziono kodu." };
+    if (data.reason === "rate_limited") return { error: CODE_RATE_LIMITED, rateLimited: true, retryAfterS: Math.max(1, Number(data.retry_after_s) || 60) };
+    return { error: CODE_NOT_FOUND };
   }
   const missing = error && (error.code === "PGRST202" || /Could not find the function/i.test(error.message || ""));
-  if (!missing) return { error: "Nie znaleziono kodu." };
+  if (!missing) return { error: CODE_NOT_FOUND };
   // Fallback: validate_participant_code (§27) lub bezpośredni select (bez wiązania).
   const { data: vData, error: vErr } = await supabase.rpc("validate_participant_code", { p_code: code });
-  if (!vErr) { const row = Array.isArray(vData) ? vData[0] : vData; return row ? { data: row, error: null } : { error: "Nie znaleziono kodu." }; }
+  if (!vErr) { const row = Array.isArray(vData) ? vData[0] : vData; return row ? { data: row, error: null } : { error: CODE_NOT_FOUND }; }
   const { data: sel } = await supabase.from("participant_codes").select("*").eq("code", code).single();
-  return sel ? { data: sel, error: null } : { error: "Nie znaleziono kodu." };
+  return sel ? { data: sel, error: null } : { error: CODE_NOT_FOUND };
 }
 
 // Admin: zwolnij kod (wyczyść powiązanie z urządzeniem) — zmiana telefonu itp.
@@ -153,23 +170,52 @@ export async function markCodeUsed(code, sessionId) {
   return { error: updErr?.message || null };
 }
 
-export async function generateParticipantCode({ name, surname, city, createdBy }) {
+// Tworzy kod uczestnika. `number` (4 cyfry, np. "0042") = numer podany przez admina
+// (ręcznie albo z pliku CSV): jedna próba, zajęty → błąd z `conflict: true`, BEZ
+// ponawiania (admin musi wiedzieć, że dostał inny kod niż na karcie). Bez numeru —
+// losowy 4-cyfrowy, do 30 prób przy kolizji (23505). Pętla zamiast rekurencji.
+const MAX_RANDOM_CODE_TRIES = 30;
+
+export async function generateParticipantCode({ name, surname, city, createdBy, number = null }) {
   const prefix = CITY_PREFIX[city] || "XXX";
-  const code = `${prefix}-${randomCodeBody(6)}`;
-  if (DEMO) {
-    const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
-    if (codes.find((c) => c.code === code))
-      return generateParticipantCode({ name, surname, city, createdBy }); // retry
-    const entry = { id: crypto.randomUUID(), code, name, surname, city, used: false, session_id: null, created_at: new Date().toISOString() };
-    codes.push(entry);
-    localStorage.setItem("fue_codes", JSON.stringify(codes));
-    return { data: entry, error: null };
+  const manual = number != null && number !== "";
+  if (manual && !/^\d{4}$/.test(String(number))) {
+    return { data: null, error: "Kod musi mieć 4 cyfry (np. 0042) — albo zostaw pole puste, a numer zostanie wylosowany." };
   }
-  const { data, error } = await supabase.from("participant_codes")
-    .insert({ code, name, surname, city, created_by: createdBy })
-    .select().single();
-  if (error?.code === "23505") return generateParticipantCode({ name, surname, city, createdBy }); // retry on duplicate
-  return { data, error: error?.message || null };
+  const conflictResult = (code) => ({ data: null, error: `Kod ${code} jest już zajęty w mieście ${city}.`, conflict: true, code });
+
+  // Jedna próba zapisu: { ok, data } | { dup: true } | { error }.
+  const tryInsert = async (code) => {
+    if (DEMO) {
+      const codes = JSON.parse(localStorage.getItem("fue_codes") || "[]");
+      if (codes.find((c) => c.code === code)) return { dup: true };
+      const entry = { id: crypto.randomUUID(), code, name, surname, city, used: false, session_id: null, created_at: new Date().toISOString() };
+      codes.push(entry);
+      localStorage.setItem("fue_codes", JSON.stringify(codes));
+      return { ok: true, data: entry };
+    }
+    const { data, error } = await supabase.from("participant_codes")
+      .insert({ code, name, surname, city, created_by: createdBy })
+      .select().single();
+    if (error?.code === "23505") return { dup: true };
+    if (error) return { error: error.message };
+    return { ok: true, data };
+  };
+
+  if (manual) {
+    const code = `${prefix}-${String(number)}`;
+    const r = await tryInsert(code);
+    if (r.ok) return { data: r.data, error: null };
+    if (r.dup) return conflictResult(code);
+    return { data: null, error: r.error };
+  }
+
+  for (let i = 0; i < MAX_RANDOM_CODE_TRIES; i++) {
+    const r = await tryInsert(`${prefix}-${randomCodeBody(4)}`);
+    if (r.ok) return { data: r.data, error: null };
+    if (!r.dup) return { data: null, error: r.error };
+  }
+  return { data: null, error: "Nie udało się wylosować wolnego numeru — spróbuj ponownie." };
 }
 
 export async function getParticipantCodes(city) {
@@ -793,14 +839,29 @@ export async function deleteModule(id) {
 
 // ─── ANTI-CHEAT VIOLATIONS ────────────────────────────────────────────────────
 
-export async function recordViolation({ participantCode, sessionId, type, count }) {
+// count = łączna liczba naruszeń uczestnika (wszystkie typy — semantyka bez zmian,
+// stary panel działa), typeCount = licznik danego typu (kolumna type_count, sekcja 44).
+// Zapis przez RPC record_violation (SECURITY DEFINER), które celowo NIE zwraca
+// informacji, czy kod istnieje (sekcja 44.8 — brak wyroczni kodów; w sekcji 45 anon
+// traci bezpośredni INSERT do violations). Soft-fallback: dotychczasowy INSERT bez
+// type_count, bo przed sekcją 44 tej kolumny nie ma.
+export async function recordViolation({ participantCode, sessionId, type, count, typeCount = null }) {
   if (DEMO) {
     const v = JSON.parse(localStorage.getItem("fue_violations") || "[]");
-    v.push({ participantCode, sessionId, type, count, at: new Date().toISOString() });
+    v.push({ participantCode, sessionId, type, count, typeCount, at: new Date().toISOString() });
     localStorage.setItem("fue_violations", JSON.stringify(v));
     return;
   }
   try {
+    const { error } = await supabase.rpc("record_violation", {
+      p_code: participantCode,
+      p_session_id: sessionId || null,
+      p_type: type,
+      p_count: count,
+      p_type_count: typeCount,
+    });
+    const missing = error && (error.code === "PGRST202" || /Could not find the function/i.test(error.message || ""));
+    if (!missing) return;
     await supabase.from("violations").insert({
       participant_code: participantCode,
       session_id: sessionId || null,
@@ -823,6 +884,44 @@ export async function getViolationsForSession(sessionId) {
     .select("*").eq("session_id", sessionId)
     .order("created_at", { ascending: false }).limit(200);
   return data || [];
+}
+
+// Podsumowanie naruszeń sesji dla raportu (XLSX / panel): Map kod → { total, tab_switch,
+// screenshot_attempt }. Brak kodu w mapie = 0 naruszeń (violationsFor z violations.js).
+// Prod: RPC admina get_session_violation_summary (sekcja 44) — agregat w bazie, bez
+// limitu 200 wierszy. Soft-fallback: stronicowany select całej sesji + ta sama agregacja
+// w JS (bez type_count — przed sekcją 44 kolumny nie ma, więc per typ = liczba wierszy).
+export async function getViolationSummary(sessionId) {
+  if (DEMO) {
+    return summarizeViolations(
+      JSON.parse(localStorage.getItem("fue_violations") || "[]").filter((v) => v.sessionId === sessionId),
+    );
+  }
+  const { data, error } = await supabase.rpc("get_session_violation_summary", { p_session_id: sessionId });
+  if (!error) {
+    const map = new Map((data || []).map((r) => [r.participant_code, {
+      total: Number(r.total) || 0,
+      tab_switch: Number(r.tab_switch) || Number(r.rows_tab) || 0,
+      screenshot_attempt: Number(r.screenshot_attempt) || Number(r.rows_shot) || 0,
+    }]));
+    for (const v of map.values()) v.total = Math.max(v.total, v.tab_switch + v.screenshot_attempt);
+    return map;
+  }
+  const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
+  if (!missing) {
+    console.error("[getViolationSummary]", error.message);
+    return new Map();
+  }
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data: page, error: pErr } = await supabase.from("violations")
+      .select("participant_code,type,count").eq("session_id", sessionId)
+      .order("created_at", { ascending: true }).range(from, from + 999);
+    if (pErr) { console.error("[getViolationSummary]", pErr.message); break; }
+    rows.push(...(page || []));
+    if (!page || page.length < 1000) break;
+  }
+  return summarizeViolations(rows);
 }
 
 // ─── TELEMETRY / EVENT LOG ──────────────────────────────────────────────────────

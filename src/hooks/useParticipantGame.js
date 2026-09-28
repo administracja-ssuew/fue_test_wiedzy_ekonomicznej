@@ -3,7 +3,10 @@ import { flushSync } from "react-dom";
 import { DEMO, supabase, getParticipantState, submitAnswerV2 } from "../lib/supabase.js";
 import { projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow, addClockSample } from "../lib/serverClock.js";
-import { VT_MAX_DELAY_MS, shouldStartViewTransition, isSlowViewTransition } from "../lib/viewTransition.js";
+import {
+  VT_MAX_DELAY_MS, shouldStartViewTransition, isSlowViewTransition,
+  VT_INITIAL, nextVtState, isVtSuppressed,
+} from "../lib/viewTransition.js";
 import {
   loadGameCache, saveGameCache, saveParticipant,
   normalizeSnapshot, mergeSessionRow, revealAnsFor, applySnapshot, snapshotSessionId,
@@ -105,7 +108,7 @@ export default function useParticipantGame(participant) {
   const finishedSnapRef = useRef(null);       // session.id, dla której pobrano snapshot końca gry
   const rowSeqRef = useRef(0);                // licznik wierszy Realtime (świeżość snapshotu, G2/H1)
   const vtRef = useRef(null);                 // trwające View Transition (bez nakładania przejść)
-  const vtSlowRef = useRef(false);            // przejście przekroczyło limit → dalej bez VT
+  const vtStateRef = useRef(VT_INITIAL);      // porażki VT + stabilne klatki (P7-VT-SMOOTH)
   const lastFrameRef = useRef(Date.now());    // ostatnia klatka rAF tickera
   const frameGapRef = useRef(0);              // przerwa między dwiema ostatnimi klatkami
   const flightRef = useRef(null);             // snapshot w locie: { sentAt, seq, expireAt }
@@ -127,23 +130,34 @@ export default function useParticipantGame(participant) {
   // przejście nie startuje, gdy poprzednie trwa (drugie = zwykłe setView, bez animacji).
   // 06-17: sam limit nie wystarcza — przy wolnym przechwyceniu render jest zamrożony do końca
   // przechwycenia (skipTransition go nie skraca). Dlatego przejście NIE startuje, gdy klatki
-  // są zdławione, a po pierwszym przekroczeniu limitu VT jest wyłączone do końca życia hooka.
+  // są zdławione, a po przekroczeniu limitu VT jest wyłączone CZASOWO (wraca po serii płynnych
+  // klatek); NA STAŁE dopiero po 2. porażce (P7-VT-SMOOTH). Start pytania (countdown/intro →
+  // quiz) NIGDY nie idzie przez VT — wejście pytania animuje CSS w Quiz.jsx.
   const pushView = useCallback((v, k) => {
     const prev = viewRef.current;
     viewKeyRef.current = k;
     viewRef.current = v;
     const structural = prev?.phase !== v.phase || prev?.idx !== v.idx;
     const useVT = structural && shouldStartViewTransition({
-      structural, available: canViewTransition(), busy: !!vtRef.current, slow: vtSlowRef.current,
+      structural, available: canViewTransition(), busy: !!vtRef.current, slow: isVtSuppressed(vtStateRef.current),
       frameGapMs: Math.max(frameGapRef.current, Date.now() - lastFrameRef.current),
+      fromPhase: prev?.phase, toPhase: v.phase,
     });
     if (useVT) {
       try {
         let applied = false;
         const callAt = Date.now();
+        // Jedno przejście = najwyżej jedna porażka: callback po skipTransition (limit 150 ms)
+        // policzyłby drugą i wyłączył VT na stałe.
+        let struck = false;
+        const strike = () => {
+          if (struck) return;
+          struck = true;
+          vtStateRef.current = nextVtState(vtStateRef.current, { type: "slow" });
+        };
         const vt = document.startViewTransition(() => {
           applied = true;
-          if (isSlowViewTransition(Date.now() - callAt)) vtSlowRef.current = true;
+          if (isSlowViewTransition(Date.now() - callAt)) strike();
           flushSync(() => setView(viewRef.current));
         });
         vtRef.current = vt;
@@ -156,7 +170,7 @@ export default function useParticipantGame(participant) {
         // Callback przejścia bywa odkładany (zdławiony render) — faza NIGDY nie czeka dłużej niż 150 ms.
         later(() => {
           if (applied) return;
-          vtSlowRef.current = true;
+          strike();
           try { vt.skipTransition(); } catch (_) { /* już zakończone */ }
           clear();
           setView(viewRef.current);
@@ -397,6 +411,8 @@ export default function useParticipantGame(participant) {
       // Przerwa między klatkami: zdławiony render → zmiana fazy bez View Transition (06-17).
       const now = Date.now();
       frameGapRef.current = now - lastFrameRef.current;
+      // Seria płynnych klatek przywraca VT po porażce (P7-VT-SMOOTH); bez porażek — bez alokacji.
+      vtStateRef.current = nextVtState(vtStateRef.current, { type: "frame", gapMs: frameGapRef.current });
       lastFrameRef.current = now;
       const g = gameRef.current;
       const v = computeView(g);

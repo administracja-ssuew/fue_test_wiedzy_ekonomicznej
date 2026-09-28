@@ -225,30 +225,53 @@ describe("useParticipantGame — View Transitions na wolnym renderze", () => {
     return { ...hook, anchor };
   }
 
-  it("callback przejścia odkładany 400 ms → faza zmienia się po ≤ 150 ms, kolejne przejścia bez VT", async () => {
+  // P7-VT-SMOOTH: start pytania (intro/countdown → quiz) nigdy przez VT; po wolnym przejściu VT
+  // wyłączone czasowo (wraca po 120 płynnych klatkach), na stałe dopiero po 2. porażce.
+  // Czasowe wyłączenie w oknie < 120 klatek pokrywają testy czystych funkcji (viewTransition.test.js).
+  it("callback przejścia odkładany 400 ms → faza po ≤ 150 ms; VT wraca po płynnych klatkach, na stałe wyłączone po 2. porażce", async () => {
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     const { result, anchor } = await mountRunning();
     const vtCalls = fakeVT(400);
 
     await tick(anchor + 10000 - Date.now() + 20);   // granica pytania 1 (+ jedna klatka)
-    expect(vtCalls.length).toBe(1);
-    await tick(150);
-    expect(result.current.view.phase).toBe("quiz"); // limit 150 ms, nie callback po 400 ms
+    expect(result.current.view.phase).toBe("quiz"); // start pytania bez VT — od razu
+    expect(vtCalls.length).toBe(0);
 
     await tick(anchor + 30000 - Date.now() + 20);   // granica odsłony
+    expect(vtCalls.length).toBe(1);
+    await tick(150);
+    expect(result.current.view.phase).toBe("reveal"); // limit 150 ms, nie callback po 400 ms (1. porażka)
+
+    await tick(anchor + 41500 - Date.now() + 20);   // koniec odsłony — 11 s płynnych klatek później
+    expect(vtCalls.length).toBe(2);                 // VT wróciło (callback po skip nie policzył 2. porażki)
+    await tick(150);
+    expect(result.current.view.phase).not.toBe("reveal"); // 2. porażka
+
+    await tick(anchor + 45500 - Date.now() + 20);   // start pytania 2 — bez VT
+    expect(result.current.view.phase).toBe("quiz");
+    await tick(anchor + 65500 - Date.now() + 20);   // odsłona pytania 2
     expect(result.current.view.phase).toBe("reveal");
-    expect(vtCalls.length).toBe(1);                 // render uznany za wolny → bez przejścia
+    expect(vtCalls.length).toBe(2);                 // po 2 porażkach VT wyłączone na stałe
   });
 
-  it("szybki callback przejścia → View Transitions zostają włączone", async () => {
+  it("szybki callback przejścia → View Transitions zostają włączone (poza startem pytania)", async () => {
     Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
     const { result, anchor } = await mountRunning();
     const vtCalls = fakeVT(10);
 
     await tick(anchor + 10000 - Date.now() + 40);
     expect(result.current.view.phase).toBe("quiz");
+    expect(vtCalls.length).toBe(0);                 // intro → quiz bez VT
     await tick(anchor + 30000 - Date.now() + 40);
     expect(result.current.view.phase).toBe("reveal");
+    expect(vtCalls.length).toBe(1);
+    await tick(anchor + 41500 - Date.now() + 40);
     expect(vtCalls.length).toBe(2);
+    await tick(anchor + 45500 - Date.now() + 40);
+    expect(result.current.view.phase).toBe("quiz");
+    expect(vtCalls.length).toBe(2);                 // odliczanie/zapowiedź → quiz bez VT
+    await tick(anchor + 65500 - Date.now() + 40);
+    expect(result.current.view.phase).toBe("reveal");
+    expect(vtCalls.length).toBe(3);
   });
 });

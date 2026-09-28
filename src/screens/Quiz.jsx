@@ -82,7 +82,10 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
   // brand-new component type every render, remounting the whole subtree on each
   // 1-second timer tick. Computing it as a value keeps the DOM stable.
   const quizContent = (
-    <div className="fue-quiz-main" style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+    // Wejście pytania po odliczaniu = zamontowanie Quiz → animacja CSS fi zamiast View Transition
+    // (P7-VT-SMOOTH: nie opóźnia zmiany DOM; reduced-motion wyłącza ją globalnie). quiz → reveal
+    // nie remontuje Quiz, więc animacja nie odpala się ponownie.
+    <div className="fue-quiz-main" style={{ display: "flex", flexDirection: "column", flex: 1, animation: "fi .18s ease-out both" }}>
       {/* Top bar */}
       <div style={{ background: "rgba(0,0,0,.45)", backdropFilter: "blur(8px)", padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>

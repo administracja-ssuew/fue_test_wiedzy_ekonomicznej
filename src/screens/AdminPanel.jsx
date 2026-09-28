@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
-  getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion,
+  getQuestions, getPracticeQuestions, addQuestion, updateQuestion, deleteQuestion, reorderQuestions, getActiveQuizSession,
   getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions, releaseCode,
   getOrCreateSession, getSessionById, updateSession, getParticipantsInSession, getSessionResults, getEndedSessions, renameSession, deleteSession,
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
@@ -16,6 +16,8 @@ import { planPosition, breakIdxAt, toMs } from "../lib/plan.js";
 import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
 import { CITIES } from "../data/questions.js";
 import { CITY_PREFIX, parseCodesCsv, assignNumbers, takenNumbersFromCodes } from "../lib/codeFormat.js";
+import { moveItem, moveById, applyModuleOrder } from "../lib/reorder.js";
+import useWindowWidth from "../hooks/useWindowWidth.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
@@ -109,6 +111,23 @@ function PytaniaTab({ city }) {
   const [copyFrom, setCopyFrom]   = useState("");
   const [copying, setCopying]     = useState(false);
   const [copyProgress, setCopyProgress] = useState(0);
+  // Zmiana kolejności (P7-Q-REORDER): HTML5 DnD tylko na komputerze, ↑/↓ wszędzie.
+  const isDesktop = useWindowWidth() >= 900;
+  const dragId = useRef(null);
+  const [draggingId, setDraggingId]       = useState(null);
+  const [overId, setOverId]               = useState(null);
+  const [overPlace, setOverPlace]         = useState("before");
+  const [saveState, setSaveState]         = useState("idle"); // idle | saving | saved | error
+  const [lockedSession, setLockedSession] = useState(null);
+  const scopeRef = useRef(`${city}|${isPractice}`);
+  scopeRef.current = `${city}|${isPractice}`;
+
+  useEffect(() => {
+    let alive = true;
+    setLockedSession(null); setSaveState("idle");
+    getActiveQuizSession(city, isPractice).then((s) => { if (alive) setLockedSession(s); });
+    return () => { alive = false; };
+  }, [city, isPractice]);
 
   const handleQuestionsCsv = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -187,6 +206,69 @@ function PytaniaTab({ city }) {
     if (error) alert("Błąd usuwania: " + error); else reload();
   };
   const filtered = questions.filter((q) => q.module === mod);
+
+  const locked = !!lockedSession;
+  const busy = saveState === "saving";
+  const canReorder = !locked && !busy;
+
+  // Optymistycznie ustaw nową kolejność, sprawdź blokadę, zapisz; błąd → przywróć poprzednią.
+  const commitOrder = async (newIds) => {
+    if (!canReorder) return;
+    const scope = `${city}|${isPractice}`;
+    const prev = questions;
+    const next = applyModuleOrder(questions, mod, newIds);
+    if (next.every((q, i) => q.id === prev[i]?.id)) return; // bez zmiany kolejności
+    setQuestions(next); setSaveState("saving");
+    const s = await getActiveQuizSession(city, isPractice);
+    if (scopeRef.current !== scope) return; // admin przełączył miasto / pulę w trakcie
+    if (s) { setQuestions(prev); setLockedSession(s); setSaveState("idle"); return; }
+    const { error } = await reorderQuestions(newIds, { city, isPractice });
+    if (scopeRef.current !== scope) return;
+    if (error) {
+      console.error("reorderQuestions:", error);
+      setQuestions(prev); setSaveState("error");
+      return;
+    }
+    setSaveState("saved");
+    setTimeout(() => setSaveState((st) => (st === "saved" ? "idle" : st)), 2000);
+  };
+
+  const moveBy = (idx, delta) => commitOrder(moveItem(filtered.map((q) => q.id), idx, idx + delta));
+
+  const clearDrag = () => { dragId.current = null; setDraggingId(null); setOverId(null); };
+  const dropPlace = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? "before" : "after";
+  };
+  const dndEnabled = isDesktop && canReorder;
+  const dragProps = (q) => (dndEnabled ? {
+    draggable: true,
+    onDragStart: (e) => {
+      dragId.current = q.id; setDraggingId(q.id);
+      e.dataTransfer.setData("text/plain", q.id); // bez setData Firefox nie zaczyna przeciągania
+      e.dataTransfer.effectAllowed = "move";
+    },
+    onDragOver: (e) => {
+      if (!dragId.current) return; // np. plik z pulpitu — nie nasza karta
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setOverId(q.id); setOverPlace(dropPlace(e));
+    },
+    onDrop: (e) => {
+      e.preventDefault();
+      const from = dragId.current;
+      const place = dropPlace(e);
+      clearDrag();
+      if (from && from !== q.id) commitOrder(moveById(filtered, from, q.id, place).map((x) => x.id));
+    },
+    onDragEnd: clearDrag, // Esc / upuszczenie poza listą = powrót bez zapisu
+  } : { draggable: false });
+
+  const SAVE_MSG = {
+    saving: { text: "Zapisuję kolejność…", color: "#9B89CC" },
+    saved:  { text: "✓ Kolejność zapisana", color: "#10D9A0" },
+    error:  { text: "Nie udało się zapisać kolejności — przywrócono poprzednią. Spróbuj ponownie.", color: "#E8376B" },
+  }[saveState];
 
   return (
     <div>
@@ -304,13 +386,41 @@ function PytaniaTab({ city }) {
         </div>
       )}
 
+      {filtered.length > 0 && locked && (
+        <div style={{ ...C.card({ padding: "12px 16px", marginBottom: 12 }), background: "rgba(245,197,24,.06)", borderColor: "rgba(245,197,24,.3)" }}>
+          <p style={{ fontSize: 13, color: "#F5C518" }}>🔒 Quiz w mieście {city} trwa. Zmiana kolejności działa od następnego startu, dlatego jest zablokowana do końca quizu.</p>
+        </div>
+      )}
+
+      {filtered.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "baseline" }}>
+          <p style={{ fontSize: 11, color: "rgba(155,137,204,.7)" }}>Przeciągnij pytanie (komputer) albo użyj ↑/↓, żeby zmienić kolejność w module. Zmiana kolejności działa od następnego startu.</p>
+          <span aria-live="polite" style={{ fontSize: 13, color: SAVE_MSG?.color, marginLeft: "auto" }}>{SAVE_MSG?.text || ""}</span>
+        </div>
+      )}
+
       {filtered.length === 0
         ? <p style={{ color: "#9B89CC", textAlign: "center", padding: "32px 0" }}>Brak pytań w tym module.</p>
-        : filtered.map((q, idx) => (
-          <div key={q.id} style={{ ...C.card({ padding: "14px 16px", marginBottom: 10 }) }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        : filtered.map((q, idx) => {
+          const isDragged = draggingId === q.id;
+          const isTarget = overId === q.id && draggingId && !isDragged;
+          const arrowBtn = (disabled) => C.btn("ghost", { padding: "4px 10px", fontSize: 13, minWidth: isDesktop ? 32 : 44, minHeight: isDesktop ? 32 : 44, opacity: disabled ? .3 : 1, cursor: disabled ? "not-allowed" : "pointer" });
+          const upDisabled = idx === 0 || !canReorder;
+          const downDisabled = idx === filtered.length - 1 || !canReorder;
+          const lockTitle = locked ? "Zablokowane w trakcie quizu" : undefined;
+          return (
+          <div key={q.id} {...dragProps(q)}
+            style={{
+              ...C.card({ padding: "14px 16px", marginBottom: 10 }),
+              ...(isDragged ? { opacity: .4 } : {}),
+              ...(isTarget ? { borderColor: "rgba(107,33,232,.6)", boxShadow: overPlace === "before" ? "0 -2px 0 #6B21E8" : "0 2px 0 #6B21E8" } : {}),
+            }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: isDesktop ? "nowrap" : "wrap" }}>
+              {isDesktop && !locked && (
+                <span title="Przeciągnij, aby zmienić kolejność" style={{ fontSize: 16, color: "#9B89CC", cursor: draggingId ? "grabbing" : "grab", userSelect: "none", marginTop: 2 }}>⠿</span>
+              )}
               <span style={{ background: "rgba(107,33,232,.25)", borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0, marginTop: 2 }}>{idx + 1}</span>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{q.q}</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {q.opts.map((opt, i) => (
@@ -320,13 +430,20 @@ function PytaniaTab({ city }) {
                   ))}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => openEdit(q)} style={C.btn("ghost", { padding: "5px 10px" })}>✏️</button>
-                <button onClick={() => remove(q.id)} style={C.btn("danger", { padding: "5px 10px" })}>🗑️</button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", ...(isDesktop ? { flexShrink: 0 } : { width: "100%", justifyContent: "space-between" }) }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => moveBy(idx, -1)} disabled={upDisabled} aria-label="Przesuń wyżej" title={lockTitle} style={arrowBtn(upDisabled)}>↑</button>
+                  <button onClick={() => moveBy(idx, 1)} disabled={downDisabled} aria-label="Przesuń niżej" title={lockTitle} style={arrowBtn(downDisabled)}>↓</button>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => openEdit(q)} aria-label="Edytuj pytanie" title="Edytuj pytanie" style={C.btn("ghost", { padding: "5px 10px" })}>✏️</button>
+                  <button onClick={() => remove(q.id)} aria-label="Usuń pytanie" title="Usuń pytanie" style={C.btn("danger", { padding: "5px 10px" })}>🗑️</button>
+                </div>
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
     </div>
   );
 }

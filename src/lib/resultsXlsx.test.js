@@ -33,10 +33,10 @@ describe("buildResultsSheets", () => {
     expect(sheets.map((s) => s.name)).toEqual(["Ranking", "Wszystkie odpowiedzi", "Jan Kowalski A1", "Anna Nowak B2"]);
   });
 
-  it("Ranking: nagłówek i wiersz z czasem w sekundach", () => {
+  it("Ranking: nagłówek i wiersz z czasem (format 0.00) i naruszeniami (0 bez wpisu)", () => {
     const r = sheets[0].rows;
-    expect(r[0]).toEqual(["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Skuteczność %", "Śr. czas (s)"]);
-    expect(r[1]).toEqual([1, "A1", "Jan Kowalski", "Kraków", 2, 3, 66.7, 12]);
+    expect(r[0]).toEqual(["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Skuteczność %", "Śr. czas (s)", "Naruszenia"]);
+    expect(r[1]).toEqual([1, "A1", "Jan Kowalski", "Kraków", 2, 3, 66.7, { v: 12, fmt: "0.00" }, 0]);
     expect(r).toHaveLength(3);
   });
 
@@ -59,13 +59,64 @@ describe("buildResultsSheets", () => {
   it("karta uczestnika: średni czas liczy brak odpowiedzi jako pełny czas pytania (G6)", () => {
     const avg = sheets[2].rows.find((r) => r[0] === "Średni czas odpowiedzi (s)");
     // (5 + 11 + 20) / 3 = 12 s — spójnie z get_session_results
-    expect(avg[1]).toBe(12);
+    expect(avg[1]).toEqual({ v: 12, fmt: "0.00" });
+  });
+
+  it("karta uczestnika: bez violations → trzy wiersze naruszeń z zerami po „Bez odpowiedzi”", () => {
+    const card = sheets[2].rows;
+    const i = card.findIndex((x) => x[0] === "Bez odpowiedzi");
+    expect(card.slice(i + 1, i + 4)).toEqual([
+      ["Naruszenia łącznie", 0],
+      ["Wyjście z aplikacji / wygaszenie ekranu", 0],
+      ["Próba zrzutu ekranu", 0],
+    ]);
+  });
+
+  it('czasy odpowiedzi w tabelach: { v, fmt: "0.00" }', () => {
+    const f = sheets[1].rows;
+    const col = f[0].indexOf("Czas (s)");
+    expect(f[1][col]).toEqual({ v: 5, fmt: "0.00" });
+    const q1 = sheets[2].rows.find((x) => x[0] === 1 && x[2] === "Pytanie 1");
+    expect(q1.at(-1)).toEqual({ v: 5, fmt: "0.00" });
+  });
+
+  it("brak czasu → pusta komórka (nie obiekt)", () => {
+    const s = buildResultsSheets({
+      results: [{ code: "C3", name: "X", city: "Kraków", correct: 0, total: 0, avgResponseTime: null }],
+      rows: [row("C3", "X", 1, "", false, null)],
+      city: "Kraków",
+    });
+    expect(s[0].rows[1][7]).toBe("");
+    expect(s[1].rows[1].at(-1)).toBe("");
   });
 
   it("buildXlsxBytes z arkuszy wyników daje archiwum ZIP", () => {
     const b = buildXlsxBytes(sheets);
     expect(b).toBeInstanceOf(Uint8Array);
     expect([b[0], b[1]]).toEqual([0x50, 0x4b]);
+  });
+});
+
+describe("buildResultsSheets z naruszeniami", () => {
+  const violations = new Map([["A1", { total: 4, tab_switch: 3, screenshot_attempt: 1 }]]);
+  const sheets = buildResultsSheets({ results, rows, city: "Kraków", violations });
+
+  it("Ranking: ostatnia kolumna = total; uczestnik bez wpisu → 0 (liczba)", () => {
+    const r = sheets[0].rows;
+    expect(r[0].at(-1)).toBe("Naruszenia");
+    expect(r[1].at(-1)).toBe(4);
+    expect(r[2].at(-1)).toBe(0);
+  });
+
+  it("karta: łącznie, wyjście z aplikacji, zrzut ekranu — kolejno po „Bez odpowiedzi”", () => {
+    const card = sheets[2].rows;
+    const i = card.findIndex((x) => x[0] === "Bez odpowiedzi");
+    expect(card.slice(i + 1, i + 4)).toEqual([
+      ["Naruszenia łącznie", 4],
+      ["Wyjście z aplikacji / wygaszenie ekranu", 3],
+      ["Próba zrzutu ekranu", 1],
+    ]);
+    expect(sheets[3].rows).toContainEqual(["Naruszenia łącznie", 0]);
   });
 });
 
@@ -87,8 +138,10 @@ describe("resultsFileName", () => {
 });
 
 describe("secs", () => {
-  it("ms → sekundy z 1 miejscem po przecinku; null → pusty", () => {
-    expect(secs(12345)).toBe(12.3);
+  it("ms → sekundy z 2 miejscami po przecinku; null → pusty", () => {
+    // Świadoma zmiana (P7-AVG-2DP): dotąd 1 miejsce (12.3).
+    expect(secs(12345)).toBe(12.35);
+    expect(secs(0)).toBe(0);
     expect(secs(null)).toBe("");
   });
 });

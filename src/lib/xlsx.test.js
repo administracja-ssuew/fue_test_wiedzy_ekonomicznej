@@ -43,14 +43,14 @@ describe("buildXlsxBytes", () => {
     const eocd = b.length - 22; // brak komentarza archiwum → EOCD ma stałe 22 bajty
     expect([b[eocd], b[eocd + 1], b[eocd + 2], b[eocd + 3]]).toEqual([0x50, 0x4b, 0x05, 0x06]);
     const entries = b[eocd + 10] | (b[eocd + 11] << 8);
-    expect(entries).toBe(7); // 4 stałe części + 2 arkusze + sharedStrings
+    expect(entries).toBe(8); // 4 stałe + styles + 2 arkusze + sharedStrings
   });
 
   it("zawiera wszystkie wymagane części pakietu OPC", () => {
     const t = text([{ name: "Test", rows: [["a"]] }]);
     for (const part of [
       "[Content_Types].xml", "_rels/.rels", "xl/workbook.xml",
-      "xl/_rels/workbook.xml.rels", "xl/worksheets/sheet1.xml", "xl/sharedStrings.xml",
+      "xl/_rels/workbook.xml.rels", "xl/worksheets/sheet1.xml", "xl/sharedStrings.xml", "xl/styles.xml",
     ]) expect(t).toContain(part);
   });
 
@@ -95,5 +95,36 @@ describe("buildXlsxBytes", () => {
     expect(t).toContain('r="A1"');
     expect(t).toContain('r="E1"');
     expect(t).not.toContain('r="B1"');
+  });
+
+  it("styles.xml: cellXfs [0 ogólny, 1 numFmtId=2 (0.00)] + override i relacja", () => {
+    const t = text([{ name: "T", rows: [["a"]] }]);
+    const styles = t.slice(t.indexOf("<styleSheet"), t.indexOf("</styleSheet>"));
+    expect(styles).toContain('<cellXfs count="2">');
+    expect(styles).toContain('numFmtId="2"');
+    expect(styles).toContain('applyNumberFormat="1"');
+    expect(t).toContain('<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>');
+    expect(t).toMatch(/<Relationship Id="rId\d+" Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/styles" Target="styles\.xml"\/>/);
+  });
+
+  it("relacje workbook.xml.rels mają unikalne Id (arkusze, sharedStrings, styles)", () => {
+    const t = text([{ name: "A", rows: [["x"]] }, { name: "B", rows: [["y"]] }]);
+    const start = t.indexOf("<Relationships", t.indexOf("xl/_rels/workbook.xml.rels"));
+    const block = t.slice(start, t.indexOf("</Relationships>", start));
+    const ids = [...block.matchAll(/Id="(rId\d+)"/g)].map((m) => m[1]);
+    expect(ids).toEqual(["rId1", "rId2", "rId3", "rId4"]);
+  });
+
+  it('komórka { v, fmt: "0.00" } → s="1"; liczba bez fmt → bez atrybutu s', () => {
+    const t = text([{ name: "T", rows: [[{ v: 12.35, fmt: "0.00" }, 7]] }]);
+    expect(t).toContain('<c r="A1" s="1"><v>12.35</v></c>');
+    expect(t).toContain('<c r="B1"><v>7</v></c>');
+  });
+
+  it("obiekt komórki z pustą wartością → brak komórki", () => {
+    const t = text([{ name: "T", rows: [["a", { v: "", fmt: "0.00" }, { v: null, fmt: "0.00" }, "b"]] }]);
+    expect(t).not.toContain('r="B1"');
+    expect(t).not.toContain('r="C1"');
+    expect(t).toContain('r="D1"');
   });
 });

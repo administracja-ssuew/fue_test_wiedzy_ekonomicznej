@@ -90,6 +90,14 @@ function sheetXml(rows, sst) {
     row.forEach((v, c) => {
       if (v === null || v === undefined || v === "") return; // pusta komórka = brak <c>
       const ref = `${colName(c)}${r + 1}`;
+      // Liczba z formatem: { v: 12.35, fmt: "0.00" } → styl 1 (numFmtId 2). Bez stylu
+      // Excel pokazuje liczbę w formacie Ogólnym, czyli 12.3 jako „12,3”, a nie „12,30”.
+      if (v && typeof v === "object") {
+        if (typeof v.v === "number" && Number.isFinite(v.v)) {
+          out.push(`<c r="${ref}"${v.fmt === "0.00" ? ' s="1"' : ""}><v>${v.v}</v></c>`);
+        }
+        return; // obiekt bez liczby ({ v: "" } / { v: null }) = pusta komórka
+      }
       if (typeof v === "number" && Number.isFinite(v)) out.push(`<c r="${ref}"><v>${v}</v></c>`);
       else out.push(`<c r="${ref}" t="s"><v>${sst.index(String(v))}</v></c>`);
     });
@@ -98,6 +106,20 @@ function sheetXml(rows, sst) {
   out.push("</sheetData></worksheet>");
   return out.join("");
 }
+
+// Minimalny arkusz stylów. cellXfs: 0 = ogólny (domyślny), 1 = wbudowany format
+// numFmtId 2 („0.00”, ECMA-376 — nie wymaga własnego <numFmts>). Excel wymaga
+// kompletu fonts/fills/borders/cellStyleXfs, inaczej zgłasza uszkodzony plik.
+const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+  + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+  + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+  + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
+  + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+  + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+  + '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+  + '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+  + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+  + '</styleSheet>';
 
 // ZIP (stored). Pola daty/godziny ustawiamy na 1980-01-01 — Excel ich nie używa,
 // a zero w polu daty bywa odczytywane jako uszkodzony wpis.
@@ -147,7 +169,8 @@ function zip(files) {
 /**
  * Buduje skoroszyt .xlsx jako surowe bajty. Wydzielone z buildXlsx, bo Blob w jsdom
  * nie implementuje arrayBuffer() — testy sprawdzają strukturę ZIP-a na bajtach.
- * @param {Array<{name: string, rows: Array<Array<string|number|null>>}>} sheets
+ * Komórka: string | number | null | { v: number, fmt?: "0.00" } (liczba z formatem 2 miejsc).
+ * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"}>>}>} sheets
  * @returns {Uint8Array}
  */
 export function buildXlsxBytes(sheets) {
@@ -165,6 +188,7 @@ export function buildXlsxBytes(sheets) {
     + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
     + named.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")
     + '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+    + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
     + '</Types>';
 
   const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -182,6 +206,7 @@ export function buildXlsxBytes(sheets) {
     + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
     + named.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")
     + `<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>`
+    + `<Relationship Id="rId${n + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
     + '</Relationships>';
 
   const files = [
@@ -190,6 +215,7 @@ export function buildXlsxBytes(sheets) {
     { name: "xl/workbook.xml",           data: bytes(workbook) },
     { name: "xl/_rels/workbook.xml.rels", data: bytes(workbookRels) },
     ...sheetXmls.map((x, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: bytes(x) })),
+    { name: "xl/styles.xml",             data: bytes(STYLES_XML) },
     { name: "xl/sharedStrings.xml",      data: bytes(sst.xml()) },
   ];
 
@@ -198,7 +224,7 @@ export function buildXlsxBytes(sheets) {
 
 /**
  * Buduje skoroszyt .xlsx gotowy do pobrania.
- * @param {Array<{name: string, rows: Array<Array<string|number|null>>}>} sheets
+ * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"}>>}>} sheets
  * @returns {Blob}
  */
 export function buildXlsx(sheets) {

@@ -49,6 +49,7 @@ Dodatkowe wartości (też wielokrotności 4): **12px** (padding pionowy wiersza 
 
 Wyjątki:
 - **Tokeny odziedziczone bez zmian.** `C.btn` (padding `10px 18px`, radius 10), `C.card` (radius 14), `C.input` (padding `11px 14px`), `.fue-input` (padding `14px 16px`), wiersz presence (`6px 10px`). Nie przepisujemy ich na siatkę 4 px, bo zmieniłoby to wygląd całego panelu. Nowe elementy tej fazy używają tych obiektów tak, jak są.
+- **Małe przyciski i pigułki.** Małe przyciski w wierszach list: override `C.btn` z `padding: "4px 10px"` (wzorzec KodyTab, `AdminPanel.jsx:498`); pigułki: `padding: "2px 10px"` (wzorzec PytaniaTab, `AdminPanel.jsx:316`). Odziedziczone bez zmian — nowe ↑/↓, 🔓, przełącznik „Tylko problemy” i pigułki rostera wyglądają jak istniejące.
 - **Cele dotyku.** Przyciski ↑/↓ i 🔓 w panelu admina: min. **44×44 px** przy szerokości < 900 px, min. **32×32 px** na komputerze. Kafelki odpowiedzi w `Quiz.jsx` zostają bez zmian (minHeight 100).
 - **Nakładka haptyki** w kafelku ma `inset: 0` i dokładnie pokrywa kafelek. Nie dodaje paddingu ani marginesu.
 
@@ -67,7 +68,7 @@ Nowe elementy fazy używają dokładnie 4 rozmiarów i 2 wag:
 
 Wagi: **400** (regular) i **700** (bold, akcenty tekstu, pierwsza linia paska, przyciski).
 
-Odziedziczone bez zmian (nie liczą się do nowego zestawu): `C.lbl` (11/600) w nowym polu „Kod (opcjonalnie)”, `C.btn` (13/700; małe przyciski w wierszach list 12/700 jak dziś w KodyTab: 🔓, ✕, „Tylko problemy”), `C.input` (14/400, także stały prefiks `KRK-` w polu Kod), pole kodu w `CodeEntry` (22/700, `letterSpacing: 3`), kody w Bebas Neue 13–17 px (wzorzec z listy presence i KodyTab), emoji 64 px na projektorze.
+Odziedziczone bez zmian (nie liczą się do nowego zestawu): `C.lbl` (11/600) w nowym polu „Kod (opcjonalnie)”, `C.btn` (13/700; małe przyciski w wierszach list 12/700 jak dziś w KodyTab: 🔓, ✕), `C.input` (14/400, także stały prefiks `KRK-` w polu Kod), pole kodu w `CodeEntry` (22/700, `letterSpacing: 3`), kody w Bebas Neue 13–17 px (wzorzec z listy presence i KodyTab), emoji 64 px na projektorze.
 
 ---
 
@@ -81,7 +82,7 @@ Odziedziczone bez zmian (nie liczą się do nowego zestawu): `C.lbl` (11/600) w 
 | Destrukcyjny / błąd | `#E8376B` (tło błędu `rgba(232,55,107,.1)`, obrys `rgba(232,55,107,.3)`) | błędy (limit prób, błędne wiersze CSV, błąd zapisu kolejności), stan „Rozłączony”, przyciski usuwania ✕/🗑 |
 
 **Akcent zarezerwowany dla:**
-1. przycisku „Dołącz do quizu →” w `CodeEntry` (bez zmian) i przycisku „🎟️ Generuj” w KodyTab (bez zmian),
+1. przycisku „Dołącz do quizu →” w `CodeEntry` (bez zmian) i przycisku „🎟️ Generuj kod” w KodyTab (dziś „🎟️ Generuj”, zmiana tylko etykiety),
 2. obrysu fokusu pola kodu (`.fue-input:focus`, bez zmian),
 3. **linii miejsca upuszczenia** przy przeciąganiu pytania (2 px `#6B21E8`) i obrysu karty nad celem (`rgba(107,33,232,.6)`),
 4. plakietki numeru pytania (`rgba(107,33,232,.25)`, bez zmian).
@@ -156,8 +157,8 @@ Stany błędu (ten sam styl co dziś: pole z obrysem `#E8376B` i tłem `rgba(232
 | Sytuacja | Komunikat | Przycisk |
 |----------|-----------|----------|
 | puste pole | „Wprowadź kod uczestnika.” (bez zmian) | aktywny |
-| zły format przed wysłaniem (klient, bez RPC) | „Kod ma postać KRK-1234: 3 litery, myślnik i 4 cyfry.” | aktywny |
-| kod nieznany | „Nie znaleziono kodu.” (bez zmian) | aktywny |
+| zły format przed wysłaniem (klient, bez RPC) | „Kod ma postać KRK-1234: 3 litery miasta (np. KRK, WAR), myślnik i 4 cyfry.” | aktywny |
+| kod nieznany | „Nie znaleziono kodu. Sprawdź litery i cyfry na karcie od organizatora.” (dziś „Nie znaleziono kodu.”; zmiana w `validateParticipantCode`) | aktywny |
 | kod na innym telefonie | „Ten kod jest już używany na innym urządzeniu. Poproś organizatora o jego zwolnienie.” (bez zmian) | aktywny |
 | **limit prób** (`reason: "rate_limited"`) | **„Za dużo prób — spróbuj za minutę”** (dosłownie, z półpauzą, bez kropki) | **nieaktywny** z odliczaniem: „Odczekaj {n} s” (n z `retry_after_s`, domyślnie 60). Po zejściu do 0 wraca „Dołącz do quizu →”, a komunikat znika |
 
@@ -197,7 +198,7 @@ Stany błędu (ten sam styl co dziś: pole z obrysem `#E8376B` i tłem `rgba(232
    - „kod {KRK-1111} jest już zajęty w mieście {city}”
    - „kod {WAR-1111} należy do innego miasta”
 4. Pod błędami (11 px `#F5C518`): „Błędne wiersze zostaną pominięte. Popraw je w pliku i wgraj go ponownie albo dodaj te osoby ręcznie.”
-5. Przyciski: **„✅ Importuj {N} poprawnych”** (`C.btn("success")`) i „Anuluj” (ghost). Gdy N = 0: przycisk nieaktywny (`opacity: .5`) i komunikat 13 px `#E8376B`: „Brak wierszy do importu — popraw plik i wgraj ponownie.”
+5. Przyciski: **„✅ Importuj {N} poprawnych”** (`C.btn("success")`) i **„Odrzuć plik”** (ghost; czyści podgląd, niczego nie importuje). Gdy N = 0: przycisk nieaktywny (`opacity: .5`) i komunikat 13 px `#E8376B`: „Brak wierszy do importu — popraw plik i wgraj ponownie.”
 6. W trakcie: „Importuję {i}/{N}…” (bez zmian).
 7. Po imporcie (13 px): „Zaimportowano {n}.” (`#10D9A0`). Jeśli wiersz odpadł na wyścigu 23505: dopisać listę w stylu błędów: „Wiersz {nr}: kod {KRK-1111} został zajęty w międzyczasie — dodaj tę osobę ręcznie.”
 
@@ -211,6 +212,7 @@ Lista kodów, liczniki „Wszystkie / Wolne / Użyte” i przyciski 🔓 / ✕: 
 - Uchwyt **⠿**: 16 px `#9B89CC`, `cursor: grab` (`grabbing` w trakcie), `title="Przeciągnij, aby zmienić kolejność"`. Widoczny tylko na komputerze (≥ 900 px). Na telefonie go nie ma, bo HTML5 DnD na iOS jest zawodne.
 - Przeciągać można **całą kartę** (`draggable` na karcie) tylko na komputerze.
 - ↑ / ↓: `C.btn("ghost", { padding: "4px 10px", fontSize: 13 })`, na telefonie min. 44×44, `aria-label="Przesuń wyżej"` / `"Przesuń niżej"`. Pierwsza karta ma ↑ nieaktywne, ostatnia ↓ nieaktywne. Przyciski zostają w układzie z `opacity: .3` i `disabled`, żeby kolumna się nie przesuwała.
+- ✏️ i 🗑️ dostają `aria-label` i `title`: „Edytuj pytanie” / „Usuń pytanie”.
 - Na telefonie (< 900 px) przyciski ↑ ↓ ✏️ 🗑️ przechodzą do jednego rzędu pod treścią (`flexWrap`), ↑ ↓ po lewej, ✏️ 🗑️ po prawej.
 
 **Stany przeciągania:**
@@ -243,7 +245,7 @@ Po przestawieniu numery na plakietkach odpowiadają kolejności planu kolejnego 
 **Miejsce:** zastępuje siatkę „Uczestnicy ({N})” (dziś ~1249–1269) w statusach `waiting`, `running`, `paused`. Karta „👥 W poczekalni — N online” (tylko `waiting`) zostaje bez zmian nad nią. W `ended`/`results` lista się nie pokazuje (tam są „Wyniki końcowe”).
 
 **Karta** `C.card({ padding: "16px", marginBottom: 16 })`:
-- Nagłówek (Label 11/700 uppercase `#9B89CC`): **„👥 Uczestnicy — {N}”**. Po prawej przycisk-przełącznik ghost `fontSize: 12, padding: "4px 10px"` (wzorzec małych przycisków z KodyTab): **„Tylko problemy”** / **„Pokaż wszystkich”**. Domyślnie w `running`/`paused`: **Tylko problemy** włączone; w `waiting`: wyłączone.
+- Nagłówek (Label 11/700 uppercase `#9B89CC`): **„👥 Uczestnicy — {N}”**. Po prawej przycisk-przełącznik ghost `fontSize: 11, fontWeight: 700, padding: "4px 10px"` (typografia jak nagłówek karty, padding jak małe przyciski KodyTab): **„Tylko problemy”** / **„Pokaż wszystkich”**. Domyślnie w `running`/`paused`: **Tylko problemy** włączone; w `waiting`: wyłączone.
 - Pod nagłówkiem pigułki podsumowania (11/700, radius 20, padding `2px 10px`, tło = kolor stanu z alfą `.12`, tekst w kolorze stanu), tylko dla stanów z licznikiem > 0: „W grze {n}”, „Brak odpowiedzi {n}”, „Rozłączeni {n}”, „Inny telefon {n}”, „W poczekalni {n}”.
 - Podpis 11 px `rgba(155,137,204,.7)`: „Stan po ostatnim zamkniętym pytaniu — odświeża się co pytanie.” (w `waiting`: „Stan poczekalni na żywo.”)
 
@@ -299,7 +301,8 @@ Po przestawieniu numery na plakietkach odpowiadają kolejności planu kolejnego 
 |---------|-------|
 | Główne CTA (uczestnik) | „Dołącz do quizu →” (bez zmian; w trakcie limitu: „Odczekaj {n} s”) |
 | Główne CTA (admin, import) | „✅ Importuj {N} poprawnych” |
-| Główne CTA (admin, ręcznie) | „🎟️ Generuj” (bez zmian) |
+| Główne CTA (admin, ręcznie) | „🎟️ Generuj kod” (zamiast „🎟️ Generuj”) |
+| Odrzucenie podglądu importu | „Odrzuć plik” (zamiast „Anuluj”) |
 | Ekran projektora po teście | „Koniec testu” / „Dziękujemy! Wyniki za chwilę.” |
 | Pasek wake lock | „💡 Dotknij ekranu, aby nie gasł” / „Telefon nie może się wygasić w trakcie testu.” |
 | Pasek wake lock (awaria) | „⚠️ Ekran może się wygasić” / „Wyłącz tryb oszczędzania energii i nie blokuj telefonu do końca testu.” |
@@ -307,7 +310,7 @@ Po przestawieniu numery na plakietkach odpowiadają kolejności planu kolejnego 
 | Pusty stan: roster, filtr | „✓ Wszyscy uczestnicy są w grze.” |
 | Pusty stan: import | „Brak wierszy do importu — popraw plik i wgraj ponownie.” |
 | Błąd: limit prób | „Za dużo prób — spróbuj za minutę” (dosłownie, z CONTEXT) |
-| Błąd: format kodu | „Kod ma postać KRK-1234: 3 litery, myślnik i 4 cyfry.” |
+| Błąd: format kodu | „Kod ma postać KRK-1234: 3 litery miasta (np. KRK, WAR), myślnik i 4 cyfry.” |
 | Błąd: wiersz CSV | „Wiersz {nr}: {Imię Nazwisko} — {powód}” (powody w §5) |
 | Błąd: zapis kolejności | „Nie udało się zapisać kolejności — przywrócono poprzednią. Spróbuj ponownie.” |
 | Informacja: kolejność | „Zmiana kolejności działa od następnego startu.” |

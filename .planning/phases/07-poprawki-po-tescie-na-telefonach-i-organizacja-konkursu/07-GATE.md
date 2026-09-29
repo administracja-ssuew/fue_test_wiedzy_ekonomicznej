@@ -32,3 +32,16 @@ Sprawdzone przed wgraniem: stary front (bundle przed fazą 7) woła `validate_pa
 - `X-Forwarded-For: 1.1.1.1` → baza widzi prawdziwe IP (bez zmian)
 - `CF-Connecting-IP: 2.2.2.2` → żądanie odrzucone przez Cloudflare (nie dociera)
 - `X-Real-IP: 3.3.3.3` → baza widzi prawdziwe IP (bez zmian)
+
+## Nagłówek IP
+
+**Werdykt:** `IP: niepodrabialne → wariant 44.Z-A` (z sekcji „Sekcja 44”).
+**Wgrany wariant:** 44.Z-A (2026-09-29, potwierdzenie „wgrane 44.Z”) — `code_limit_ip_enabled()` zwraca `true`, `debug_request_ip_echo()` usunięta.
+**Uzasadnienie:** żaden z podrobionych nagłówków nie zmienia IP widzianego przez bazę (`X-Forwarded-For`, `X-Real-IP` — bez zmian; `CF-Connecting-IP` — żądanie odrzucane przez Cloudflare). Klucz urządzenia (`p_device`) podaje klient, więc skrypt może go zmieniać przy każdej próbie — dopiero warstwa IP (≥ 100 porażek / 10 min, wyjątek dla urządzeń z przypiętym kodem) zatrzymuje takie przeglądanie kodów przez ścieżkę `claim`.
+
+| Polecenie | Wynik |
+|-----------|-------|
+| `npm run verify-code-limit` | kod 0 — „LIMIT PRÓB DZIAŁA (8 OK)”; `echo usunięte (44.Z wgrany)`; wszystkie kroki limitu jak wcześniej (kod testowy `PRB-8158`), resztki 0 |
+| `npm run verify-prod` | kod 0 — „PRODUKCJA GOTOWA pod kątem SQL (66 OK)”; `debug_request_ip_echo — usunięte` |
+
+**Ryzyko rezydualne:** limit chroni ścieżkę UI (`claim_participant_code`, a `validate_participant_code` jest odebrane anonowi). Inne wyrocznie istnienia kodu — `get_participant_state` („invalid code”), `submit_answer_v2`, `code_exists` (RPC) i anon INSERT do `violations` — nie mają limitu i pozwalają skryptowi przejrzeć kody miasta w kilka minut. Ich utwardzenie (REVOKE `code_exists` od anona, usunięcie polityki anon INSERT na `violations` po przejściu frontu na `record_violation`) to decyzja o sekcji 45 w planie 07-13, wgrywanej PO wdrożeniu frontu fazy 7.

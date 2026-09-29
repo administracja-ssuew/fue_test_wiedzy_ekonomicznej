@@ -224,7 +224,7 @@ Plans:
 - [x] 07-03-PLAN.md — Wake lock iOS: kontroler z uzbrajaniem gestem + fallback mp4, pasek w Lobby, CodeEntry, fazy w App (fala 1)
 - [x] 07-04-PLAN.md — Haptyka przełącznika w kafelkach + VT: bez VT na starcie pytania, licznik porażek (fala 1)
 - [x] 07-05-PLAN.md — codeFormat.js, violations.js + supabase.js (limit, teksty, 4 cyfry, record_violation, agregat) (fala 1)
-- [ ] 07-06-PLAN.md — Ręczne wgranie sekcji 44 + test nagłówka IP + 44.Z (fala 2, checkpoint)
+- [x] 07-06-PLAN.md — Ręczne wgranie sekcji 44 + test nagłówka IP + 44.Z (fala 2, checkpoint)
 - [x] 07-07-PLAN.md — useAntiCheat: trwały licznik per typ + dosłanie; XLSX: styles 0.00, naruszenia (fala 2)
 - [x] 07-08-PLAN.md — CodeEntry: auto-myślnik, walidacja formatu, odliczanie limitu (fala 2)
 - [x] 07-09-PLAN.md — Admin Kody: import Imię;Nazwisko;Kod z błędami wierszy + pole Kod (fala 2)

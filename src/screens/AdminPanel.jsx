@@ -5,7 +5,7 @@ import {
   getParticipantCodes, generateParticipantCode, deleteParticipantCode, deleteAllParticipantCodes, deleteAllQuestions, releaseCode,
   getOrCreateSession, getSessionById, updateSession, getParticipantsInSession, getSessionResults, getEndedSessions, renameSession, deleteSession,
   getLiveAnswerSummary, endAndResetSession, getCityBg, setCityBg, uploadCityBg, DEFAULT_BG,
-  getViolationsForSession,
+  getViolationsForSession, getViolationSummary,
   getModules, addModule, updateModule, deleteModule,
   getSessionDetailedResults,
   logEvent,
@@ -21,6 +21,7 @@ import { moveItem, moveById, applyModuleOrder } from "../lib/reorder.js";
 import useWindowWidth from "../hooks/useWindowWidth.js";
 import ParticipantRoster from "../components/ParticipantRoster.jsx";
 import { lastClosedIndex } from "../lib/roster.js";
+import { VIOLATION_LABELS } from "../lib/violations.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
@@ -1136,8 +1137,9 @@ function SesjaTab({ city, adminId, onPodium }) {
       if (!rows.length) { alert("Brak danych do eksportu — nikt jeszcze nie odpowiadał w tej sesji."); return; }
 
       // Budowa arkuszy (ranking, płaska tabela, karta per uczestnik) — src/lib/resultsXlsx.js,
-      // ta sama funkcja co w zakładce Historia.
-      await downloadResultsXlsx({ results, rows, city, fileName: resultsFileName({ city, dateIso: session.created_at }) });
+      // ta sama funkcja co w zakładce Historia. Naruszenia z bazy (07-11, P7-VIOL-REPORT).
+      const violations = await getViolationSummary(session.id);
+      await downloadResultsXlsx({ results, rows, city, violations, fileName: resultsFileName({ city, dateIso: session.created_at }) });
       logEvent({ type: "results_exported_xlsx", sessionId: session.id, city, actor: adminId, detail: { participants: new Set(rows.map((r) => r.participantCode)).size, rows: rows.length } });
     } finally {
       setXlsxBusy(false);
@@ -1216,7 +1218,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             <p style={{ fontWeight: 700, fontSize: 13, color: "#E8376B" }}>Naruszenie regulaminu!</p>
             <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>
               <strong style={{ color: "#C4B5FD" }}>{violAlert.participant_code || violAlert.participantCode}</strong>
-              {" · "}{violAlert.type === "tab_switch" ? "Zmiana zakładki" : "Próba zrzutu ekranu"} (×{violAlert.count})
+              {" · "}{VIOLATION_LABELS[violAlert.type] ?? violAlert.type} (×{violAlert.count})
             </p>
           </div>
           <button onClick={() => setViolAlert(null)} style={{ background: "none", border: "none", color: "#9B89CC", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
@@ -1477,7 +1479,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: i ? "1px solid rgba(255,255,255,.04)" : "none" }}>
               <span>{v.type === "tab_switch" ? "🔀" : "📸"}</span>
               <span style={{ fontFamily: '"Bebas Neue"', fontSize: 13, color: "#9B89CC", letterSpacing: 1, minWidth: 76 }}>{v.participant_code || v.participantCode}</span>
-              <span style={{ fontSize: 12, color: "#E8376B", flex: 1 }}>{v.type === "tab_switch" ? "Zmiana zakładki" : "Screenshot"}</span>
+              <span style={{ fontSize: 12, color: "#E8376B", flex: 1 }}>{VIOLATION_LABELS[v.type] ?? v.type}</span>
               <span style={{ fontSize: 11, color: "#9B89CC" }}>×{v.count}</span>
             </div>
           ))}
@@ -1531,7 +1533,7 @@ function SesjaTab({ city, adminId, onPodium }) {
                   {i < 5 && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px", flexShrink: 0 }}>FINAŁ</span>}
                   <div style={{ textAlign: "right" }}>
                     <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#10D9A0", lineHeight: 1 }}>{r.correct}<span style={{ fontSize: 13, color: "#9B89CC" }}>/{r.total}</span></p>
-                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(1).replace(".", ",")} s` : "—"}</p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(2).replace(".", ",")} s` : "—"}</p>
                   </div>
                 </div>
               ))}
@@ -1910,8 +1912,9 @@ function HistoriaTab({ city }) {
       const { rows, error } = await getSessionDetailedResults(sel.id);
       if (error) { alert("Nie udało się pobrać szczegółowych wyników: " + error); return; }
       if (!rows.length) { alert("Brak danych do eksportu — w tej sesji nie ma odpowiedzi."); return; }
+      const violations = await getViolationSummary(sel.id);
       await downloadResultsXlsx({
-        results, rows, city: sel.city || city,
+        results, rows, city: sel.city || city, violations,
         fileName: resultsFileName({ city: sel.city || city, dateIso: sel.created_at, name: sel.name }),
       });
     } finally {

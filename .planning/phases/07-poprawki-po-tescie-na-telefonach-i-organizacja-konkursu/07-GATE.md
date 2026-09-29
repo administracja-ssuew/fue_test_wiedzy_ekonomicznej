@@ -70,3 +70,19 @@ We wszystkich przebiegach: telefon vs telefon ≤ 1 s, najdłuższy bezruch w py
 **SC10 (stary front po sekcji 44): TAK** — przebieg 1 kod 0 na `index-DXJufQaC.js`.
 
 **Po serii:** resztki 0/0/0, `time_per_q` = 20/30/60/75/20, `check-planless` 0, blokada uśpienia i `vite preview` zakończone.
+
+## Wdrożenie
+
+**Decyzja (dosłownie):** „wdrażaj” (2026-09-29).
+**Przed:** `check-planless` 0; `git status` czysty (poza `.claude/settings.json` użytkownika i pustymi `.gitkeep`); `npm run build` z HEAD `02b24bc` → `dist/assets/index-bJmiVcCG.js`.
+**Push:** 10:06, `git push origin main` → `272dbf0..02b24bc` (67 commitów fazy 7). **Vercel:** o 10:13:50 `https://fue-quiz.vercel.app/` serwuje `assets/index-bJmiVcCG.js` = lokalny `dist/` ✅.
+
+| # | Tryb | Kod | Widoczność vs plan | devDom maks. | idx w bazie | results (zamiatacz) | SC5 | Log |
+|---|------|-----|--------------------|--------------|-------------|---------------------|-----|-----|
+| 8 | podstawowa | — (niewykonana) | — | — | — | — | — | p7-08-deploy-basic.log |
+| 9 | podstawowa (powtórka) | 0 | 30,8–31,2 s ✅ | 307 ms | 111/111, 0→1→2 | 1246 ms | 21 ✅ | p7-09-deploy-basic.log |
+| 10 | ADMIN_EXIT | 0 | 31,1–31,4 s ✅ | 26 ms | 111/111, 0→1→2 | 474 ms (bez admina) | 21 ✅ | p7-10-deploy-adminexit.log |
+
+**Przebieg 8 — błąd środowiska, nie aplikacji:** Playwright nie znalazł `chromium_headless_shell-1223`. O 10:05–10:06 wspólny katalog `%LOCALAPPDATA%\ms-playwright` został zmieniony spoza tego repo (pojawił się `webkit-2359`, zniknęła rewizja 1223 używana przez `@playwright/test` 1.60.0 z lockfile — prawdopodobnie instalacja przeglądarek w innym projekcie). Sonda zakończyła się w SETUP, sprzątanie „✅ czysto”. Naprawa: `npx playwright install chromium` z repo (pobrana rewizja 1223), powtórka = przebieg 9.
+
+**Po:** `check-planless` 0; resztki 0/0/0; `time_per_q` = 20/30/60/75/20; blokada uśpienia zakończona.

@@ -33,7 +33,7 @@ progress:
 ## Current Position
 
 Phase: 07 (poprawki-po-tescie-na-telefonach-i-organizacja-konkursu) — EXECUTING
-Plan: 07-06 w toku (fale 1–2 bez 07-06 scalone: 07-01…07-05, 07-07, 07-08, 07-09; 310/310 testów; sekcja 44 czeka na ręczne wgranie)
+Plan: 07-06 w toku — wszystkie plany kodowe (07-01…07-05, 07-07…07-11) w main, 343/343 testów; czekają checkpointy: 07-06 (wgranie sekcji 44 + 44.Z), 07-12 (bramka, wdrożenie, telefony), 07-13 (decyzja o sekcji 45)
 **Phase:** 07
 **Plan:** 07-06
 **Status:** Executing Phase 07

@@ -229,7 +229,7 @@ Plans:
 - [x] 07-08-PLAN.md — CodeEntry: auto-myślnik, walidacja formatu, odliczanie limitu (fala 2)
 - [x] 07-09-PLAN.md — Admin Kody: import Imię;Nazwisko;Kod z błędami wierszy + pole Kod (fala 2)
 - [x] 07-10-PLAN.md — Admin Pytania: przeciąganie i ↑/↓, zapis RPC, blokada w trakcie quizu (fala 3)
-- [ ] 07-11-PLAN.md — Admin Sesja: lista „kto utknął” z 🔓, średnia 2 miejsca, naruszenia w eksporcie (fala 4)
+- [x] 07-11-PLAN.md — Admin Sesja: lista „kto utknął” z 🔓, średnia 2 miejsca, naruszenia w eksporcie (fala 4)
 - [ ] 07-12-PLAN.md — Bramka: sondy (SC10 na starym froncie, 5× podstawowa, ADMIN_EXIT), wdrożenie, test na iPhonie (fala 5, checkpoint)
 - [ ] 07-13-PLAN.md — Decyzja i sekcja 45: code_exists i INSERT violations bez anona (fala 6, checkpoint)
 

@@ -200,16 +200,31 @@ async function main() {
       } else if (e1) {
         bad("debug_request_ip_echo — błąd", e1.message);
       } else {
-        const spoofClient = createClient(URL, ANON, {
-          auth: { persistSession: false },
-          global: { headers: { "X-Forwarded-For": "1.1.1.1", "CF-Connecting-IP": "2.2.2.2", "X-Real-IP": "3.3.3.3" } },
-        });
-        const { data: ipSpoof, error: e2 } = await spoofClient.rpc("debug_request_ip_echo", {});
-        if (e2) bad("debug_request_ip_echo (podrobione nagłówki) — błąd", e2.message);
-        console.log(`\n  ℹ️  IP bez nagłówków: ${maskIp(ipPlain)}, z podrobionymi nagłówkami: ${maskIp(ipSpoof)}\n`);
+        // Każdy nagłówek osobno: Cloudflare odrzuca całe żądanie z podrobionym
+        // CF-Connecting-IP (błąd 1000, strona HTML), co przy wysyłce łącznej ukrywało
+        // wynik dla X-Forwarded-For / X-Real-IP. Odrzucenie przez brzeg = nagłówek
+        // nie dociera do PostgREST = nie da się nim podrobić IP.
+        const SPOOF_HEADERS = [["X-Forwarded-For", "1.1.1.1"], ["CF-Connecting-IP", "2.2.2.2"], ["X-Real-IP", "3.3.3.3"]];
+        let spoofed = false;
+        let answered = 0;
+        for (const [h, v] of SPOOF_HEADERS) {
+          const spoofClient = createClient(URL, ANON, { auth: { persistSession: false }, global: { headers: { [h]: v } } });
+          const { data: ipSpoof, error: e2 } = await spoofClient.rpc("debug_request_ip_echo", {});
+          if (e2) {
+            const edge = /cloudflare|<!doctype html/i.test(e2.message || "");
+            console.log(`  ℹ️  ${h}: ${edge ? "żądanie odrzucone przez Cloudflare (nie dociera)" : `błąd: ${String(e2.message).slice(0, 80)}`}`);
+            if (!edge) bad(`debug_request_ip_echo (${h}) — błąd`, String(e2.message).slice(0, 120));
+            continue;
+          }
+          answered++;
+          const diff = SPOOF_IPS.includes(ipSpoof) || ipSpoof !== ipPlain;
+          if (diff) spoofed = true;
+          console.log(`  ℹ️  ${h}: IP widziane przez bazę ${maskIp(ipSpoof)} ${diff ? "— PODROBIONE" : "— bez zmian"}`);
+        }
+        console.log(`\n  ℹ️  IP bez nagłówków: ${maskIp(ipPlain)}\n`);
         if (ipPlain == null) {
           console.log("  IP: brak (nagłówek nie dociera do PostgREST) → wariant 44.Z-B");
-        } else if (SPOOF_IPS.includes(ipSpoof) || ipSpoof !== ipPlain) {
+        } else if (spoofed || answered === 0) {
           console.log("  IP: podrabialne → wariant 44.Z-B");
         } else {
           console.log("  IP: niepodrabialne → wariant 44.Z-A");

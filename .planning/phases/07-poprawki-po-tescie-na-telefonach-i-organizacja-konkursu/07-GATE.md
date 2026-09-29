@@ -86,3 +86,8 @@ We wszystkich przebiegach: telefon vs telefon ≤ 1 s, najdłuższy bezruch w py
 **Przebieg 8 — błąd środowiska, nie aplikacji:** Playwright nie znalazł `chromium_headless_shell-1223`. O 10:05–10:06 wspólny katalog `%LOCALAPPDATA%\ms-playwright` został zmieniony spoza tego repo (pojawił się `webkit-2359`, zniknęła rewizja 1223 używana przez `@playwright/test` 1.60.0 z lockfile — prawdopodobnie instalacja przeglądarek w innym projekcie). Sonda zakończyła się w SETUP, sprzątanie „✅ czysto”. Naprawa: `npx playwright install chromium` z repo (pobrana rewizja 1223), powtórka = przebieg 9.
 
 **Po:** `check-planless` 0; resztki 0/0/0; `time_per_q` = 20/30/60/75/20; blokada uśpienia zakończona.
+
+## Czasy modułów
+
+**Przed testem na telefonach** (odczyt `modules.time_per_q`, 2026-09-29 po wdrożeniu): moduł 1: 20 s · 2: 30 s · 3: 60 s · 4: 75 s · 5: 20 s — zgodne z oczekiwanymi (20/30/60/75/20).
+**Po teście:** _(do uzupełnienia)_

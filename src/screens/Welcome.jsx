@@ -610,28 +610,51 @@ function PartnerzyTab() {
           <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Partnerzy</h2>
           <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#F5C518,transparent)", margin: "10px auto 0" }} />
           <p style={{ color: "#9B89CC", fontSize: 14, marginTop: 14, lineHeight: 1.6 }}>
-            Lista partnerów Testu Wiedzy Ekonomicznej wkrótce — trwają rozmowy.
+            Dziękujemy partnerom Testu Wiedzy Ekonomicznej.
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 16 }}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={{
-              aspectRatio: "16 / 10",
-              borderRadius: 14,
-              border: "1px dashed rgba(255,255,255,.14)",
-              background: "linear-gradient(110deg, rgba(255,255,255,.03) 30%, rgba(255,255,255,.07) 50%, rgba(255,255,255,.03) 70%)",
-              backgroundSize: "200% 100%",
-              animation: `shimmer 2.4s linear ${i * .12}s infinite, cardIn .45s ease ${i * .05}s both`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "rgba(155,137,204,.4)", fontSize: 12, fontWeight: 600, letterSpacing: 1,
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 28 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+            <span style={{ fontSize: 11, color: "#F5C518", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 700, marginBottom: 10 }}>Partner główny</span>
+            <div style={{
+              background: "#fff", borderRadius: 18,
+              padding: "clamp(16px, 4vw, 28px) clamp(18px, 5vw, 40px)",
+              width: "100%", maxWidth: 560, boxSizing: "border-box",
+              boxShadow: "0 12px 40px rgba(245,197,24,.18)",
+              border: "2px solid rgba(245,197,24,.45)",
+              display: "flex", justifyContent: "center",
+              animation: "cardIn .45s ease both",
             }}>
-              PARTNER
+              <img
+                src="/partner-biedronka.png"
+                alt="Jerónimo Martins i Biedronka - partner główny"
+                decoding="async"
+                style={{ display: "block", width: "100%", maxWidth: 480, height: "auto" }}
+              />
             </div>
-          ))}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+            <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>Partner</span>
+            <div style={{
+              background: "#fff", borderRadius: 14,
+              padding: "clamp(12px, 3vw, 18px) clamp(14px, 4vw, 24px)",
+              width: "100%", maxWidth: 340, boxSizing: "border-box",
+              display: "flex", justifyContent: "center",
+              animation: "cardIn .45s ease both", animationDelay: ".12s",
+            }}>
+              <img
+                src="/partner-katowice-airport.png"
+                alt="Katowice Airport i GTL"
+                decoding="async"
+                style={{ display: "block", width: "100%", maxWidth: 300, height: "auto" }}
+              />
+            </div>
+          </div>
         </div>
 
-        <p style={{ textAlign: "center", color: "rgba(155,137,204,.5)", fontSize: 12, marginTop: 24 }}>
+        <p style={{ textAlign: "center", color: "rgba(155,137,204,.5)", fontSize: 12, marginTop: 32 }}>
           Chcesz zostać partnerem? Napisz do organizatorów.
         </p>
       </div>

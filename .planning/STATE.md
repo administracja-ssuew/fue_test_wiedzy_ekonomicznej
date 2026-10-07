@@ -133,6 +133,7 @@ None — Phase 1 can start immediately.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260902-lp2 | Naprawy po audycie obciążeniowym + 5 zadań użytkownika | 2026-09-02 | `5d76829` | [260902-lp2-naprawy-po-audycie-obciazeniowym-5-zadan](./quick/260902-lp2-naprawy-po-audycie-obciazeniowym-5-zadan/) |
+| 261007-ihg | Paczka 9 poprawek przed TWE 27.10 (landing, przerwa tylko po module 3, potwierdzenie podium, blokada edycji, średni czas 3 miejsca) — czeka na SQL 46 + deploy | 2026-10-07 | `3013231` | [261007-ihg-paczka-9-poprawek-przed-twe-27-10](./quick/261007-ihg-paczka-9-poprawek-przed-twe-27-10/) |
 
 **Otwarte po 260902-lp2** (szczegóły w SUMMARY):
 
@@ -157,4 +158,4 @@ None — Phase 1 can start immediately.
 
 ---
 
-*Last updated: 2026-09-02 — Completed quick task 260902-lp2: naprawy po audycie obciążeniowym + 5 zadań użytkownika*
+*Last updated: 2026-10-07 — Completed quick task 261007-ihg: paczka 9 poprawek przed TWE 27.10*

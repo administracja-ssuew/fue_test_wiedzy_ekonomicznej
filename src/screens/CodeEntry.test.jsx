@@ -9,7 +9,7 @@ import { validateParticipantCode } from "../lib/supabase.js";
 import { armWakeLockFromGesture } from "../lib/wakeLock.js";
 
 const FORMAT_ERR = "Kod ma postać KRK-1234: 3 litery miasta (np. KRK, WAR), myślnik i 4 cyfry.";
-const RATE_ERR = "Za dużo prób — spróbuj za minutę";
+const RATE_ERR = "Za dużo prób - spróbuj za minutę";
 
 function setup() {
   const onSuccess = vi.fn();
@@ -35,7 +35,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("CodeEntry — P7-CODE-DASH (auto-myślnik)", () => {
+describe("CodeEntry - P7-CODE-DASH (auto-myślnik)", () => {
   it("dopisuje myślnik po 3 literach, a kasowanie na „KRK-” daje „KRK”", () => {
     const { input, type } = setup();
     type("k");
@@ -69,7 +69,7 @@ describe("CodeEntry — P7-CODE-DASH (auto-myślnik)", () => {
   });
 });
 
-describe("CodeEntry — walidacja przed RPC", () => {
+describe("CodeEntry - walidacja przed RPC", () => {
   it("zły format → komunikat formatu, bez RPC, blokada ekranu uzbrojona", async () => {
     const { type, button } = setup();
     type("KRK-111");
@@ -113,7 +113,7 @@ describe("CodeEntry — walidacja przed RPC", () => {
   });
 });
 
-describe("CodeEntry — P7-CODE-RATE (limit prób)", () => {
+describe("CodeEntry - P7-CODE-RATE (limit prób)", () => {
   it("rate_limited → komunikat, przycisk nieaktywny z odliczaniem, po 0 powrót", async () => {
     vi.useFakeTimers();
     vi.mocked(validateParticipantCode).mockResolvedValue({ error: RATE_ERR, rateLimited: true, retryAfterS: 3 });

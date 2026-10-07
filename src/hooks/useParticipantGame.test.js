@@ -83,7 +83,7 @@ async function mountInLobby() {
   return hook;
 }
 
-describe("useParticipantGame — zawieszony snapshot nie blokuje planu (G7, 06-17 przebieg 05)", () => {
+describe("useParticipantGame - zawieszony snapshot nie blokuje planu (G7, 06-17 przebieg 05)", () => {
   it("wiersz startu przy zawieszonym snapshocie z lobby → plan i zapowiedź w ≤ 1,5 s", async () => {
     const { result } = await mountInLobby();
 
@@ -123,7 +123,7 @@ describe("useParticipantGame — zawieszony snapshot nie blokuje planu (G7, 06-1
     expect(result.current.view.phase).toBe("quiz");
   });
 
-  it("snapshot wysłany przed wierszem startu nie czeka do limitu 4 s — porzucony po 1,5 s od wysłania", async () => {
+  it("snapshot wysłany przed wierszem startu nie czeka do limitu 4 s - porzucony po 1,5 s od wysłania", async () => {
     const { result } = await mountInLobby();
     act(() => { result.current.refresh(); });
     const hung = h.calls[1];
@@ -151,7 +151,7 @@ describe("useParticipantGame — zawieszony snapshot nie blokuje planu (G7, 06-1
     await tick(1000);
     expect(h.calls.length).toBe(2);           // snapshot z planem po jitterze (wysłany PO wierszu)
     const planCall = h.calls[1];
-    // Kolejne wywołanie w trakcie (np. broadcast) — bez nowego wiersza nie porzucamy żądania.
+    // Kolejne wywołanie w trakcie (np. broadcast) - bez nowego wiersza nie porzucamy żądania.
     act(() => { result.current.refresh(); });
     await tick(3000);
     expect(h.calls.length).toBe(2);
@@ -166,7 +166,7 @@ describe("useParticipantGame — zawieszony snapshot nie blokuje planu (G7, 06-1
     const hung = h.calls[0];
 
     await tick(3900);
-    expect(h.calls.length).toBe(1);          // przed limitem — bez dublowania
+    expect(h.calls.length).toBe(1);          // przed limitem - bez dublowania
     await tick(200);
     expect(h.calls.length).toBe(2);          // limit 4 s → ponowienie od razu (brak sesji)
     expect(hung.opts.signal?.aborted).toBe(true);
@@ -194,13 +194,13 @@ describe("useParticipantGame — zawieszony snapshot nie blokuje planu (G7, 06-1
     expect(h.calls.length).toBe(before + 1);
     await tick(4000);                         // limit
     expect(h.calls.length).toBe(before + 1);  // bez natychmiastowej burzy ponowień
-    await tick(1100);                         // 1. ponowienie: 500–1000 ms
+    await tick(1100);                         // 1. ponowienie: 500-1000 ms
     expect(h.calls.length).toBe(before + 2);
     expect(result.current.view.phase).toBe("intro"); // projekcja z planu działa dalej
   });
 });
 
-describe("useParticipantGame — View Transitions na wolnym renderze", () => {
+describe("useParticipantGame - View Transitions na wolnym renderze", () => {
   function fakeVT(callbackDelayMs) {
     const vtCalls = [];
     document.startViewTransition = vi.fn((cb) => {
@@ -234,7 +234,7 @@ describe("useParticipantGame — View Transitions na wolnym renderze", () => {
     const vtCalls = fakeVT(400);
 
     await tick(anchor + 10000 - Date.now() + 20);   // granica pytania 1 (+ jedna klatka)
-    expect(result.current.view.phase).toBe("quiz"); // start pytania bez VT — od razu
+    expect(result.current.view.phase).toBe("quiz"); // start pytania bez VT - od razu
     expect(vtCalls.length).toBe(0);
 
     await tick(anchor + 30000 - Date.now() + 20);   // granica odsłony
@@ -242,12 +242,12 @@ describe("useParticipantGame — View Transitions na wolnym renderze", () => {
     await tick(150);
     expect(result.current.view.phase).toBe("reveal"); // limit 150 ms, nie callback po 400 ms (1. porażka)
 
-    await tick(anchor + 41500 - Date.now() + 20);   // koniec odsłony — 11 s płynnych klatek później
+    await tick(anchor + 41500 - Date.now() + 20);   // koniec odsłony - 11 s płynnych klatek później
     expect(vtCalls.length).toBe(2);                 // VT wróciło (callback po skip nie policzył 2. porażki)
     await tick(150);
     expect(result.current.view.phase).not.toBe("reveal"); // 2. porażka
 
-    await tick(anchor + 45500 - Date.now() + 20);   // start pytania 2 — bez VT
+    await tick(anchor + 45500 - Date.now() + 20);   // start pytania 2 - bez VT
     expect(result.current.view.phase).toBe("quiz");
     await tick(anchor + 65500 - Date.now() + 20);   // odsłona pytania 2
     expect(result.current.view.phase).toBe("reveal");

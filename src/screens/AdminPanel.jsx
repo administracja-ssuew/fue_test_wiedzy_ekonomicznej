@@ -74,7 +74,7 @@ const parseCsv = (raw) => {
   return rows.map((r) => r.map((f) => f.trim())).filter((r) => r.some((f) => f));
 };
 
-// Pobranie pliku tekstowego (CSV) z BOM — Excel poprawnie czyta polskie znaki.
+// Pobranie pliku tekstowego (CSV) z BOM - Excel poprawnie czyta polskie znaki.
 const downloadCsv = (filename, content) => {
   const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -102,8 +102,8 @@ function CityPicker({ city, setCity }) {
 const EMPTY = { module: 1, q: "", opts: ["", "", "", ""], ans: 0, exp: "" };
 const ANS_LETTERS = { A: 0, B: 1, C: 2, D: 3 };
 
-// editLocked — ten admin nie może teraz edytować (blokada superadmina, sekcja 46);
-// lockActive — blokada jest włączona (superadmin widzi tylko informację).
+// editLocked - ten admin nie może teraz edytować (blokada superadmina, sekcja 46);
+// lockActive - blokada jest włączona (superadmin widzi tylko informację).
 function PytaniaTab({ city, editLocked = false, lockActive = false }) {
   const MODULES = useModules();
   const [isPractice, setIsPractice] = useState(false);
@@ -172,7 +172,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
     for (let i = 0; i < qCsvPreview.length; i++) {
       const { error } = await addQuestion({ ...qCsvPreview[i], city, createdBy: null, isPractice });
       if (error) {
-        // Blokada włączona w trakcie (albo inny błąd) — przerwij, pokaż ile weszło.
+        // Blokada włączona w trakcie (albo inny błąd) - przerwij, pokaż ile weszło.
         setQCsvImporting(false); reload();
         alert(`${friendlyWriteError(error)} Zaimportowano ${i} z ${qCsvPreview.length}.`);
         return;
@@ -186,7 +186,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
   useEffect(() => { loadQs().then(setQuestions); }, [city, isPractice]);
   const reload = () => loadQs().then(setQuestions);
 
-  // Kopiuje pytania (z wybranego miasta) do BIEŻĄCEGO miasta — szybkie uzupełnienie
+  // Kopiuje pytania (z wybranego miasta) do BIEŻĄCEGO miasta - szybkie uzupełnienie
   // treści, gdy wszystkie miasta mają ten sam zestaw (jak w TWE).
   const copyFromCity = async () => {
     if (editLocked || !copyFrom || copyFrom === city) return;
@@ -208,7 +208,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
     alert(`Skopiowano ${src.length} pytań (${pool}) z „${copyFrom}" do „${city}".`);
   };
 
-  // Wczesne return przy editLocked — obrona w głąb, gdy blokada przyjdzie w trakcie.
+  // Wczesne return przy editLocked - obrona w głąb, gdy blokada przyjdzie w trakcie.
   const openAdd  = () => { if (editLocked) return; setForm({ ...EMPTY, module: mod }); setEditId(null); };
   const openEdit = (q) => { if (editLocked) return; setForm({ module: q.module, q: q.q, opts: [...q.opts], ans: q.ans, exp: q.exp || "" }); setEditId(q.id); };
 
@@ -281,7 +281,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
       e.dataTransfer.effectAllowed = "move";
     },
     onDragOver: (e) => {
-      if (!dragId.current) return; // np. plik z pulpitu — nie nasza karta
+      if (!dragId.current) return; // np. plik z pulpitu - nie nasza karta
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       setOverId(q.id); setOverPlace(dropPlace(e));
@@ -299,7 +299,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
   const SAVE_MSG = {
     saving: { text: "Zapisuję kolejność…", color: "#9B89CC" },
     saved:  { text: "✓ Kolejność zapisana", color: "#10D9A0" },
-    error:  { text: "Nie udało się zapisać kolejności — przywrócono poprzednią. Spróbuj ponownie.", color: "#E8376B" },
+    error:  { text: "Nie udało się zapisać kolejności - przywrócono poprzednią. Spróbuj ponownie.", color: "#E8376B" },
   }[saveState];
 
   return (
@@ -310,7 +310,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
         </div>
       )}
       {!editLocked && lockActive && (
-        <p style={{ fontSize: 12, color: "#F5C518", marginBottom: 12 }}>🔒 Blokada aktywna — admini miast nie mogą edytować pytań; Ty możesz.</p>
+        <p style={{ fontSize: 12, color: "#F5C518", marginBottom: 12 }}>🔒 Blokada aktywna - admini miast nie mogą edytować pytań; Ty możesz.</p>
       )}
 
       {/* Główne / Próbne toggle */}
@@ -349,7 +349,7 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
         {qCsvErr && <p style={{ color: qCsvPreview ? "#F5C518" : "#E8376B", fontSize: 12, marginTop: 6 }}>{qCsvErr}</p>}
         {qCsvPreview && (
           <div style={{ marginTop: 12 }}>
-            <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 8 }}>Znaleziono <strong style={{ color: "#10D9A0" }}>{qCsvPreview.length}</strong> pytań — podgląd (max 5):</p>
+            <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 8 }}>Znaleziono <strong style={{ color: "#10D9A0" }}>{qCsvPreview.length}</strong> pytań - podgląd (max 5):</p>
             {qCsvPreview.slice(0, 5).map((p, i) => (
               <div key={i} style={{ fontSize: 12, padding: "3px 8px", background: "rgba(16,217,160,.08)", border: "1px solid rgba(16,217,160,.15)", borderRadius: 6, marginBottom: 4, color: "#EDE9FE" }}>
                 <span style={{ color: "#9B89CC" }}>M{p.module} · </span>{p.q} <span style={{ color: "#10D9A0" }}>→ {["A","B","C","D"][p.ans]}: {p.opts[p.ans]}</span>
@@ -374,14 +374,14 @@ function PytaniaTab({ city, editLocked = false, lockActive = false }) {
       <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 20, borderColor: "rgba(107,33,232,.25)", background: "rgba(107,33,232,.05)" }) }}>
         <p style={{ fontWeight: 700, color: "#C4B5FD", fontSize: 13, marginBottom: 8 }}>📋 Kopiuj pytania {isPractice ? "(próbne)" : "(główne)"} z innego miasta</p>
         <p style={{ fontSize: 12, color: "#9B89CC", marginBottom: 10 }}>
-          Dodaje wszystkie pytania wybranego miasta do <strong style={{ color: "#EDE9FE" }}>{city}</strong> (do istniejących — nie nadpisuje). Przydatne, gdy wszystkie miasta mają ten sam zestaw.
+          Dodaje wszystkie pytania wybranego miasta do <strong style={{ color: "#EDE9FE" }}>{city}</strong> (do istniejących - nie nadpisuje). Przydatne, gdy wszystkie miasta mają ten sam zestaw.
         </p>
         {copying ? (
           <p style={{ fontSize: 13, color: "#C4B5FD" }}>Kopiuję {copyProgress}…</p>
         ) : (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} style={{ ...C.input(), width: "auto" }}>
-              <option value="">— wybierz miasto źródłowe —</option>
+              <option value="">- wybierz miasto źródłowe -</option>
               {CITIES.filter((c) => c.name !== city).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
             </select>
             <button onClick={copyFromCity} disabled={!copyFrom || editLocked} style={{ ...C.btn(copyFrom && !editLocked ? "primary" : "ghost", { fontSize: 13, padding: "8px 16px" }), opacity: copyFrom && !editLocked ? 1 : .5 }}>
@@ -517,11 +517,11 @@ function KodyTab({ city, adminId }) {
   const generate = async () => {
     if (busy) return;
     if (!form.name.trim() || !form.surname.trim()) return setErr("Podaj imię i nazwisko.");
-    if (form.number && !/^\d{4}$/.test(form.number)) return setErr("Kod musi mieć 4 cyfry (np. 0042) — albo zostaw pole puste, a numer zostanie wylosowany.");
+    if (form.number && !/^\d{4}$/.test(form.number)) return setErr("Kod musi mieć 4 cyfry (np. 0042) - albo zostaw pole puste, a numer zostanie wylosowany.");
     setErr(""); setBusy(true);
     const { error } = await generateParticipantCode({ name: form.name.trim(), surname: form.surname.trim(), city, createdBy: adminId, number: form.number || null });
     setBusy(false);
-    if (error) return setErr(error); // pola zostają — admin poprawia numer
+    if (error) return setErr(error); // pola zostają - admin poprawia numer
     setForm({ name: "", surname: "", number: "" }); reload();
   };
 
@@ -548,12 +548,12 @@ function KodyTab({ city, adminId }) {
     setCsvImporting(true); setCsvProgress(0);
     let ok = 0;
     const raced = [];
-    const failed = []; // inne błędy (np. sieć) — też pokazane, żeby nikt nie zniknął po cichu
+    const failed = []; // inne błędy (np. sieć) - też pokazane, żeby nikt nie zniknął po cichu
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const { error, conflict } = await generateParticipantCode({ name: r.name, surname: r.surname, city, createdBy: adminId, number: r.number });
       if (!error) ok++;
-      // Wyścig 23505 (ktoś zajął numer między podglądem a importem) — bez ponawiania, raport wiersza.
+      // Wyścig 23505 (ktoś zajął numer między podglądem a importem) - bez ponawiania, raport wiersza.
       else if (conflict) raced.push({ line: r.line, code: `${prefix}-${r.number}` });
       else { console.error("[import CSV] wiersz", r.line, error); failed.push({ line: r.line, name: `${r.name} ${r.surname}`, error }); }
       setCsvProgress(i + 1);
@@ -591,7 +591,7 @@ function KodyTab({ city, adminId }) {
                 inputMode="numeric"
                 maxLength={4}
                 placeholder="losowy"
-                aria-label={`Kod — 4 cyfry po ${prefix}-`}
+                aria-label={`Kod - 4 cyfry po ${prefix}-`}
                 onChange={(e) => { setForm((p) => ({ ...p, number: e.target.value.replace(/\D/g, "").slice(0, 4) })); setErr(""); }}
                 onKeyDown={(e) => e.key === "Enter" && generate()}
                 style={{ background: "transparent", border: "none", outline: "none", color: "#EDE9FE", fontSize: 14, padding: "11px 14px 11px 0", width: "100%", fontFamily: "inherit" }}
@@ -647,7 +647,7 @@ function KodyTab({ city, adminId }) {
                   <div style={{ maxHeight: 240, overflowY: "auto", marginTop: 8 }}>
                     {errors.map((e, i) => (
                       <div key={`${e.line}-${i}`} style={{ background: "rgba(232,55,107,.08)", border: "1px solid rgba(232,55,107,.25)", borderRadius: 6, padding: "4px 8px", fontSize: 13, color: "#EDE9FE", marginBottom: 4 }}>
-                        Wiersz {e.line}: {e.name || "—"} — <span style={{ color: "#E8376B" }}>{e.reason}</span>
+                        Wiersz {e.line}: {e.name || "-"} - <span style={{ color: "#E8376B" }}>{e.reason}</span>
                       </div>
                     ))}
                   </div>
@@ -657,7 +657,7 @@ function KodyTab({ city, adminId }) {
                 </>
               )}
 
-              {n === 0 && <p style={{ fontSize: 13, color: "#E8376B", marginTop: 8 }}>Brak wierszy do importu — popraw plik i wgraj ponownie.</p>}
+              {n === 0 && <p style={{ fontSize: 13, color: "#E8376B", marginTop: 8 }}>Brak wierszy do importu - popraw plik i wgraj ponownie.</p>}
 
               <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
                 {csvImporting ? (
@@ -684,12 +684,12 @@ function KodyTab({ city, adminId }) {
               <div style={{ maxHeight: 240, overflowY: "auto" }}>
                 {importReport.raced.map((r) => (
                   <div key={`r${r.line}`} style={{ background: "rgba(232,55,107,.08)", border: "1px solid rgba(232,55,107,.25)", borderRadius: 6, padding: "4px 8px", fontSize: 13, color: "#EDE9FE", marginBottom: 4 }}>
-                    Wiersz {r.line}: <span style={{ color: "#E8376B" }}>kod {r.code} został zajęty w międzyczasie — dodaj tę osobę ręcznie.</span>
+                    Wiersz {r.line}: <span style={{ color: "#E8376B" }}>kod {r.code} został zajęty w międzyczasie - dodaj tę osobę ręcznie.</span>
                   </div>
                 ))}
                 {importReport.failed.map((f) => (
                   <div key={`f${f.line}`} style={{ background: "rgba(232,55,107,.08)", border: "1px solid rgba(232,55,107,.25)", borderRadius: 6, padding: "4px 8px", fontSize: 13, color: "#EDE9FE", marginBottom: 4 }}>
-                    Wiersz {f.line}: {f.name} — <span style={{ color: "#E8376B" }}>{f.error}</span>
+                    Wiersz {f.line}: {f.name} - <span style={{ color: "#E8376B" }}>{f.error}</span>
                   </div>
                 ))}
               </div>
@@ -756,9 +756,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   const pollVersionRef = useRef(0);    // incremented on every upd() to discard in-flight stale poll responses
   const presenceChRef  = useRef(null);
   const quizBcChRef    = useRef(null); // broadcast channel for instant status push to participants
-  const autoAdvancedRef = useRef(-1);  // #3 — auto-przejście: idx pytania, dla którego już pominęliśmy czas
+  const autoAdvancedRef = useRef(-1);  // #3 - auto-przejście: idx pytania, dla którego już pominęliśmy czas
   const goToNextRef     = useRef(() => {}); // always-current goToNextQuestion (hook musi być nad early-return)
-  const participantsRef = useRef(0);   // #3 — liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
+  const participantsRef = useRef(0);   // #3 - liczba uczestników (do auto-advance w pollu, bez wyścigu stanu)
   const plTotalRef = useRef(-1);       // plateau: ostatni total
   const plAtRef    = useRef(0);        // plateau: kiedy total ostatnio się zmienił
   const driverIdxRef = useRef(-1);     // pytanie, dla którego kierowca policzył już baseline
@@ -825,7 +825,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     : null;
 
   // ── Lista uczestników „kto utknął” (07-11, P7-ADMIN-STUCK) ─────────────────
-  // Bez presence w grze: stan z wierszy answers OSTATNIEGO ZAMKNIĘTEGO pytania — jedno RPC
+  // Bez presence w grze: stan z wierszy answers OSTATNIEGO ZAMKNIĘTEGO pytania - jedno RPC
   // na pytanie (wynik po zamknięciu się nie zmienia → cache po indeksie), plus lekkie
   // zapytanie o konflikty kodu co 6 s.
   const [closedPresence, setClosedPresence] = useState(null); // { idx, map: Map<code, hasChoice> }
@@ -871,7 +871,7 @@ function SesjaTab({ city, adminId, onPodium }) {
 
   // Keep questions ref current for the realtime INSERT handler (avoids stale closure).
   useEffect(() => { cityQuestionsRef.current = cityQuestions; }, [cityQuestions]);
-  // #3 — synchronizacja refów do auto-przejścia (liczone w pollu, nie ze stanu).
+  // #3 - synchronizacja refów do auto-przejścia (liczone w pollu, nie ze stanu).
   useEffect(() => { participantsRef.current = participants.length; }, [participants]);
   // Nowa sesja → znów można auto-pomijać, a oszacowanie frekwencji liczymy od zera
   // (poprzednia sesja mogła mieć zupełnie inną liczbę uczestników).
@@ -922,7 +922,7 @@ function SesjaTab({ city, adminId, onPodium }) {
       setParticipants(await getParticipantsInSession(city, data.id));
       if (data.status === "ended" || data.status === "results") setResults(await getSessionResults(data.id));
     }
-    // Always load real questions — practice sessions also use real question IDs for answers
+    // Always load real questions - practice sessions also use real question IDs for answers
     const qs = await getQuestions(city);
     setCityQuestions(qs);
     setLoading(false);
@@ -949,14 +949,14 @@ function SesjaTab({ city, adminId, onPodium }) {
         const sid = sessionRef.current?.id;
         if (!sid) return;
         const fresh = await getSessionById(sid);
-        // Discard if upd() was called while this fetch was in-flight — prevents stale "running"
+        // Discard if upd() was called while this fetch was in-flight - prevents stale "running"
         // response from reverting a just-written "paused" status in local state.
         if (pollVersionRef.current !== myVersion) return;
         if (fresh) { setSession(fresh); sessionRef.current = fresh; }
         const s = sessionRef.current;
         const q = cityQuestions[s?.current_question_idx ?? 0];
         const [stats, parts, viols] = await Promise.all([
-          // Lightweight {total, correct} during the question — full per-row list is
+          // Lightweight {total, correct} during the question - full per-row list is
           // only fetched at reveal (in the ghost LiveTab/LiveView), not here.
           q && s?.id && s.status === "running" ? getLiveAnswerSummary(s.id, q.id) : Promise.resolve(null),
           getParticipantsInSession(city, s?.id),
@@ -971,10 +971,10 @@ function SesjaTab({ city, adminId, onPodium }) {
   }, [session?.status, cityQuestions]);
 
   // Dedicated fast (1s) poll of JUST the answer counter so the admin's live banner
-  // is second-accurate during a question — matches the LiveView/embed cadence.
+  // is second-accurate during a question - matches the LiveView/embed cadence.
   // The heavier participants/violations bundle above stays at 3s to keep DB load low.
   //
-  // Przejścia pytań zapisuje zamiatacz w bazie (faza 6) — ten interwał tylko odświeża
+  // Przejścia pytań zapisuje zamiatacz w bazie (faza 6) - ten interwał tylko odświeża
   // licznik odpowiedzi i decyduje o auto-skrócie (adminSkipQuestion). Przeglądarka
   // dławi setInterval w karcie w tle, więc po powrocie widoczności dociągamy od razu
   // (ten sam wzorzec co w serverClock.js i ModulesContext.jsx).
@@ -991,7 +991,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         const s = sessionRef.current;
         // Pozycja z planu sesji (zamiatacz i tak synchronizuje wiersz, ale plan jest
         // dokładny od razu, bez czekania na przebieg pg_cron). Przejść pytań panel NIE
-        // zapisuje — robi to zamiatacz w bazie (faza 6, advance_due_sessions). Sesja bez
+        // zapisuje - robi to zamiatacz w bazie (faza 6, advance_due_sessions). Sesja bez
         // planu (stary panel) → nic nie liczymy, panel pokazuje baner „zakończ ją”.
         const pos = s?.plan_anchor_at ? planPos() : null;
         if (!pos?.item) return;
@@ -999,11 +999,11 @@ function SesjaTab({ city, adminId, onPodium }) {
         const q = cityQuestions.find((x) => x.id === pos.item.id) ?? cityQuestions[idx];
         if (!s?.id || !q?.id || s.status !== "running") return;
 
-        // Zmiana pytania — zamknij poprzednie i zaktualizuj oszacowanie frekwencji.
+        // Zmiana pytania - zamknij poprzednie i zaktualizuj oszacowanie frekwencji.
         // Ostatni total poprzedniego pytania to najlepsza miara, ilu uczestników REALNIE
         // odpowiada. participants.length liczy wydane kody, więc kody-widma (ktoś dołączył
         // i zamknął przeglądarkę) trwale zawyżały próg i „wszyscy odpowiedzieli" nie
-        // odpalało się nigdy — trzeba było czekać na plateau. [[auto-skip-widma-plateau]]
+        // odpalało się nigdy - trzeba było czekać na plateau. [[auto-skip-widma-plateau]]
         if (driverIdxRef.current !== idx) {
           if (plTotalRef.current > expectedRef.current) expectedRef.current = plTotalRef.current;
           driverIdxRef.current = idx;
@@ -1015,7 +1015,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         const tpqNow = pos.item.tpq; // czas z planu (zamrożony przy starcie), nie z modułów
 
         const stats = await getLiveAnswerSummary(s.id, q.id);
-        // H3 (06-DIAG): statystyki są dla pytania idx — jeśli w trakcie await pytanie się
+        // H3 (06-DIAG): statystyki są dla pytania idx - jeśli w trakcie await pytanie się
         // zmieniło, nic nie liczymy; skrót tylko, gdy to pytanie nadal jest w fazie quiz
         // (koniec czasu / pauza / wznowienie w trakcie await → bez skrótu).
         const posNow = planPos();
@@ -1023,10 +1023,10 @@ function SesjaTab({ city, adminId, onPodium }) {
         const canSkip = posNow.phase === "quiz" && sessionRef.current?.status === "running";
         if (stats) {
           setLiveStats(stats);
-          // #3 — wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
+          // #3 - wcześniejsze zakończenie pytania liczone TU (świeże dane, bez wyścigu stanu).
           const total = stats.total ?? 0;
           if (total !== plTotalRef.current) { plTotalRef.current = total; plAtRef.current = Date.now(); }
-          // Decyzja w czystej funkcji (gameLogic.shouldEndEarly) — ma test regresyjny na
+          // Decyzja w czystej funkcji (gameLogic.shouldEndEarly) - ma test regresyjny na
           // przebieg, w którym stary warunek ucinał 500-osobowy quiz przy 60 odpowiedziach.
           const elapsedS = startedMsNow != null ? (serverNow() - startedMsNow) / 1000 : 0;
           const endEarly = shouldEndEarly({
@@ -1039,7 +1039,7 @@ function SesjaTab({ city, adminId, onPodium }) {
           });
           if (endEarly && canSkip && autoAdvancedRef.current !== idx) {
             autoAdvancedRef.current = idx;
-            // Skrócenie = adminSkipQuestion (przesunięcie kotwicy planu w RPC) — wyłącznie
+            // Skrócenie = adminSkipQuestion (przesunięcie kotwicy planu w RPC) - wyłącznie
             // pytania idx, dla którego policzono statystyki (idx sprzed await, sprawdzony po await).
             goToNextRef.current(idx);
           }
@@ -1050,7 +1050,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     };
 
     liveStatsRef.current = setInterval(driverTick, 1000);
-    // Dociągnij natychmiast, gdy karta wraca na pierwszy plan — bez tego trzeba
+    // Dociągnij natychmiast, gdy karta wraca na pierwszy plan - bez tego trzeba
     // czekać na kolejny (być może mocno opóźniony przez throttling karty w tle) tik.
     const onVisible = () => { if (!document.hidden) driverTick(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -1061,7 +1061,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     };
   }, [session?.status, cityQuestions]);
 
-  // Realtime Presence — count participants actually on the lobby screen
+  // Realtime Presence - count participants actually on the lobby screen
   useEffect(() => {
     if (DEMO || !supabase) return;
     if (presenceChRef.current) { supabase.removeChannel(presenceChRef.current); presenceChRef.current = null; }
@@ -1080,7 +1080,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   // Broadcast channel (admin → participants) + violations real-time INSERT
   useEffect(() => {
     if (DEMO || !supabase || !session?.id) return;
-    // Broadcast channel — admin sends status updates to participants instantly
+    // Broadcast channel - admin sends status updates to participants instantly
     const bcCh = supabase.channel(`quiz-${session.id}`)
       .subscribe();
     quizBcChRef.current = bcCh;
@@ -1122,7 +1122,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   const upd = async (updates) => {
     if (!session) return;
     // Increment version: in-flight poll zobaczy niezgodność wersji i się odrzuci.
-    // NIE czyścimy interwału — inaczej upd ze statusem "running" (np. back-date przy
+    // NIE czyścimy interwału - inaczej upd ze statusem "running" (np. back-date przy
     // auto-skip) zabijał poll na stałe (efekt nie wznawia, bo status bez zmian) i
     // sessionRef.current_question_idx zamarzał → auto-skip działał tylko dla 1. pytania.
     pollVersionRef.current++;
@@ -1130,7 +1130,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     if (error) { alert("Błąd aktualizacji sesji: " + error); return; }
     const nextSession = { ...sessionRef.current, ...updates };
     setSession((s) => { sessionRef.current = nextSession; return nextSession; });
-    // Broadcast full merged session — participants use payload directly, no extra DB fetch needed
+    // Broadcast full merged session - participants use payload directly, no extra DB fetch needed
     if (!DEMO && supabase && quizBcChRef.current && updates.status) {
       quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: nextSession });
     }
@@ -1162,7 +1162,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     logEvent({ type: "results_exported", sessionId: session?.id, city, actor: adminId, detail: { count: results.length } });
   };
 
-  // Indywidualne podsumowanie każdego uczestnika — jeden skoroszyt, osobny arkusz na osobę
+  // Indywidualne podsumowanie każdego uczestnika - jeden skoroszyt, osobny arkusz na osobę
   // plus arkusz zbiorczy i płaska tabela wszystkich odpowiedzi (do tabel przestawnych).
   // Import dynamiczny: generator .xlsx nie jest potrzebny do prowadzenia quizu, więc nie
   // ma powodu, żeby wchodził do bundla ładowanego przy starcie panelu.
@@ -1172,9 +1172,9 @@ function SesjaTab({ city, adminId, onPodium }) {
     try {
       const { rows, error } = await getSessionDetailedResults(session.id);
       if (error) { alert("Nie udało się pobrać szczegółowych wyników: " + error); return; }
-      if (!rows.length) { alert("Brak danych do eksportu — nikt jeszcze nie odpowiadał w tej sesji."); return; }
+      if (!rows.length) { alert("Brak danych do eksportu - nikt jeszcze nie odpowiadał w tej sesji."); return; }
 
-      // Budowa arkuszy (ranking, płaska tabela, karta per uczestnik) — src/lib/resultsXlsx.js,
+      // Budowa arkuszy (ranking, płaska tabela, karta per uczestnik) - src/lib/resultsXlsx.js,
       // ta sama funkcja co w zakładce Historia. Naruszenia z bazy (07-11, P7-VIOL-REPORT).
       const violations = await getViolationSummary(session.id);
       await downloadResultsXlsx({ results, rows, city, violations, fileName: resultsFileName({ city, dateIso: session.created_at }) });
@@ -1195,13 +1195,13 @@ function SesjaTab({ city, adminId, onPodium }) {
   const curQ   = (session?.current_question_idx ?? 0) + 1;
   const openLive = () => window.open(`${window.location.origin}${window.location.pathname}?live=1&city=${encodeURIComponent(city)}`, "_blank");
 
-  // "Wszyscy odpowiedzieli" — odblokowuje przycisk wcześniejszego przejścia dalej.
+  // "Wszyscy odpowiedzieli" - odblokowuje przycisk wcześniejszego przejścia dalej.
   // Szybka ścieżka: liczba odpowiedzi osiągnęła liczbę uczestników. Fallback: licznik
-  // przestał rosnąć (settled) — bo ktoś mógł się rozłączyć i total nigdy nie dobije.
+  // przestał rosnąć (settled) - bo ktoś mógł się rozłączyć i total nigdy nie dobije.
   const liveTotal = liveStats?.total ?? 0;
   const allAnswered = st === "running" && liveTotal > 0 &&
     ((participants.length > 0 && liveTotal >= participants.length) || answersSettled);
-  // Sesja uruchomiona starym panelem (bez planu) w trakcie gry — nie da się nią sterować.
+  // Sesja uruchomiona starym panelem (bez planu) w trakcie gry - nie da się nią sterować.
   const legacyActive = !isPlan && (st === "running" || st === "paused");
   // Wspólna obsługa wyniku akcji v2 (jedno przesunięcie kotwicy w RPC).
   const applyV2 = (res, logType) => {
@@ -1211,7 +1211,7 @@ function SesjaTab({ city, adminId, onPodium }) {
     if (res.session) {
       sessionRef.current = res.session;
       setSession(res.session);
-      // Payload to tylko SYGNAŁ — klienci i tak czytają stan z bazy (snapshot).
+      // Payload to tylko SYGNAŁ - klienci i tak czytają stan z bazy (snapshot).
       if (!DEMO && supabase && quizBcChRef.current) {
         quizBcChRef.current.send({ type: "broadcast", event: "quiz_event", payload: res.session });
       }
@@ -1222,7 +1222,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   };
 
   // „⏭ Następne” = skrócenie bieżącego pytania do teraz (przesunięcie kotwicy w RPC).
-  // expectedIdx z auto-skrótu (pytanie ocenione przed await); przycisk woła bez argumentu —
+  // expectedIdx z auto-skrótu (pytanie ocenione przed await); przycisk woła bez argumentu -
   // idx z chwili kliknięcia. SQL i tak odrzuca idx spoza fazy quiz (noop).
   const goToNextQuestion = async (expectedIdx) => {
     if (!sessionRef.current?.plan_anchor_at) return;
@@ -1230,12 +1230,12 @@ function SesjaTab({ city, adminId, onPodium }) {
     if (idx == null) return;
     applyV2(await adminSkipQuestion(sessionRef.current.id, idx), "question_skipped");
   };
-  goToNextRef.current = goToNextQuestion; // #3 — efekt auto-przejścia (nad early-return) woła zawsze aktualną wersję
+  goToNextRef.current = goToNextQuestion; // #3 - efekt auto-przejścia (nad early-return) woła zawsze aktualną wersję
 
-  // Przerwa planowa (G3): sesja stoi (albo za ≤ 1 s stanie — zamiatacz) na przerwie po module.
+  // Przerwa planowa (G3): sesja stoi (albo za ≤ 1 s stanie - zamiatacz) na przerwie po module.
   const breakIdx = isPlan && plan ? breakIdxAt({ items: plan, anchorMs: toMs(session.plan_anchor_at),
     pausedAtMs: toMs(session.plan_paused_at), status: st, holdIdx: session.plan_hold_idx ?? null, nowMs: serverNow() }) : null;
-  // Pauza ręczna: w jakiej fazie i przy którym pytaniu quiz realnie stanął (06-DIAG H4 —
+  // Pauza ręczna: w jakiej fazie i przy którym pytaniu quiz realnie stanął (06-DIAG H4 -
   // spóźniona pauza nie może wyglądać jak „zniknięte pytanie”).
   const pausedUnder = st === "paused" && isPlan && plan && session.plan_paused_at
     ? planPosition(plan, toMs(session.plan_anchor_at), null, toMs(session.plan_paused_at)) : null;
@@ -1346,23 +1346,23 @@ function SesjaTab({ city, adminId, onPodium }) {
         {isPlan && sweeperDown && (st === "running" || st === "paused") && (
           <div style={{ margin: "12px 20px 0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
             background: "rgba(232,55,107,.15)", border: "1px solid rgba(232,55,107,.5)", color: "#E8376B" }}>
-            ⚠️ Zamiatacz serwera nie odpowiada ({sweeperStale ?? "?"} s) — panel przesuwa pytania awaryjnie. Nie zamykaj tej karty.
+            ⚠️ Zamiatacz serwera nie odpowiada ({sweeperStale ?? "?"} s) - panel przesuwa pytania awaryjnie. Nie zamykaj tej karty.
           </div>
         )}
 
-        {/* Sesja bez planu (uruchomiona starym panelem) — sterowanie tylko przez zakończenie */}
+        {/* Sesja bez planu (uruchomiona starym panelem) - sterowanie tylko przez zakończenie */}
         {legacyActive && (
           <div style={{ margin: "12px 20px 0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
             background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.5)", color: "#F59E0B" }}>
-            ⚠️ Ta sesja została uruchomiona starszą wersją panelu — zakończ ją (⏹ Zakończ) i uruchom ponownie.
+            ⚠️ Ta sesja została uruchomiona starszą wersją panelu - zakończ ją (⏹ Zakończ) i uruchom ponownie.
           </div>
         )}
 
-        {/* Baner przerwy planowej (G3) — quiz czeka na wznowienie przez admina */}
+        {/* Baner przerwy planowej (G3) - quiz czeka na wznowienie przez admina */}
         {breakIdx != null && (
           <div style={{ margin: "12px 20px 0", padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700,
             background: "rgba(245,197,24,.12)", border: "1px solid rgba(245,197,24,.5)", color: "#F5C518" }}>
-            ☕ Przerwa planowa po module {plan[breakIdx].m} — quiz czeka. Następny: Moduł {plan[breakIdx + 1]?.m}. Wciśnij „▶ Wznów quiz”, gdy sala jest gotowa.
+            ☕ Przerwa planowa po module {plan[breakIdx].m} - quiz czeka. Następny: Moduł {plan[breakIdx + 1]?.m}. Wciśnij „▶ Wznów quiz”, gdy sala jest gotowa.
           </div>
         )}
 
@@ -1370,9 +1370,9 @@ function SesjaTab({ city, adminId, onPodium }) {
         <div style={{ padding: "14px 20px", borderTop: `1px solid ${stCol}20`, display: "flex", gap: 10, flexWrap: "wrap" }}>
           {st === "waiting" && (
             <button style={{ ...C.btn("success", { flex: 1, fontSize: 14, padding: "12px 20px" }) }} onClick={async () => {
-              if (!session?.id) { alert("Sesja nie jest jeszcze załadowana — kliknij 🔄 Odśwież i spróbuj ponownie."); return; }
+              if (!session?.id) { alert("Sesja nie jest jeszcze załadowana - kliknij 🔄 Odśwież i spróbuj ponownie."); return; }
               // Faza 6: start tworzy zamrożony plan sesji (start_quiz_session_v2). Świadomie
-              // BEZ cichego fallbacku do startu bez planu — brak sekcji 39 ma być widoczny.
+              // BEZ cichego fallbacku do startu bez planu - brak sekcji 39 ma być widoczny.
               const res = await startQuizSessionV2(session.id);
               if (res.error) return alert(res.error);
               if (!res.ok) return alert("Błąd startu: " + (res.reason || "spróbuj ponownie."));
@@ -1386,7 +1386,7 @@ function SesjaTab({ city, adminId, onPodium }) {
                   NICZEGO nie zapisuje w bazie. Nazwa dostępna zawsze zawiera „Pauza” (sonda). */}
               <button
                 style={pauseArmedUntil ? C.btn("danger", { flex: 1 }) : { ...C.btn("pause", { flex: 1 }) }}
-                aria-label={pauseArmedUntil ? `⏸ Pauza — ${PAUSE_ARMED_TEXT}` : undefined}
+                aria-label={pauseArmedUntil ? `⏸ Pauza - ${PAUSE_ARMED_TEXT}` : undefined}
                 onClick={async () => {
                   clearTimeout(pauseArmTimerRef.current);
                   if (pauseClickAction(pauseArmedUntil, Date.now()) === "arm") {
@@ -1406,7 +1406,7 @@ function SesjaTab({ city, adminId, onPodium }) {
               </button>
             </>}
             <button style={C.btn("danger")} onClick={() => { if (confirm("Zakończyć quiz?")) upd({ status: "ended" }); }}>⏹ Zakończ</button>
-            {/* Plan zakończony, a zamiatacz jeszcze nie przełączył na results — bez wymuszania pauzy. */}
+            {/* Plan zakończony, a zamiatacz jeszcze nie przełączył na results - bez wymuszania pauzy. */}
             {isPlan && planPos()?.phase === "finished" && (
               <button style={C.btn("gold")} onClick={() => { if (confirm("Ogłosić wyniki teraz?")) upd({ status: "results" }); }}>🏆 Ogłoś wyniki</button>
             )}
@@ -1437,7 +1437,7 @@ function SesjaTab({ city, adminId, onPodium }) {
       {st === "waiting" && (
         <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 14, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
           <p style={{ fontSize: 11, color: "#10D9A0", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: lobbyPresenceList.length ? 10 : 0 }}>
-            👥 W poczekalni — {lobbyCount} online
+            👥 W poczekalni - {lobbyCount} online
           </p>
           {lobbyPresenceList.length === 0 ? (
             <p style={{ color: "rgba(155,137,204,.5)", fontSize: 13, marginTop: 8 }}>Czekam na uczestników…</p>
@@ -1456,12 +1456,12 @@ function SesjaTab({ city, adminId, onPodium }) {
         </div>
       )}
 
-      {/* ── Live question stats — always visible when running ────────── */}
+      {/* ── Live question stats - always visible when running ────────── */}
       {st === "running" && (
         <div style={{ ...C.card({ padding: "16px 18px", marginBottom: 14, borderColor: "rgba(16,217,160,.2)", background: "rgba(16,217,160,.04)" }) }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <p style={{ fontSize: 11, color: "#10D9A0", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
-              📊 Odpowiedzi — pyt. {curQ}/{totalQ} <span style={{ color: "#F5C518", fontWeight: 400 }}>🔒 admin</span>
+              📊 Odpowiedzi - pyt. {curQ}/{totalQ} <span style={{ color: "#F5C518", fontWeight: 400 }}>🔒 admin</span>
             </p>
             <span style={{ fontFamily: '"Bebas Neue"', fontSize: 22, color: "#EDE9FE" }}>{liveStats?.total ?? 0}</span>
           </div>
@@ -1492,7 +1492,7 @@ function SesjaTab({ city, adminId, onPodium }) {
             borderBottom: "1px solid rgba(255,255,255,.07)" }}>
             <p style={{ fontSize: 11, color: "#E8376B", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#E8376B", animation: "pulse 1s infinite" }} />
-              Live — podgląd pytania
+              Live - podgląd pytania
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={openLive} style={{ ...C.btn("ghost", { fontSize: 11, padding: "4px 10px" }) }}>🖥️ Nowa karta</button>
@@ -1536,7 +1536,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         <div>
           {results.length === 0 ? (
             <div style={{ textAlign: "center", padding: "24px 0" }}>
-              <p style={{ color: "#9B89CC", fontSize: 14 }}>Brak wyników — odśwież lub poczekaj chwilę.</p>
+              <p style={{ color: "#9B89CC", fontSize: 14 }}>Brak wyników - odśwież lub poczekaj chwilę.</p>
               <button onClick={() => load()} style={{ ...C.btn("ghost", { marginTop: 12, fontSize: 13 }) }}>🔄 Odśwież wyniki</button>
             </div>
           ) : (
@@ -1576,7 +1576,7 @@ function SesjaTab({ city, adminId, onPodium }) {
                   {i < 5 && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px", flexShrink: 0 }}>FINAŁ</span>}
                   <div style={{ textAlign: "right" }}>
                     <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#10D9A0", lineHeight: 1 }}>{r.correct}<span style={{ fontSize: 13, color: "#9B89CC" }}>/{r.total}</span></p>
-                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(3).replace(".", ",")} s` : "—"}</p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(3).replace(".", ",")} s` : "-"}</p>
                   </div>
                 </div>
               ))}
@@ -1614,7 +1614,7 @@ function BgUploader({ city, isMobile, preview, onPreviewChange }) {
     ctx.fillText(`${w} × ${h}`, w / 2, h / 2 - Math.round(w * 0.01));
     ctx.fillStyle = "#9B89CC"; ctx.font = `${Math.round(w * 0.022)}px sans-serif`;
     ctx.fillText(isMobile ? "Tło MOBILE (telefon)" : "Tło DESKTOP (projektor)", w / 2, h / 2 + Math.round(w * 0.04));
-    ctx.fillText("Tekst quizu jest przyciemniany — środek trzymaj czytelny", w / 2, h / 2 + Math.round(w * 0.075));
+    ctx.fillText("Tekst quizu jest przyciemniany - środek trzymaj czytelny", w / 2, h / 2 + Math.round(w * 0.075));
     cv.toBlob((blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url;
@@ -1627,7 +1627,7 @@ function BgUploader({ city, isMobile, preview, onPreviewChange }) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) { setStatus("error:Plik musi być obrazem (PNG, JPG, WEBP)."); return; }
-    if (file.size > 5 * 1024 * 1024)    { setStatus("error:Plik za duży — max 5 MB."); return; }
+    if (file.size > 5 * 1024 * 1024)    { setStatus("error:Plik za duży - max 5 MB."); return; }
     setUploading(true); setStatus("uploading");
     const { url, error } = await uploadCityBg(city, file, isMobile);
     if (error) { setUploading(false); setStatus("error:" + error); return; }
@@ -1687,7 +1687,7 @@ function BgUploader({ city, isMobile, preview, onPreviewChange }) {
         </div>
       ) : (
         <div style={{ height: 110, marginBottom: 10, borderRadius: 10, border: "1px dashed rgba(255,255,255,.12)", background: "rgba(255,255,255,.02)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 12, color: "#9B89CC" }}>{isMobile ? "Brak — używa tła desktop" : "Brak tła"}</span>
+          <span style={{ fontSize: 12, color: "#9B89CC" }}>{isMobile ? "Brak - używa tła desktop" : "Brak tła"}</span>
         </div>
       )}
 
@@ -1736,7 +1736,7 @@ function UstawieniaTab({ city }) {
           Tło dla: <span style={{ color: CITY_COLORS[city] }}>{city}</span>
         </p>
         <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>
-          Wgraj dwie wersje tła: osobne dla projektora (desktop) i osobne dla telefonów (mobile). Gdy brak wersji mobile — uczestnicy widzą tło desktop.
+          Wgraj dwie wersje tła: osobne dla projektora (desktop) i osobne dla telefonów (mobile). Gdy brak wersji mobile - uczestnicy widzą tło desktop.
         </p>
       </div>
 
@@ -1749,7 +1749,7 @@ function UstawieniaTab({ city }) {
       <div style={{ ...C.card({ padding: "10px 14px", borderColor: "rgba(107,33,232,.2)", background: "rgba(107,33,232,.04)", marginTop: 16 }) }}>
         <p style={{ fontSize: 12, color: "#9B89CC" }}>
           🖥️ Desktop: <strong style={{ color: "#EDE9FE" }}>1920×1080 px</strong> (16:9) &nbsp;·&nbsp;
-          📱 Mobile: <strong style={{ color: "#EDE9FE" }}>1080×1920 px</strong> (9:16). Obrazy są przyciemniane — tekst quizu pozostaje czytelny.
+          📱 Mobile: <strong style={{ color: "#EDE9FE" }}>1080×1920 px</strong> (9:16). Obrazy są przyciemniane - tekst quizu pozostaje czytelny.
         </p>
       </div>
     </div>
@@ -1762,7 +1762,7 @@ const LIVE_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const LIVE_LABELS = ["A", "B", "C", "D"];
 
 function LiveTab({ city }) {
-  // Pure projection of DB state — same hook as the standalone LiveView, so the
+  // Pure projection of DB state - same hook as the standalone LiveView, so the
   // admin embed stays perfectly in sync with participants (incl. pause/resume,
   // live module times and the 5s reveal countdown). No local quiz state machine.
   const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, liveCount, participantsTotal, breakNext } =
@@ -1797,16 +1797,16 @@ function LiveTab({ city }) {
   if (phase === "waiting") return (
     <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
       <div style={{ fontSize: 40, marginBottom: 12 }}>👁️</div>
-      <p style={{ fontSize: 14 }}>Widok duchy — oczekiwanie na pytanie…</p>
+      <p style={{ fontSize: 14 }}>Widok duchy - oczekiwanie na pytanie…</p>
     </div>
   );
 
-  // Przerwa planowa: po przerwie następny moduł (06-15 deferred) — nie ogólne „wstrzymany”.
+  // Przerwa planowa: po przerwie następny moduł (06-15 deferred) - nie ogólne „wstrzymany”.
   if (phase === "paused" && breakNext) return (
     <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
       <div style={{ fontSize: 40, marginBottom: 12 }}>☕</div>
       <p style={{ fontSize: 14, color: "#F5C518", fontWeight: 700 }}>
-        {`☕ Przerwa — po przerwie: ${breakNext.icon ?? ""} Moduł ${breakNext.id} — ${breakNext.name}`}
+        {`☕ Przerwa - po przerwie: ${breakNext.icon ?? ""} Moduł ${breakNext.id} - ${breakNext.name}`}
       </p>
     </div>
   );
@@ -1814,7 +1814,7 @@ function LiveTab({ city }) {
   if (phase === "paused") return (
     <div style={{ textAlign: "center", padding: "48px 0", color: "#9B89CC" }}>
       <div style={{ fontSize: 40, marginBottom: 12 }}>⏸️</div>
-      <p style={{ fontSize: 14 }}>Quiz wstrzymany — za chwilę wznowienie.</p>
+      <p style={{ fontSize: 14 }}>Quiz wstrzymany - za chwilę wznowienie.</p>
     </div>
   );
 
@@ -1860,7 +1860,7 @@ function LiveTab({ city }) {
         </div>
       )}
 
-      {/* Reveal — pełna tabela */}
+      {/* Reveal - pełna tabela */}
       {phase === "reveal" && currentQ && (
         <>
           <div style={{ ...C.card({ padding: "16px 20px", marginBottom: 16, borderColor: "rgba(107,33,232,.3)", background: "rgba(107,33,232,.06)" }) }}>
@@ -1871,7 +1871,7 @@ function LiveTab({ city }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 12 }}>
-              {[["Odpowiedzi", revealData.length, "#EDE9FE"], ["✅", correct.length, "#10D9A0"], ["❌", incorrect.length, "#E8376B"], ["⌀ czas", avgTimeSec != null ? `${avgTimeSec}s` : "—", "#F5C518"]].map(([l, v, c]) => (
+              {[["Odpowiedzi", revealData.length, "#EDE9FE"], ["✅", correct.length, "#10D9A0"], ["❌", incorrect.length, "#E8376B"], ["⌀ czas", avgTimeSec != null ? `${avgTimeSec}s` : "-", "#F5C518"]].map(([l, v, c]) => (
                 <div key={l} style={{ flex: 1, textAlign: "center" }}>
                   <p style={{ fontFamily: '"Bebas Neue"', fontSize: 26, color: c, lineHeight: 1 }}>{v}</p>
                   <p style={{ fontSize: 10, color: "#9B89CC" }}>{l}</p>
@@ -1946,7 +1946,7 @@ function HistoriaTab({ city }) {
     downloadCsv(`historia_${sel?.city || city}_${(sel?.created_at || "").slice(0, 10)}.csv`, "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n"));
   };
 
-  // XLSX per uczestnik dla sesji z archiwum — uczestnicy z answers tej sesji (sekcja 43),
+  // XLSX per uczestnik dla sesji z archiwum - uczestnicy z answers tej sesji (sekcja 43),
   // więc kody przepięte później na nowszą sesję nie znikają z raportu.
   const exportXlsx = async () => {
     if (!sel?.id) return;
@@ -1954,7 +1954,7 @@ function HistoriaTab({ city }) {
     try {
       const { rows, error } = await getSessionDetailedResults(sel.id);
       if (error) { alert("Nie udało się pobrać szczegółowych wyników: " + error); return; }
-      if (!rows.length) { alert("Brak danych do eksportu — w tej sesji nie ma odpowiedzi."); return; }
+      if (!rows.length) { alert("Brak danych do eksportu - w tej sesji nie ma odpowiedzi."); return; }
       const violations = await getViolationSummary(sel.id);
       await downloadResultsXlsx({
         results, rows, city: sel.city || city, violations,
@@ -1970,7 +1970,7 @@ function HistoriaTab({ city }) {
   return (
     <div>
       <div style={{ marginBottom: 18 }}>
-        <p style={{ fontWeight: 700, fontSize: 18, color: "#fff" }}>Historia testów — {city}</p>
+        <p style={{ fontWeight: 700, fontSize: 18, color: "#fff" }}>Historia testów - {city}</p>
         <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 4 }}>Zakończone sesje (też próbne). Kliknij, by zobaczyć ranking. ✏️ zmień nazwę · 🗑 usuń.</p>
       </div>
       {sessions.length === 0
@@ -2036,7 +2036,7 @@ function ModulyTab({ isSuperadmin }) {
     if (!form.name.trim() || !form.id) return alert("Podaj ID (liczbę) i nazwę modułu.");
     setSaving(true);
     // Błąd MUSI być pokazany. Wcześniej wynik był ignorowany, więc nieudany zapis
-    // (pusta tabela modules, brak uprawnień) wyglądał identycznie jak udany —
+    // (pusta tabela modules, brak uprawnień) wyglądał identycznie jak udany -
     // formularz się zamykał, lista wracała do starych wartości.
     const { error } = editId
       ? await updateModule(editId, { name: form.name, icon: form.icon, color: form.color, time_per_q: form.timePerQ, description: form.desc })
@@ -2053,7 +2053,7 @@ function ModulyTab({ isSuperadmin }) {
     reload();
   };
 
-  // Obrona w głąb — zakładka i tak nie jest pokazywana nie-superadminom (TABS filtruje),
+  // Obrona w głąb - zakładka i tak nie jest pokazywana nie-superadminom (TABS filtruje),
   // ale gdyby ktoś kiedyś dodał ją z powrotem, tu jest twardy stop. Czasy modułów są
   // wspólne dla wszystkich pięciu miast, więc zmiana przez admina jednego miasta
   // przestawiałaby przebieg testu pozostałym czterem.
@@ -2062,7 +2062,7 @@ function ModulyTab({ isSuperadmin }) {
       <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
       <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Moduły edytuje wyłącznie superadmin</p>
       <p style={{ fontSize: 13, color: "#9B89CC", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>
-        Moduły (nazwy, kolory, czas na pytanie) są wspólne dla wszystkich pięciu miast —
+        Moduły (nazwy, kolory, czas na pytanie) są wspólne dla wszystkich pięciu miast -
         zmiana wpłynęłaby na przebieg testu także w pozostałych. Napisz do superadmina.
       </p>
     </div>
@@ -2074,7 +2074,7 @@ function ModulyTab({ isSuperadmin }) {
         <div>
           <p style={{ fontWeight: 700, fontSize: 15 }}>Moduły quizu</p>
           <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 3, lineHeight: 1.5 }}>
-            Zdefiniuj moduły tematyczne — każdy ma własny czas na pytanie i motyw kolorystyczny.
+            Zdefiniuj moduły tematyczne - każdy ma własny czas na pytanie i motyw kolorystyczny.
           </p>
         </div>
         <button onClick={openAdd} style={{ ...C.btn("primary"), whiteSpace: "nowrap", flexShrink: 0 }}>+ Nowy moduł</button>
@@ -2092,7 +2092,7 @@ function ModulyTab({ isSuperadmin }) {
             <div>
               <span style={C.lbl}>Ikona / emoji (opcjonalne)</span>
               <input value={form.icon} onChange={(e) => setForm((p) => ({ ...p, icon: e.target.value }))}
-                style={C.input()} placeholder="np. 🧮 — można zostawić puste" />
+                style={C.input()} placeholder="np. 🧮 - można zostawić puste" />
             </div>
             <div style={{ gridColumn: "1/-1" }}>
               <span style={C.lbl}>Nazwa modułu</span>
@@ -2153,7 +2153,7 @@ function ModulyTab({ isSuperadmin }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-// superadminOnly — moduły są wspólne dla wszystkich miast, więc city_admin ich nie widzi.
+// superadminOnly - moduły są wspólne dla wszystkich miast, więc city_admin ich nie widzi.
 const TABS = [
   { id: "pytania",    label: "📝 Pytania"    },
   { id: "kody",       label: "🎟️ Kody"      },
@@ -2173,7 +2173,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
     if (admin?.city) setCity(admin.city);
   }, [admin?.city]);
 
-  // Blokada edycji treści (sekcja 46). Odświeżana przy każdym przełączeniu zakładki —
+  // Blokada edycji treści (sekcja 46). Odświeżana przy każdym przełączeniu zakładki -
   // city_admin widzi świeży stan bez Realtime. Przed wgraniem 46: available = false.
   const [lock, setLock]         = useState({ locked: false, available: true });
   const [lockAsk, setLockAsk]   = useState(false);
@@ -2196,7 +2196,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
 
       <div style={{ background: "rgba(0,0,0,.4)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <p style={{ fontSize: 11, color: "#9B89CC", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{isSuperadmin ? "⭐ Superadmin" : "👤 Admin — " + (admin?.city || "")}</p>
+          <p style={{ fontSize: 11, color: "#9B89CC", textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{isSuperadmin ? "⭐ Superadmin" : "👤 Admin - " + (admin?.city || "")}</p>
           <p style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{admin?.full_name || admin?.email || "Administrator"}</p>
         </div>
         <button onClick={onLogout} style={{ ...C.btn("ghost"), padding: "8px 14px", fontSize: 12 }}>Wyloguj →</button>
@@ -2209,7 +2209,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
             {!lock.available ? (
               <span style={{ fontSize: 12, fontWeight: 700, color: "#F5C518", background: "rgba(245,197,24,.1)", border: "1px solid rgba(245,197,24,.35)", borderRadius: 20, padding: "5px 12px" }}>
-                ⚠️ Blokada niedostępna — wgraj sekcję 46 SQL
+                ⚠️ Blokada niedostępna - wgraj sekcję 46 SQL
               </span>
             ) : lock.locked ? (
               <span style={{ fontSize: 12, fontWeight: 700, color: "#FCA5C0", background: "rgba(232,55,107,.12)", border: "1px solid rgba(232,55,107,.45)", borderRadius: 20, padding: "5px 12px" }}>

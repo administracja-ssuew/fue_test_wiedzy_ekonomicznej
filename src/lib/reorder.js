@@ -27,7 +27,7 @@ export function moveById(list, dragId, targetId, place = "before") {
 }
 
 // Nowa tablica pytań: pytania modułu `module` w kolejności `orderedIds` (kopie z sort_order = indeks)
-// na dotychczasowych pozycjach tego modułu. Bez globalnego sortowania — lista z bazy jest już
+// na dotychczasowych pozycjach tego modułu. Bez globalnego sortowania - lista z bazy jest już
 // w kolejności (module, sort_order, id), a sort_order może nie przyjść. Inne pytania bez zmian.
 export function applyModuleOrder(questions, module, orderedIds) {
   const src = questions || [];

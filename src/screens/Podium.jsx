@@ -1,14 +1,14 @@
 function PodiumScreen({ onBack, podStep, setPodStep = () => {}, results = [], readOnly = false }) {
   const confColors = ["#F5C518", "#6B21E8", "#E8376B", "#10D9A0", "#1EB5FF"];
   const top = results.slice(0, 10);
-  const count = top.length;                  // ile miejsc ogłaszamy (1–10)
+  const count = top.length;                  // ile miejsc ogłaszamy (1-10)
   const shownAt = (r) => count - r + 1;       // miejsce r odsłaniane gdy podStep >= to
   const done = podStep >= count;
   const nextPlace = count - podStep;          // które miejsce odsłoni kolejny klik
   const fmtAvg = (ms) => ms == null ? "" : "śr. " + (ms / 1000).toFixed(3).replace(".", ",") + " s";
 
-  // Wiersz listy dla miejsc 4–10. Top-5 wyróżnione (awans do finału ogólnopolskiego).
-  // #1 — renderowany DOPIERO po odsłonięciu (wskakuje z animacją pi), bez migania na starcie.
+  // Wiersz listy dla miejsc 4-10. Top-5 wyróżnione (awans do finału ogólnopolskiego).
+  // #1 - renderowany DOPIERO po odsłonięciu (wskakuje z animacją pi), bez migania na starcie.
   const Row = ({ idx }) => {
     const p = top[idx];
     const rank = idx + 1;
@@ -75,7 +75,7 @@ function PodiumScreen({ onBack, podStep, setPodStep = () => {}, results = [], re
           })}
         </div>
 
-        {/* Miejsca 4–10 */}
+        {/* Miejsca 4-10 */}
         {count > 3 && (
           <div style={{ flex: 1, overflowY: "auto", marginBottom: 12 }}>
             {[3, 4, 5, 6, 7, 8, 9].map((idx) => <Row key={idx} idx={idx} />)}

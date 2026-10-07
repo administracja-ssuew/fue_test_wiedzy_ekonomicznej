@@ -16,12 +16,12 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
   const [qCounts, setQCounts]   = useState(null); // {modId: liczba} z bazy (null = jeszcze nie pobrano)
   const [dots, setDots]         = useState(".");
   const pollRef                 = useRef(null);
-  // Always-current callback — prevents stale closure bug when MODULES loads after
+  // Always-current callback - prevents stale closure bug when MODULES loads after
   // the Realtime subscription is registered (App re-renders, Lobby effect does not).
   const onStartQuizRef          = useRef(onStartQuiz);
   const city                    = participant?.city;
   const color                   = cityInfo(city).color || "#6B21E8";
-  // P7-IOS-WAKE: iOS przyznaje blokadę ekranu tylko w geście — dopóki jej nie ma,
+  // P7-IOS-WAKE: iOS przyznaje blokadę ekranu tylko w geście - dopóki jej nie ma,
   // prosimy o dotknięcie (każde dotknięcie ekranu uzbraja; pasek to podpowiedź).
   const wake                    = useWakeLockState();
   const showWakeBar             = wake.wanted && !wake.held;
@@ -43,7 +43,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     return () => clearInterval(t);
   }, []);
 
-  // Realna liczba pytań per moduł — z bazy danego miasta (nie ze statycznego banku).
+  // Realna liczba pytań per moduł - z bazy danego miasta (nie ze statycznego banku).
   useEffect(() => {
     if (!city) return;
     getQuestions(city).then((qs) => {
@@ -65,9 +65,9 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
 
   // Broadcast admina (`quiz-<id>`) jako DRUGA szybka ścieżka startu.
   // Powód: 02.09.2026 wyszło, że na produkcji postgres_changes nie dostarcza nic
-  // (kanał wchodzi w SUBSCRIBED, ale UPDATE nie dociera — patrz sekcja 38 SQL).
+  // (kanał wchodzi w SUBSCRIBED, ale UPDATE nie dociera - patrz sekcja 38 SQL).
   // Poczekalnia miała wtedy JEDNĄ ścieżkę startu: poll. Admin przy "Start quizu"
-  // i tak rozgłasza `quiz_event` na kanale sesji, więc wystarczy go słuchać —
+  // i tak rozgłasza `quiz_event` na kanale sesji, więc wystarczy go słuchać -
   // start dociera w ~50 ms nawet przy zepsutej publikacji. Payload to tylko sygnał;
   // autorytatywny stan czytamy z bazy (kanał jest publiczny).
   useEffect(() => {
@@ -97,7 +97,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           if (s.status === "running") onStartQuizRef.current(s);
         })
         .subscribe(async (status) => {
-          // Re-check state once WebSocket is confirmed — catches events that fired
+          // Re-check state once WebSocket is confirmed - catches events that fired
           // during the 1-2s cold-start window before SUBSCRIBED.
           if (status === "SUBSCRIBED") {
             const s = await getSessionForCity(city);
@@ -108,9 +108,9 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
         });
 
       // Safety-net na zgubione zdarzenie Realtime (np. kodowanie polskich znaków
-      // w filtrze albo chwilowy zanik sieci) — NIE główna ścieżka startu.
-      // Poczekalnia trwa realnie 20–30 minut przed startem, więc przy 500 uczestnikach
-      // poll co 5 s to 100 zapytań/s przez pół godziny — najdłuższe obciążenie całego
+      // w filtrze albo chwilowy zanik sieci) - NIE główna ścieżka startu.
+      // Poczekalnia trwa realnie 20-30 minut przed startem, więc przy 500 uczestnikach
+      // poll co 5 s to 100 zapytań/s przez pół godziny - najdłuższe obciążenie całego
       // wydarzenia i w całości nadmiarowe. 15 s wystarcza, subskrypcja niesie start.
       pollRef.current = setInterval(async () => {
         const s = await getSessionForCity(city);
@@ -191,7 +191,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 22, letterSpacing: 1, color: statusMsg.color }}>{statusMsg.text}</p>
           {(session?.status === "waiting" || !session) && (
             <p style={{ color: "#9B89CC", fontSize: 13, marginTop: 8 }}>
-              Poczekaj — administrator zaraz rozpocznie quiz dla {city}.
+              Poczekaj - administrator zaraz rozpocznie quiz dla {city}.
             </p>
           )}
           {session?.status === "paused" && (
@@ -201,7 +201,7 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
           )}
           {(session?.status === "waiting" || !session) && (
             <div style={{ marginTop: 22, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-              <JoinQR size={150} label="Pokaż znajomym — niech zeskanują i dołączą" />
+              <JoinQR size={150} label="Pokaż znajomym - niech zeskanują i dołączą" />
             </div>
           )}
         </div>

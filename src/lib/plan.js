@@ -1,10 +1,10 @@
 import { REVEAL_MS, MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD, BREAK_AFTER_MODULES } from "./gameLogic.js";
 
-// ─── Plan sesji (lustro SQL plan_position / sweep_decision, sekcja 39; budowa i przerwy — sekcja 42, reguła przerwy — sekcja 46) ─
+// ─── Plan sesji (lustro SQL plan_position / sweep_decision, sekcja 39; budowa i przerwy - sekcja 42, reguła przerwy - sekcja 46) ─
 // Cała rozgrywka to deterministyczna funkcja (items, anchorMs, pausedAtMs, nowMs).
 // Plan (items) jest zamrażany przy starcie sesji: items { i, id, m, tpq, lead, o, c, r, h? },
 // o/c/r to ms od kotwicy (anchor); h = przerwa planowa po tym pytaniu (sekcja 42).
-// Pauza / „Następne” / „Powtórz” przesuwają wyłącznie kotwicę — nigdy items.
+// Pauza / „Następne” / „Powtórz” przesuwają wyłącznie kotwicę - nigdy items.
 // Każda zmiana tu MUSI mieć odpowiednik w SQL (fixture'y plan.fixtures.json).
 
 export const FIRST_QUESTION_LEAD = 10;   // zapowiedź modułu 1 (jak dzisiejszy start_quiz_session: +10 s)
@@ -20,7 +20,7 @@ export function toMs(ts) {
 }
 
 // questions: [{ id, module }] JUŻ posortowane (module, sort_order, id); modules: [{ id, timePerQ }].
-// Czas modułu jest kopiowany do planu — późniejsza edycja modułu nie zmienia trwającej sesji.
+// Czas modułu jest kopiowany do planu - późniejsza edycja modułu nie zmienia trwającej sesji.
 export function buildPlanItems(questions, modules) {
   const items = [];
   (questions || []).forEach((q, i) => {
@@ -64,7 +64,7 @@ export function holdDue(items, anchorMs, holdIdx, nowMs) {
 }
 
 // Indeks przerwy planowej, w której sesja stoi (paused dokładnie na anchor + r przerwy holdIdx)
-// albo powinna już stać (running, przerwa należna — zamiatacz zapisze ją w ≤ 1 s).
+// albo powinna już stać (running, przerwa należna - zamiatacz zapisze ją w ≤ 1 s).
 export function breakIdxAt({ items, anchorMs, pausedAtMs = null, status, holdIdx = null, nowMs }) {
   if (!items?.length || anchorMs == null) return null;
   const paused = pausedAtMs != null || status === "paused";
@@ -75,12 +75,12 @@ export function breakIdxAt({ items, anchorMs, pausedAtMs = null, status, holdIdx
 }
 
 // Pełna projekcja stanu dla UI (uczestnik / Live View / panel).
-// holdIdx = quiz_sessions.plan_hold_idx — potrzebny do rozpoznania przerwy planowej.
+// holdIdx = quiz_sessions.plan_hold_idx - potrzebny do rozpoznania przerwy planowej.
 export function projectPlanState({ items, anchorMs, pausedAtMs = null, status, nowMs, holdIdx = null }) {
   if (status === "waiting") return { phase: "lobby" };
   if (status === "results") return { phase: "results" };
   if (status === "ended") return { phase: "ended" };
-  // Sesja uruchomiona starym panelem (bez planu) — stara ścieżka rozgrywki.
+  // Sesja uruchomiona starym panelem (bez planu) - stara ścieżka rozgrywki.
   if (anchorMs == null) return { phase: "legacy" };
   // UPDATE z Realtime niesie kotwicę wcześniej, niż dociera snapshot z planem; bez tej
   // fazy ~500 osób widziałoby na starcie komunikat „starsza wersja panelu”.
@@ -122,7 +122,7 @@ export function resumeAnchor(anchorMs, pausedAtMs, nowMs) {
 }
 
 // „Następne”: skróć bieżące pytanie do teraz (wszystkie kolejne terminy przesuwają się
-// o tyle samo). Tylko w fazie quiz i tylko dla oczekiwanego pytania — drugi klik = no-op.
+// o tyle samo). Tylko w fazie quiz i tylko dla oczekiwanego pytania - drugi klik = no-op.
 export function skipAnchor(items, anchorMs, nowMs, expectedIdx) {
   const pos = planPosition(items, anchorMs, null, nowMs);
   if (!pos || pos.idx !== expectedIdx || pos.phase !== "quiz") return null;

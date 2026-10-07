@@ -4,17 +4,17 @@
 // (uczestnik × pytanie z planu; brak odpowiedzi = pusty wybór, pełny czas pytania).
 // Naruszenia: `violations` = Map<kod, { total, tab_switch, screenshot_attempt }>
 // z getViolationSummary; brak mapy lub wpisu = zera.
-// Bez importu React/supabase — czysta logika, testowana w resultsXlsx.test.js.
+// Bez importu React/supabase - czysta logika, testowana w resultsXlsx.test.js.
 
 import { VIOLATION_LABELS, violationsFor } from "./violations.js";
 
 // ms → sekundy z 3 miejscami (12345 → 12.345), 3 miejsca, spójnie z CSV i podium.
 export const secs = (ms) => (ms == null ? "" : Math.round(ms) / 1000);
-// Komórka czasu z formatem 0.000 — Excel pokaże „12,300”, a nie „12,3”.
+// Komórka czasu z formatem 0.000 - Excel pokaże „12,300”, a nie „12,3”.
 const secsCell = (ms) => (ms == null ? "" : { v: secs(ms), fmt: "0.000" });
 
 export function buildResultsSheets({ results, rows, city, violations }) {
-  // Arkusz 1 — ranking (ta sama kolejność co na podium).
+  // Arkusz 1 - ranking (ta sama kolejność co na podium).
   const ranking = [
     ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Skuteczność %", "Śr. czas (s)", "Naruszenia"],
     ...(results || []).map((r, i) => [
@@ -25,7 +25,7 @@ export function buildResultsSheets({ results, rows, city, violations }) {
     ]),
   ];
 
-  // Arkusz 2 — wszystko płasko, jeden wiersz = jedna odpowiedź.
+  // Arkusz 2 - wszystko płasko, jeden wiersz = jedna odpowiedź.
   const flat = [
     ["Kod", "Uczestnik", "Miasto", "Nr pyt.", "Moduł", "Pytanie", "Odp.", "Treść odpowiedzi", "Poprawna", "Treść poprawnej", "Trafione", "Czas (s)"],
     ...(rows || []).map((r) => [
@@ -35,7 +35,7 @@ export function buildResultsSheets({ results, rows, city, violations }) {
     ]),
   ];
 
-  // Arkusze 3..N — karta każdego uczestnika (kolejność pierwszego wystąpienia kodu).
+  // Arkusze 3..N - karta każdego uczestnika (kolejność pierwszego wystąpienia kodu).
   const byCode = new Map();
   for (const r of rows || []) {
     if (!byCode.has(r.participantCode)) byCode.set(r.participantCode, []);
@@ -45,7 +45,7 @@ export function buildResultsSheets({ results, rows, city, violations }) {
     const p = list[0];
     const answered = list.filter((r) => r.chosenLabel);
     const correct = list.filter((r) => r.isCorrect).length;
-    // G6: średnia po WSZYSTKICH pytaniach — brak odpowiedzi liczy się jako pełny czas
+    // G6: średnia po WSZYSTKICH pytaniach - brak odpowiedzi liczy się jako pełny czas
     // pytania (tak samo jak w get_session_results), więc karta zgadza się z rankingiem.
     const times = list.map((r) => r.responseTimeMs).filter((t) => t != null);
     const avg = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
@@ -67,7 +67,7 @@ export function buildResultsSheets({ results, rows, city, violations }) {
         ...[...list].sort((a, b) => a.qNo - b.qNo).map((r) => [
           r.qNo, r.moduleName, r.question,
           r.chosenLabel, r.chosenText, r.correctLabel, r.correctText,
-          r.chosenLabel ? (r.isCorrect ? "✓ dobrze" : "✗ źle") : "— brak odpowiedzi",
+          r.chosenLabel ? (r.isCorrect ? "✓ dobrze" : "✗ źle") : "- brak odpowiedzi",
           secsCell(r.responseTimeMs),
         ]),
       ],

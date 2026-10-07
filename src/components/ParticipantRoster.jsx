@@ -50,7 +50,7 @@ export default function ParticipantRoster({ status, participants, lobbyCodes, cl
     <div style={{ ...CARD, padding: "16px", marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: "#9B89CC", letterSpacing: 1, textTransform: "uppercase" }}>
-          👥 Uczestnicy — {list.length}
+          👥 Uczestnicy - {list.length}
         </p>
         {list.length > 0 && (
           <button type="button" aria-pressed={onlyProblems} onClick={() => setOnlyProblems((v) => !v)}
@@ -76,7 +76,7 @@ export default function ParticipantRoster({ status, participants, lobbyCodes, cl
       <p style={{ fontSize: 11, color: "rgba(155,137,204,.7)", marginBottom: 10 }}>
         {status === "waiting"
           ? "Stan poczekalni na żywo."
-          : "Stan po ostatnim zamkniętym pytaniu — odświeża się co pytanie."}
+          : "Stan po ostatnim zamkniętym pytaniu - odświeża się co pytanie."}
       </p>
 
       {list.length === 0 ? (

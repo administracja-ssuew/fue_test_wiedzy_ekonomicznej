@@ -12,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: 'Test Wiedzy Ekonomicznej FUE',
         short_name: 'FUE Quiz',
-        description: 'Ogólnopolski quiz wiedzy ekonomicznej – Forum Uczelni Ekonomicznych',
+        description: 'Ogólnopolski quiz wiedzy ekonomicznej - Forum Uczelni Ekonomicznych',
         theme_color: '#6B21E8',
         background_color: '#070215',
         display: 'standalone',
@@ -64,7 +64,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.js"],
     // Exclude git worktrees (created by tooling under .claude) so tests don't run twice.
-    // e2e/ uses Playwright's own runner (npm run e2e) — exclude from vitest.
+    // e2e/ uses Playwright's own runner (npm run e2e) - exclude from vitest.
     exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**", "**/e2e/**"],
   },
 })

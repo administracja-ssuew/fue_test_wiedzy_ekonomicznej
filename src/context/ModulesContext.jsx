@@ -10,7 +10,7 @@ const Ctx = createContext(MODULES);
 // ZMIERZONE 24.09.2026 sondą pełnej ścieżki: poprzednia wersja robiła JEDNĄ próbę
 // pobrania i przy niepowodzeniu milcząco zostawała na zaszytym fallbacku
 // (90/30/60/75/45 s). Na tym samym pytaniu jeden telefon odliczał od 70, drugi od
-// 15 — i nic tego nie korygowało do końca testu, bo nie było ani ponowienia, ani
+// 15 - i nic tego nie korygowało do końca testu, bo nie było ani ponowienia, ani
 // sygnału o błędzie. Objaw zgłoszony jako „czasy rozjeżdżają się na telefonie".
 //
 // Dlatego: ponawiamy z narastającym odstępem, dopóki nie dostaniemy odpowiedzi
@@ -44,7 +44,7 @@ export function ModulesProvider({ children }) {
         setLoadedFromDb(true);
         return;
       }
-      // Nie udało się — spróbuj ponownie. Ostatni odstęp powtarzamy w nieskończoność,
+      // Nie udało się - spróbuj ponownie. Ostatni odstęp powtarzamy w nieskończoność,
       // bo jazda na złych czasach jest gorsza niż jedno zapytanie na 30 s.
       const wait = RETRY_MS[Math.min(i, RETRY_MS.length - 1)];
       timers.push(setTimeout(() => attempt(i + 1), wait));
@@ -52,7 +52,7 @@ export function ModulesProvider({ children }) {
 
     attempt(0);
 
-    // Telefon z zablokowanym ekranem usypia timery — po powrocie sprawdzamy od nowa.
+    // Telefon z zablokowanym ekranem usypia timery - po powrocie sprawdzamy od nowa.
     const onVisible = () => { if (!document.hidden && !doneRef.current) attempt(0); };
     document.addEventListener("visibilitychange", onVisible);
 
@@ -67,7 +67,7 @@ export function ModulesProvider({ children }) {
     <Ctx.Provider value={modules}>
       {children}
       {/* Widoczny sygnał, że czasy pytań mogą być inne niż u pozostałych. Bez tego
-          uczestnik i prowadzący nie mieli SZANSY zauważyć rozjazdu — a to właśnie
+          uczestnik i prowadzący nie mieli SZANSY zauważyć rozjazdu - a to właśnie
           on sprawiał, że jeden telefon odliczał 70 s, a drugi 15 s. */}
       {!loadedFromDb && (
         <div style={{
@@ -76,7 +76,7 @@ export function ModulesProvider({ children }) {
           padding: "8px 14px", fontSize: 12, fontWeight: 600,
           fontFamily: '"Space Grotesk",sans-serif',
         }}>
-          ⚠️ Brak połączenia z konfiguracją testu — czasy pytań mogą być nieprawidłowe.
+          ⚠️ Brak połączenia z konfiguracją testu - czasy pytań mogą być nieprawidłowe.
           Zgłoś to organizatorowi.
         </div>
       )}

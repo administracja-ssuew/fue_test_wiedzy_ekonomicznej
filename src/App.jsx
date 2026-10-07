@@ -30,23 +30,23 @@ export default function App() {
   const [screen, setScreen] = useState("welcome");
   const { user: admin, loading } = useAuth(); // admin session via Supabase Auth
 
-  // Participant (no auth — identified by code). localStorage → przeżywa refresh i
+  // Participant (no auth - identified by code). localStorage → przeżywa refresh i
   // zamknięcie karty; loadParticipant migruje też stary wpis sprzed fazy 6.
   const [participant, setParticipant] = useState(() => loadParticipant()); // { code, name, surname, city, sessionId? }
   const [podStep, setPodStep]           = useState(0);
   const [podiumResults, setPodiumResults] = useState([]);
-  const MODULES        = useModules(); // tylko nazwa/ikona/kolor — czasy pytań są w planie sesji
+  const MODULES        = useModules(); // tylko nazwa/ikona/kolor - czasy pytań są w planie sesji
   const isDesktop = useWindowWidth() >= 900;
 
   // ── Gra uczestnika (Faza 6) ─────────────────────────────────────
   // Ekran = czysta funkcja fazy z zamrożonego planu i zegara serwera. Uczestnik nie
-  // zapisuje przejść pytań i nie ma własnych timerów — tylko projekcja + wybór odpowiedzi.
+  // zapisuje przejść pytań i nie ma własnych timerów - tylko projekcja + wybór odpowiedzi.
   const game = useParticipantGame(screen === "game" ? participant : null);
   const gv = game.view;
   const gamePlan = game.plan || [];
   const isPracticeSession = !!game.session?.is_practice;
   // Faza do routingu i sondy: „loading” przed pierwszym snapshotem oraz gdy kotwica
-  // przyszła przed planem (plan_loading) — nigdy komunikat legacy na starcie quizu.
+  // przyszła przed planem (plan_loading) - nigdy komunikat legacy na starcie quizu.
   let gamePhase = gv.phase;
   if (game.loadState === "loading" && !game.plan && !game.session) gamePhase = "loading";
   else if (gamePhase === "plan_loading") gamePhase = "loading";
@@ -55,11 +55,11 @@ export default function App() {
   const myCurrent = gv.item ? game.myAnswers[gv.item.id] : null;
 
   // Ekran telefonu nie gaśnie od poczekalni do końca testu (także wyniki / koniec).
-  // Na iOS prośba o blokadę wymaga gestu — uzbraja ją CodeEntry („Dołącz do quizu →”)
+  // Na iOS prośba o blokadę wymaga gestu - uzbraja ją CodeEntry („Dołącz do quizu →”)
   // i globalny nasłuch dotknięć w kontrolerze src/lib/wakeLock.js (P7-IOS-WAKE).
   useWakeLock(screen === "game" && ["lobby", "no_session", "plan_loading", "intro", "countdown", "quiz", "reveal", "paused", "finished", "results", "ended"].includes(gv.phase));
 
-  // Tło miasta z localStorage od razu — bez mignięcia domyślnego tła po refreshu.
+  // Tło miasta z localStorage od razu - bez mignięcia domyślnego tła po refreshu.
   useEffect(() => {
     try {
       const bg = localStorage.getItem(BG_KEY);
@@ -68,7 +68,7 @@ export default function App() {
   }, []);
 
   // Restore uczestnika po refreshu: po rozstrzygnięciu auth (admin ma pierwszeństwo)
-  // wracamy prosto do gry — bez ponownego wpisywania kodu.
+  // wracamy prosto do gry - bez ponownego wpisywania kodu.
   useEffect(() => {
     if (loading || admin || screen !== "welcome") return;
     if (participant) setScreen("game");
@@ -82,7 +82,7 @@ export default function App() {
     setScreen("code_entry");
   }, [screen, game.loadState]);
 
-  // Oznacz kod jako użyty w sesji — raz na parę (kod, sesja).
+  // Oznacz kod jako użyty w sesji - raz na parę (kod, sesja).
   const markedRef = useRef(null);
   useEffect(() => {
     const sid = game.session?.id;
@@ -94,7 +94,7 @@ export default function App() {
     markCodeUsed(code, sid);
   }, [screen, game.session?.id, participant?.code]);
 
-  // Tło miasta: z sesji (bg / bg_mobile wg szerokości), a gdy snapshot go nie niesie —
+  // Tło miasta: z sesji (bg / bg_mobile wg szerokości), a gdy snapshot go nie niesie -
   // z getCityBg. Zapis do localStorage na potrzeby refreshu.
   const sessBg = game.session?.bg ?? null;
   const sessBgMobile = game.session?.bg_mobile ?? null;
@@ -129,11 +129,11 @@ export default function App() {
     document.body.dataset.fueRemaining = String(gv.secondsLeft ?? "");
     document.body.dataset.fueLocked = myCurrent ? "1" : "0";
     document.body.dataset.fueChoice = myCurrent?.chosen != null ? (ANSWER_LABELS[myCurrent.chosen] ?? "") : "";
-    // Przerwa planowa (po module 3 — sekcja 46; plany sprzed 46: 2 i 4) vs ręczna pauza — obie mają fazę „paused”.
+    // Przerwa planowa (po module 3 - sekcja 46; plany sprzed 46: 2 i 4) vs ręczna pauza - obie mają fazę „paused”.
     document.body.dataset.fueBreak = gv.plannedBreak ? "1" : "0";
   }, [screen, gamePhase, gv.idx, gv.secondsLeft, myCurrent, gv.plannedBreak]);
 
-  // #5 — wypchnij stan podium na Live View (projektor). Anon nie ma dostępu do
+  // #5 - wypchnij stan podium na Live View (projektor). Anon nie ma dostępu do
   // wyników, więc admin rozgłasza ranking + krok odsłaniania na kanale miasta.
   const podiumChRef = useRef(null);
   const podStepRef  = useRef(podStep);
@@ -141,10 +141,10 @@ export default function App() {
   useEffect(() => {
     const city = podiumResults[0]?.city;
     if (screen !== "podium" || DEMO || !supabase || !city) return;
-    const ch = supabase.channel(`podium-${encodeURIComponent(city)}`); // ASCII — polskie znaki psują broadcast
+    const ch = supabase.channel(`podium-${encodeURIComponent(city)}`); // ASCII - polskie znaki psują broadcast
     const send = () => ch.send({ type: "broadcast", event: "podium", payload: { results: podiumResults, podStep: podStepRef.current } });
     ch.subscribe((s) => { if (s === "SUBSCRIBED") { podiumChRef.current = ch; send(); } });
-    // Re-broadcast co 2 s — projektor, który podłączy się później, też dostanie stan.
+    // Re-broadcast co 2 s - projektor, który podłączy się później, też dostanie stan.
     const iv = setInterval(() => { if (podiumChRef.current) send(); }, 2000);
     return () => { podiumChRef.current = null; clearInterval(iv); supabase.removeChannel(ch); };
   }, [screen, podiumResults]); // eslint-disable-line
@@ -153,17 +153,17 @@ export default function App() {
       podiumChRef.current.send({ type: "broadcast", event: "podium", payload: { results: podiumResults, podStep } });
   }, [podStep]); // eslint-disable-line
 
-  // Standalone live view — opened via ?live=1&city=X
+  // Standalone live view - opened via ?live=1&city=X
   const liveParams = useMemo(() => {
     const p = new URLSearchParams(window.location.search);
     return p.get("live") === "1" ? { city: p.get("city") || "" } : null;
   }, []);
 
-  // Zegar serwera — zmierz offset raz na starcie i odświeżaj okresowo, by wszystkie
+  // Zegar serwera - zmierz offset raz na starcie i odświeżaj okresowo, by wszystkie
   // ekrany liczyły timery z tego samego "teraz" (sync co do sekundy).
   useEffect(() => startServerClock(), []);
 
-  // Utrzymuje socket Realtime przy życiu przez cały czas trwania aplikacji — bez tego
+  // Utrzymuje socket Realtime przy życiu przez cały czas trwania aplikacji - bez tego
   // wyjście z poczekalni opróżniało listę kanałów, supabase-js rozłączał socket i
   // uczestnik przestawał dostawać przejścia pytań. Szczegóły w lib/supabase.js.
   useEffect(() => { keepRealtimeAlive(); }, []);
@@ -201,7 +201,7 @@ export default function App() {
   );
   if (loading) return loadingView;
 
-  // Szkielet ekranu pytania (Faza 6 — płynność): refresh bez cache albo kotwica przed
+  // Szkielet ekranu pytania (Faza 6 - płynność): refresh bez cache albo kotwica przed
   // planem pokazują kształt ekranu gry zamiast pustki/spinnera. Tło = var(--fue-bg),
   // ustawione z localStorage (BG_KEY) zanim przyjdzie snapshot. Wartość JSX, nie komponent.
   const skelBlock = (extra) => ({ background: "rgba(255,255,255,.06)", borderRadius: 10, animation: "pulse 1.4s infinite", ...extra });
@@ -218,7 +218,7 @@ export default function App() {
             <div style={skelBlock({ width: 54, height: 54, borderRadius: "50%", flexShrink: 0 })} />
           </div>
           <div style={{ height: 6, background: "rgba(255,255,255,.07)", flexShrink: 0 }} />
-          {/* Blok pytania — 2 linie */}
+          {/* Blok pytania - 2 linie */}
           <div style={{ padding: "22px 20px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             <div style={skelBlock({ width: "88%", height: 18 })} />
             <div style={skelBlock({ width: "62%", height: 18 })} />
@@ -275,7 +275,7 @@ export default function App() {
         return QuizSkeleton;
 
       case "lobby":
-        // Lobby woła onStartQuiz(s) z wierszem wykrytej sesji — jej id jako podpowiedź
+        // Lobby woła onStartQuiz(s) z wierszem wykrytej sesji - jej id jako podpowiedź
         // omija przypięte id zakończonej sesji (np. po próbie).
         return <Lobby participant={participant} isDesktop={isDesktop} isPractice={isPracticeSession}
           onStartQuiz={(s) => game.refresh(s?.id)} onPractice={() => setScreen("practice")} />;
@@ -299,7 +299,7 @@ export default function App() {
           participantCode={participant.code} sessionId={game.session?.id} onPick={game.pick} />;
 
       case "paused": {
-        // Przerwa planowa (06-12): „Przerwa” + następny moduł — z projekcji lokalnej, także
+        // Przerwa planowa (06-12): „Przerwa” + następny moduł - z projekcji lokalnej, także
         // zanim zamiatacz zapisze pauzę. Ręczna pauza admina: „Wstrzymano”.
         if (gv.plannedBreak) {
           const nm = gv.nextModule != null ? MODULES.find((m) => m.id === gv.nextModule) : null;
@@ -308,7 +308,7 @@ export default function App() {
         return <Break participant={participant} nextModule={gv.item?.m} isAdminPause />;
       }
 
-      // Jeden ekran końca gry (G4): od finished (koniec pytań) przez results do ended —
+      // Jeden ekran końca gry (G4): od finished (koniec pytań) przez results do ended -
       // bez „czekaj na admina”. Mianownik = liczba pytań w planie (G6); poprawność tylko
       // z danych odsłoniętych przez serwer (hook dociąga snapshot przy wejściu w finished).
       case "finished":

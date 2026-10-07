@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 // ─── Okno potwierdzenia w stylu aplikacji (zamiast window.confirm) ───────────
 // Podwójne zabezpieczenie dla nieodwracalnych akcji (podium, blokada edycji).
-// zIndex 3000 — wyżej niż pełnoekranowy Live w panelu (zIndex 2000).
+// zIndex 3000 - wyżej niż pełnoekranowy Live w panelu (zIndex 2000).
 // Fokus startowo na „Anuluj”, więc Enter/spacja nie potwierdzają przypadkiem.
 // Escape i klik w tło = Anuluj.
 
@@ -23,7 +23,7 @@ export default function ConfirmDialog({
 }) {
   const titleId = useId();
   const cancelRef = useRef(null);
-  // Rodzic (np. SesjaTab) re-renderuje się co sekundę z nową funkcją onCancel — trzymamy
+  // Rodzic (np. SesjaTab) re-renderuje się co sekundę z nową funkcją onCancel - trzymamy
   // ją w refie, żeby efekt nie przestawiał fokusu przy każdym renderze.
   const cancelCb = useRef(onCancel);
   cancelCb.current = onCancel;

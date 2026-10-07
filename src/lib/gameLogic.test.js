@@ -25,7 +25,7 @@ describe("cityInfo", () => {
   });
 });
 
-// ─── Wcześniejsze zakończenie pytania — regresja z 23.09.2026 ────────────────
+// ─── Wcześniejsze zakończenie pytania - regresja z 23.09.2026 ────────────────
 // Stara wersja miała dwa wyzwalacze bez dolnej granicy czasu, przez co pytanie
 // ucięte przy 60/500 odpowiedziach ustawiało próg na 60 i KAŻDE kolejne kończyło
 // się przy 60. Te testy pilnują, żeby pętla się nie zamknęła ponownie.
@@ -44,7 +44,7 @@ describe("shouldEndEarly", () => {
     expect(shouldEndEarly({ ...base, elapsedS: earlySkipFloorSeconds(60) })).toBe(true);
   });
 
-  it("nie kończy przy zerze odpowiedzi — pytanie ma dojść do końca czasu", () => {
+  it("nie kończy przy zerze odpowiedzi - pytanie ma dojść do końca czasu", () => {
     expect(shouldEndEarly({ ...base, total: 0, elapsedS: 59 })).toBe(false);
   });
 
@@ -66,11 +66,11 @@ describe("shouldEndEarly", () => {
     // Odtworzenie przebiegu z symulacji: pierwsze pytanie ucięte przy 60/500 zatruwało
     // expected=60 i każde następne kończyło się natychmiast po 60 odpowiedziach.
     const poisoned = { total: 60, expected: 60, issued: 500, timePerQ: 60, sinceLastAnswerMs: 0 };
-    // Przed podłogą — cisza: 440 osób wciąż odpowiada.
+    // Przed podłogą - cisza: 440 osób wciąż odpowiada.
     expect(shouldEndEarly({ ...poisoned, elapsedS: 4 })).toBe(false);
     expect(shouldEndEarly({ ...poisoned, elapsedS: 20 })).toBe(false);
     // Podłoga 36 s daje wolniejszym czas, więc licznik zdąży urosnąć powyżej progu
-    // i sam go odtruje — to jest mechanizm rozrywający pętlę.
+    // i sam go odtruje - to jest mechanizm rozrywający pętlę.
     expect(shouldEndEarly({ ...poisoned, elapsedS: 30 })).toBe(false);
   });
 
@@ -82,7 +82,7 @@ describe("shouldEndEarly", () => {
   });
 });
 
-describe("AUTO_SKIP_MIN_TPQ — auto-skrót wyłączony przy krótkich pytaniach", () => {
+describe("AUTO_SKIP_MIN_TPQ - auto-skrót wyłączony przy krótkich pytaniach", () => {
   // Docelowy format TWE to pytania do 20 s. Pomiar: skrót oszczędza tam 2-3 s,
   // więc nie warto go ryzykować. Prowadzący ma ręczny przycisk niezależnie.
   const all = { total: 500, expected: 500, issued: 500, elapsedS: 19, timePerQ: 20, sinceLastAnswerMs: 0 };

@@ -7,18 +7,18 @@ export const ANSWER_LABELS = ["A", "B", "C", "D"];
 // Single source of truth so participant, LiveView and the admin ghost view all
 // count down for exactly the same window and stay in sync.
 // 11,5 s odsłony + 4 s odliczania (PRE_QUESTION_LEAD) = 15,5 s między pytaniami
-// — wbudowane w plan sesji przy starcie (src/lib/plan.js).
-// Okno odsłony (reveal) po zamknięciu pytania — w MILISEKUNDACH (plan sesji trzyma ms).
+// - wbudowane w plan sesji przy starcie (src/lib/plan.js).
+// Okno odsłony (reveal) po zamknięciu pytania - w MILISEKUNDACH (plan sesji trzyma ms).
 // Bramka serwera odsłania poprawną odpowiedź po closes + 1,5 s (REVEAL_GATE_MS w plan.js),
 // więc uczestnik widzi ją przez 11,5 − 1,5 = 10 s (decyzja 06-09, luka G1).
-// Lustro w SQL: build_plan_items (SUPABASE_FIXES.sql, sekcja 42) — zmiana TU wymaga zmiany TAM.
+// Lustro w SQL: build_plan_items (SUPABASE_FIXES.sql, sekcja 42) - zmiana TU wymaga zmiany TAM.
 export const REVEAL_MS = 11500;
-// Tylko do arytmetyki (11,5 — niecałkowite). NIE wyświetlać: UI liczy sekundy z terminów planu (Math.ceil).
+// Tylko do arytmetyki (11,5 - niecałkowite). NIE wyświetlać: UI liczy sekundy z terminów planu (Math.ceil).
 export const REVEAL_SECONDS = REVEAL_MS / 1000;
 // Przerwy planowe (luka G3): quiz sam staje po ostatnim pytaniu tych modułów i czeka na
 // „▶ Wznów quiz” (admin_resume_session). Przerwa planowa tylko między modułem 3 a 4 (decyzja
-// organizatorów 261007-ihg; wcześniej [2, 4] — decyzja 06-09). Lustro w SQL: build_plan_items
-// (sekcja 46.1). Na produkcji plan buduje SQL — tu reguła działa w DEMO, testach i verify-plan.
+// organizatorów 261007-ihg; wcześniej [2, 4] - decyzja 06-09). Lustro w SQL: build_plan_items
+// (sekcja 46.1). Na produkcji plan buduje SQL - tu reguła działa w DEMO, testach i verify-plan.
 export const BREAK_AFTER_MODULES = [3];
 
 // Długość zapowiedzi modułu (ekran "Moduł X" przed pierwszym pytaniem modułu).
@@ -26,7 +26,7 @@ export const BREAK_AFTER_MODULES = [3];
 // zsynchronizowana między uczestnikiem a Live View.
 export const MODULE_INTRO_SECONDS = 30;
 
-// Lead zwykłego pytania — okno na odliczanie 3-2-1 przed pokazaniem treści.
+// Lead zwykłego pytania - okno na odliczanie 3-2-1 przed pokazaniem treści.
 export const PRE_QUESTION_LEAD = 4;
 
 // Przejścia pytań wykonuje zamiatacz w bazie (faza 6, advance_due_sessions);
@@ -34,17 +34,17 @@ export const PRE_QUESTION_LEAD = 4;
 
 // ── Wcześniejsze zakończenie pytania ────────────────────────────────────────
 // Historia (23.09.2026): poprzednia wersja miała DWA wyzwalacze bez dolnej granicy
-// czasu — 8 s ciszy („plateau") albo osiągnięcie progu równego maksimum odpowiedzi
+// czasu - 8 s ciszy („plateau") albo osiągnięcie progu równego maksimum odpowiedzi
 // z wcześniejszych pytań. To zamykało pętlę dodatnią: pytanie ucięte przy 60/500
 // odpowiedziach ustawiało próg na 60, więc KAŻDE kolejne pytanie też kończyło się
-// przy 60 — 440 osób nie zdążyło odpowiedzieć na nic poza pierwszym pytaniem.
+// przy 60 - 440 osób nie zdążyło odpowiedzieć na nic poza pierwszym pytaniem.
 // Symulacja tego przebiegu jest w gameLogic.test.js jako test regresyjny.
 //
 // Dlatego teraz decyzja ma twardą podłogę czasu. Podłoga jest tym, co rozrywa pętlę:
 // pytanie zawsze trwa na tyle długo, żeby wolniejsi zdążyli odpowiedzieć, więc próg
 // frekwencji sam wraca do prawdziwej liczby uczestników zamiast zostać zatruty.
 
-// Minimalny czas trwania pytania, zanim wolno je skrócić — 60% czasu modułu.
+// Minimalny czas trwania pytania, zanim wolno je skrócić - 60% czasu modułu.
 // Podłoga jest PROPORCJONALNA, nie stała: pytania TWE mają trwać maksymalnie 20 s,
 // więc stałe minimum 20 s równałoby się całemu czasowi pytania i skrót nigdy by nie
 // zadziałał. Dolne 8 s chroni tylko przed absurdem przy bardzo krótkich modułach.
@@ -54,7 +54,7 @@ export function earlySkipFloorSeconds(timePerQ) {
   return Math.max(8, Math.round(0.6 * timePerQ));
 }
 
-// Cisza wymagana do uznania, że odpowiedzi przestały napływać — ale nie dłuższa niż
+// Cisza wymagana do uznania, że odpowiedzi przestały napływać - ale nie dłuższa niż
 // połowa czasu pytania, bo przy 20-sekundowych pytaniach stałe 12 s oznaczałoby, że
 // plateau nie zdąży się nigdy odpalić. 8 s (poprzednia wartość) było za mało przy
 // długich pytaniach: przerwa między falą szybkich a wolniejszych bywa dłuższa.
@@ -73,9 +73,9 @@ export function answerPlateauMs(timePerQ) {
  * @param sinceLastAnswerMs  ile ms minęło od ostatniej nowej odpowiedzi
  */
 // Automatyczny skrót ma sens tylko przy DŁUGICH pytaniach. Pomiar na symulacji przy
-// pytaniach 20-sekundowych (docelowy format TWE): skrót oszczędza 2–3 sekundy, bo
+// pytaniach 20-sekundowych (docelowy format TWE): skrót oszczędza 2-3 sekundy, bo
 // podłoga i tak wypada na 12 s, a okno reveal trwa 11,5 s. Za taką oszczędność nie warto
-// płacić ryzykiem ucięcia komuś odpowiedzi — przy 90-sekundowych obliczeniach owszem,
+// płacić ryzykiem ucięcia komuś odpowiedzi - przy 90-sekundowych obliczeniach owszem,
 // bo tam oszczędność to kilkadziesiąt sekund na pytanie.
 // Prowadzący ZAWSZE ma ręczny przycisk „⏭ Następne", niezależnie od tego progu.
 export const AUTO_SKIP_MIN_TPQ = 45;
@@ -83,7 +83,7 @@ export const AUTO_SKIP_MIN_TPQ = 45;
 export function shouldEndEarly({ total, expected, issued, elapsedS, timePerQ, sinceLastAnswerMs }) {
   if (!total) return false;
   if (timePerQ < AUTO_SKIP_MIN_TPQ) return false;
-  // Podłoga czasu — bez niej próg frekwencji potrafi się zatruć i pętla się zamyka.
+  // Podłoga czasu - bez niej próg frekwencji potrafi się zatruć i pętla się zamyka.
   if (elapsedS < earlySkipFloorSeconds(timePerQ)) return false;
   const denom = expected > 0 ? expected : issued;
   if (denom > 0 && total >= denom) return true;
@@ -94,7 +94,7 @@ export const cityInfo = (n) => CITIES.find((c) => c.name === n) || { abbr: "?", 
 // Accepts optional modules array (from context); falls back to hardcoded MODULES
 export const getModule = (id, modules = MODULES) => modules.find((m) => m.id === id);
 
-// ─── Pauza z dwóch kliknięć (06-16, H4 — decyzja użytkownika) ─────────────────
+// ─── Pauza z dwóch kliknięć (06-16, H4 - decyzja użytkownika) ─────────────────
 // confirm() blokował wątek i przesuwał moment pauzy o czas czytania okna (06-DIAG H4).
 // Pierwsze kliknięcie tylko uzbraja przycisk (nic nie zapisuje), drugie w ciągu
 // PAUSE_ARM_MS pauzuje od razu. armedUntil = 0 → nieuzbrojony.

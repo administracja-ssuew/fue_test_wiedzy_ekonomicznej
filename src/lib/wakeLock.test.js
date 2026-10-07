@@ -42,7 +42,7 @@ afterEach(() => {
   delete document.body.dataset.fueWake;
 });
 
-describe("createWakeLockController — natywny Wake Lock", () => {
+describe("createWakeLockController - natywny Wake Lock", () => {
   it("setWanted(true) + udana prośba → held, mode native; nasłuch gestów zdjęty", async () => {
     const s = makeSentinel();
     const nav = makeNav(() => Promise.resolve(s));
@@ -82,7 +82,7 @@ describe("createWakeLockController — natywny Wake Lock", () => {
   });
 });
 
-describe("createWakeLockController — fallback wideo", () => {
+describe("createWakeLockController - fallback wideo", () => {
   it("odmowa w geście → kolejny gest gra wideo mp4 (playsinline, bez muted i loop)", async () => {
     const nav = makeNav(() => Promise.reject(new Error("NotAllowedError")));
     ctrl = createWakeLockController({ nav, doc: document });
@@ -147,7 +147,7 @@ describe("createWakeLockController — fallback wideo", () => {
   });
 });
 
-describe("createWakeLockController — wanted / zwalnianie", () => {
+describe("createWakeLockController - wanted / zwalnianie", () => {
   it("armFromGesture() gdy wanted=false → nic; force → wanted=true i prośba", () => {
     const nav = makeNav(() => new Promise(() => {}));
     ctrl = createWakeLockController({ nav, doc: document });
@@ -223,7 +223,7 @@ describe("createWakeLockController — wanted / zwalnianie", () => {
   });
 });
 
-describe("createWakeLockController — stan dla UI", () => {
+describe("createWakeLockController - stan dla UI", () => {
   it("subscribe dostaje powiadomienia; getState() stabilny, gdy nic się nie zmienia", async () => {
     const s = makeSentinel();
     const nav = makeNav(() => Promise.resolve(s));

@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 
-// Ekran pauzy — czysto prezentacyjny (Faza 6). Wznowienie przychodzi z projekcji planu
+// Ekran pauzy - czysto prezentacyjny (Faza 6). Wznowienie przychodzi z projekcji planu
 // w useParticipantGame (App przełącza ekran), więc bez własnego kanału i polla.
 // Dwa tryby:
-//  • isAdminPause — ręczna pauza admina („Wstrzymano”),
-//  • przerwa planowa (06-12, po module 3 — sekcja 46; plany sprzed 46: 2 i 4) — „Przerwa” + następny moduł. Widoczna od
+//  • isAdminPause - ręczna pauza admina („Wstrzymano”),
+//  • przerwa planowa (06-12, po module 3 - sekcja 46; plany sprzed 46: 2 i 4) - „Przerwa” + następny moduł. Widoczna od
 //    chwili kotwica + r z projekcji lokalnej, zanim zamiatacz zapisze pauzę w bazie.
 // Koniec gry obsługuje wyłącznie Ended („Koniec testu”).
 // eslint-disable-next-line no-unused-vars
@@ -32,10 +32,10 @@ export default function Break({ participant, nextModule, nextModuleName, nextMod
         ) : (
           <>
             <p style={{ fontSize: 17, color: "#EDE9FE", fontWeight: 600, lineHeight: 1.6, marginBottom: 8 }}>
-              {nextModuleIcon ? `${nextModuleIcon} ` : ""}Moduł {nextModule}{nextModuleName ? ` — ${nextModuleName}` : ""} rozpocznie się po przerwie.
+              {nextModuleIcon ? `${nextModuleIcon} ` : ""}Moduł {nextModule}{nextModuleName ? ` - ${nextModuleName}` : ""} rozpocznie się po przerwie.
             </p>
             <p style={{ fontSize: 15, color: "#9B89CC", lineHeight: 1.7, marginBottom: 28 }}>
-              Zrób sobie chwilę przerwy — quiz wznowi prowadzący.
+              Zrób sobie chwilę przerwy - quiz wznowi prowadzący.
             </p>
           </>
         )}

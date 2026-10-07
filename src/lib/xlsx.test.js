@@ -10,7 +10,7 @@ describe("safeSheetName", () => {
     const n = safeSheetName("Jan [Kowalski] / *?:\\", new Set());
     expect(n).not.toMatch(/[[\]:*?/\\]/);
   });
-  it("deduplikuje — duplikat nazwy uniemożliwia otwarcie pliku", () => {
+  it("deduplikuje - duplikat nazwy uniemożliwia otwarcie pliku", () => {
     const used = new Set();
     const names = [1, 2, 3].map(() => safeSheetName("Jan Kowalski", used));
     expect(new Set(names).size).toBe(3);
@@ -61,15 +61,15 @@ describe("buildXlsxBytes", () => {
     expect(t).not.toContain("<b>");
   });
 
-  it("wycina znaki sterujące — treści pytań bywają wklejane z Worda/PDF-a", () => {
+  it("wycina znaki sterujące - treści pytań bywają wklejane z Worda/PDF-a", () => {
     // XML 1.0 nie dopuszcza U+0001, U+000B, U+001F itd. Jeden taki bajt sprawia,
-    // że Excel odmawia otwarcia CAŁEGO skoroszytu — nie tylko jednej komórki.
+    // że Excel odmawia otwarcia CAŁEGO skoroszytu - nie tylko jednej komórki.
     const CTRL = [1, 11, 31].map((c) => String.fromCharCode(c));
     const dirty = `PKB${CTRL[0]} realne${CTRL[1]} w${CTRL[2]}roku`;
     const t = text([{ name: "T", rows: [[dirty]] }]);
     expect(t).toContain("PKB realne wroku");
     // Sprawdzamy WYŁĄCZNIE ładunek XML: nagłówki ZIP-a (CRC, długości, offsety) to
-    // dowolne bajty i naturalnie zawierają wartości sterujące — skanowanie całego
+    // dowolne bajty i naturalnie zawierają wartości sterujące - skanowanie całego
     // archiwum jako tekstu dałoby fałszywy alarm.
     const sst = t.slice(t.indexOf("<sst"), t.indexOf("</sst>"));
     for (const bad of CTRL) expect(sst).not.toContain(bad);

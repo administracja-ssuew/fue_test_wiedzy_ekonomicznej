@@ -35,7 +35,7 @@ const W = {
 
 // Jeden ekran końca gry (06-15, G4/G6): pokazywany automatycznie od fazy finished/results,
 // bez czekania na admina. Wynik = poprawne (odsłonięte przez serwer) / liczba pytań w planie.
-// perModule: [{ id, ok, total }] z planu; pending — ostatnie odpowiedzi jeszcze bez is_correct.
+// perModule: [{ id, ok, total }] z planu; pending - ostatnie odpowiedzi jeszcze bez is_correct.
 export default function Ended({ participant, correctN = 0, totalQ = 0, perModule = [], pending = false, isPractice, onGoHome }) {
   const MODULES = useModules();
   const modInfo = (id) => MODULES.find((m) => m.id === id) || { id, name: `Moduł ${id}`, icon: "📘", color: "#6B21E8" };
@@ -54,7 +54,7 @@ export default function Ended({ participant, correctN = 0, totalQ = 0, perModule
         </h2>
         {isPractice && (
           <p className="su" style={{ color: "#9B89CC", fontSize: 15, marginTop: 6, lineHeight: 1.7, animationDelay: ".12s" }}>
-            To był próbny test — wyniki nie są oficjalne.
+            To był próbny test - wyniki nie są oficjalne.
           </p>
         )}
         <div className="su" style={{ ...W.card({ padding: "24px", marginTop: 24, borderColor: "rgba(16,217,160,.3)", background: "rgba(16,217,160,.06)" }), animationDelay: ".18s", width: "100%" }}>

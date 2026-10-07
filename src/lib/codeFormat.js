@@ -4,14 +4,14 @@
 // (sekcja 44), a nie długość kodu. Stare kody 6-cyfrowe (KRK-482910) pozostają ważne,
 // więc walidacja przyjmuje 4 albo 6 cyfr. Prefiksy miast bez zmian (Warszawa = WAR).
 //
-// Moduł jest czysty (bez Supabase i DOM) — logikę testuje Vitest (codeFormat.test.js),
+// Moduł jest czysty (bez Supabase i DOM) - logikę testuje Vitest (codeFormat.test.js),
 // a supabase.js i ekrany tylko ją wołają. CITY_PREFIX ma tu jedyne źródło.
 
 export const CITY_PREFIX = { Kraków: "KRK", Warszawa: "WAR", Poznań: "POZ", Wrocław: "WRO", Katowice: "KAT" };
 
 export const CODE_RE = /^[A-Z]{3}-(\d{4}|\d{6})$/;
 
-// Formatowanie pola kodu w trakcie pisania. `prev` to poprzednia wartość pola —
+// Formatowanie pola kodu w trakcie pisania. `prev` to poprzednia wartość pola -
 // pozwala rozpoznać kasowanie: backspace na automatycznie dopisanym myślniku
 // („KRK-” → „KRK”) nie może dopisać go z powrotem, inaczej użytkownik utyka.
 // Cyfry przed trzema literami są odrzucane; cyfr maks. 6 (stare kody).
@@ -53,7 +53,7 @@ export function takenNumbersFromCodes(codes, prefix) {
 
 const pad4 = (n) => String(n).padStart(4, "0");
 
-// Losowa liczba całkowita z [0, max) — crypto.getRandomValues, awaryjnie Math.random.
+// Losowa liczba całkowita z [0, max) - crypto.getRandomValues, awaryjnie Math.random.
 function cryptoRandomInt(max) {
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     const u = crypto.getRandomValues(new Uint32Array(1))[0];
@@ -63,7 +63,7 @@ function cryptoRandomInt(max) {
 }
 
 // n różnych wolnych numerów „NNNN” (rozłącznych z `taken`), losowanie bez zwracania
-// (częściowy Fisher–Yates). Gdy wolnych jest mniej niż n — zwraca tyle, ile jest.
+// (częściowy Fisher-Yates). Gdy wolnych jest mniej niż n - zwraca tyle, ile jest.
 // rng(max) → liczba całkowita z [0, max).
 export function pickFreeNumbers(n, taken, rng = cryptoRandomInt) {
   const used = taken || new Set();
@@ -82,7 +82,7 @@ export function pickFreeNumbers(n, taken, rng = cryptoRandomInt) {
   return pool.slice(0, k);
 }
 
-// Uzupełnia puste numery (null) wolnymi — rozłącznymi z zajętymi w mieście i z numerami
+// Uzupełnia puste numery (null) wolnymi - rozłącznymi z zajętymi w mieście i z numerami
 // podanymi w pliku. Zwraca nowe obiekty (wejście bez mutacji); wylosowane mają random: true.
 export function assignNumbers(valid, taken, rng = cryptoRandomInt) {
   const rows = valid || [];
@@ -141,14 +141,14 @@ export function parseCodesCsv(text, { prefix, city, takenNumbers = new Set() } =
       num = withLetters[2];
     }
     if (!/^\d{4}$/.test(num)) {
-      const hint = /^\d{1,3}$/.test(rawCell) ? " — jeśli w Excelu zniknęły zera z przodu, sformatuj kolumnę Kod jako Tekst" : "";
+      const hint = /^\d{1,3}$/.test(rawCell) ? " - jeśli w Excelu zniknęły zera z przodu, sformatuj kolumnę Kod jako Tekst" : "";
       errors.push({ line, name: display, reason: `kod „${rawCell}” musi mieć 4 cyfry${hint}` });
       return;
     }
     candidates.push({ line, name, surname, number: num });
   });
 
-  // Duplikaty w pliku — oznaczamy wszystkie wystąpienia.
+  // Duplikaty w pliku - oznaczamy wszystkie wystąpienia.
   const byNumber = new Map();
   for (const c of candidates) {
     if (!c.number) continue;

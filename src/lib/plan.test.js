@@ -9,7 +9,7 @@ import { REVEAL_MS } from "./gameLogic.js";
 
 const A = fixtures.anchorMs;
 const ITEMS = fixtures.items;          // legacy: plan zamrożony przed sekcją 42 (reveal 6 s, bez przerw)
-const V2 = fixtures.v2;                // plan zamrożony przy sekcji 42 (przerwy po 2 i 4) — sesje sprzed sekcji 46
+const V2 = fixtures.v2;                // plan zamrożony przy sekcji 42 (przerwy po 2 i 4) - sesje sprzed sekcji 46
 const V3 = fixtures.v3;                // sekcja 46: przerwa tylko po module 3
 const rel = (t) => (t == null ? null : A + t);
 
@@ -59,7 +59,7 @@ describe("buildPlanItems", () => {
   });
 });
 
-describe("planPosition — fixture'y", () => {
+describe("planPosition - fixture'y", () => {
   it("puste items lub brak kotwicy → null", () => {
     expect(planPosition([], A, null, A)).toBe(null);
     expect(planPosition(null, A, null, A)).toBe(null);
@@ -80,7 +80,7 @@ describe("planPosition — fixture'y", () => {
   }
 });
 
-describe("planPosition — v2 (reveal 11,5 s)", () => {
+describe("planPosition - v2 (reveal 11,5 s)", () => {
   for (const c of V2.position) {
     it(c.name, () => {
       const pos = planPosition(V2.items, A, rel(c.pausedT), A + c.t);
@@ -153,7 +153,7 @@ describe("sweepAction (lustro advance_due_sessions, sekcja 42)", () => {
   });
 
   for (const c of fixtures.sweep) {
-    it(`legacy ${c.name} — wynik jak sweepDecision`, () => {
+    it(`legacy ${c.name} - wynik jak sweepDecision`, () => {
       const row = {
         status: c.row.status, anchorMs: A, pausedAtMs: rel(c.row.pausedT), curIdx: c.row.curIdx,
         qStartedAtMs: rel(c.row.qStartedT), revealedIdx: c.row.revealedIdx, holdIdx: null,
@@ -163,7 +163,7 @@ describe("sweepAction (lustro advance_due_sessions, sekcja 42)", () => {
   }
 });
 
-describe("projectPlanState — przerwa planowa", () => {
+describe("projectPlanState - przerwa planowa", () => {
   it("running, przerwa należna, zanim zamiatacz zapisał pauzę → paused (plannedBreak)", () => {
     const s = projectPlanState({ items: V2.items, anchorMs: A, status: "running", holdIdx: null, nowMs: A + 150000 });
     expect(s.phase).toBe("paused");
@@ -205,7 +205,7 @@ describe("projectPlanState — przerwa planowa", () => {
   });
 });
 
-describe("zamiatacz (sweepDecision) — fixture'y", () => {
+describe("zamiatacz (sweepDecision) - fixture'y", () => {
   for (const c of fixtures.sweep) {
     it(c.name, () => {
       const row = {
@@ -240,7 +240,7 @@ describe("zamiatacz (sweepDecision) — fixture'y", () => {
   });
 });
 
-describe("projectPlanState — fixture'y", () => {
+describe("projectPlanState - fixture'y", () => {
   for (const c of fixtures.project) {
     it(c.name, () => {
       const items = c.items === "full" ? ITEMS : c.items === "empty" ? [] : null;
@@ -278,7 +278,7 @@ describe("projectPlanState — fixture'y", () => {
   });
 });
 
-describe("pauza — wznowienie po 60 s daje ten sam stan", () => {
+describe("pauza - wznowienie po 60 s daje ten sam stan", () => {
   for (const t of [5000, 38000, 15000, 33000, 80000]) {
     it(`pauza w t=${t}`, () => {
       const pausedAt = A + t;
@@ -378,7 +378,7 @@ describe("przesunięcie kotwicy (Następne / Powtórz)", () => {
     expect(pos.phase).toBe("reveal");
     expect(pos.closesAt).toBe(now);
     expect(a2 + ITEMS[1].o).toBe(A + 25000);
-    // drugi klik — no-op
+    // drugi klik - no-op
     expect(skipAnchor(ITEMS, a2, now, 0)).toBe(null);
   });
 
@@ -410,7 +410,7 @@ describe("przesunięcie kotwicy (Następne / Powtórz)", () => {
   });
 });
 
-describe("moduły — plan zamrożony przy budowie", () => {
+describe("moduły - plan zamrożony przy budowie", () => {
   it("zmiana timePerQ po buildPlanItems nie zmienia projekcji", () => {
     const mods = V2.modules.map((m) => ({ ...m }));
     const items = buildPlanItems(V2.questions, mods);

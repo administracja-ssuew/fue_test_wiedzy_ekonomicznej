@@ -32,7 +32,7 @@ describe("computeOffset (NTP-lite)", () => {
   });
 });
 
-describe("computeOffset — filtr pasma min-RTT + mediana", () => {
+describe("computeOffset - filtr pasma min-RTT + mediana", () => {
   it("mediana w paśmie odrzuca pojedynczą przekłamaną próbkę", () => {
     const samples = [
       { t0: 0, t1: 20, serverMs: 1010 },    // RTT 20, offset 1000
@@ -51,7 +51,7 @@ describe("computeOffset — filtr pasma min-RTT + mediana", () => {
   });
 });
 
-describe("addClockSample — próbki z odpowiedzi snapshotu", () => {
+describe("addClockSample - próbki z odpowiedzi snapshotu", () => {
   it("pojedyncza próbka ustawia offset i synced", () => {
     addClockSample({ t0: 0, t1: 20, serverMs: 1010 });
     expect(getClockOffset()).toBe(1000);
@@ -71,7 +71,7 @@ describe("addClockSample — próbki z odpowiedzi snapshotu", () => {
     addClockSample({ t0: 0, t1: 1, serverMs: 5000.5 });
     expect(getClockOffset()).toBe(5000);
     for (let i = 0; i < 7; i++) addClockSample({ t0: 0, t1: 20, serverMs: 1010 });
-    expect(getClockOffset()).toBe(5000); // 8 próbek — wciąż w buforze
+    expect(getClockOffset()).toBe(5000); // 8 próbek - wciąż w buforze
     addClockSample({ t0: 0, t1: 20, serverMs: 1010 });
     expect(getClockOffset()).toBe(1000); // 9. próbka wypycha najstarszą
   });

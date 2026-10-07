@@ -10,23 +10,23 @@ const ANS_COLORS = ["#C2185B", "#1565C0", "#2E7D32", "#E65100"];
 const ANS_LABELS = ["A", "B", "C", "D"];
 
 // Standalone spectator view (opened via ?live=1&city=X). Pure render over the
-// shared DB-state projection — stays in sync with participants and the admin embed.
+// shared DB-state projection - stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
-  // Public projector — anon, so no per-participant data; aggregate counts only.
+  // Public projector - anon, so no per-participant data; aggregate counts only.
   const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext } =
     useLiveProjection(city);
   // Poprawny indeks w reveal: bramkowany z serwera (revealAns) lub fallback ans
   // (pre-migracja, gdy ans jest jeszcze w pytaniach).
   const correctIdx = revealAns != null ? revealAns : currentQ?.ans;
 
-  // #10 — audio TYLKO na projektorze. Dźwięki na zdarzeniach (odliczanie/reveal/podium).
+  // #10 - audio TYLKO na projektorze. Dźwięki na zdarzeniach (odliczanie/reveal/podium).
   const { enabled: audioOn, toggle: toggleAudio, play, bgVol, setBgVol, sfxVol, setSfxVol } = useLiveAudio();
   const prevPhase = useRef(phase), prevCd = useRef(cdNum), prevPod = useRef(false);
   useEffect(() => { if (phase === "reveal" && prevPhase.current !== "reveal") play("reveal"); prevPhase.current = phase; }, [phase]); // eslint-disable-line
   useEffect(() => { if (cdNum !== null && prevCd.current === null) play("countdown"); prevCd.current = cdNum; }, [cdNum]); // eslint-disable-line
   useEffect(() => { const has = !!podium?.results?.length; if (has && !prevPod.current) play("podium"); prevPod.current = has; }, [podium]); // eslint-disable-line
 
-  // JSX-wyrażenie (nie zagnieżdżony komponent) — żeby suwak nie remontował się przy renderze.
+  // JSX-wyrażenie (nie zagnieżdżony komponent) - żeby suwak nie remontował się przy renderze.
   const slider = (label, val, onChange) => (
     <label key={label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#C4B5FD" }}>
       <span style={{ width: 42 }}>{label}</span>
@@ -52,7 +52,7 @@ export default function LiveView({ city }) {
   const timerPct = Math.max(0, Math.min(1, timer / (timePerQ || 60)));
   const tColor   = timerPct > .5 ? "#10D9A0" : timerPct > .25 ? "#FF9A3C" : "#E8376B";
 
-  // #5 — gdy admin ułoży/odsłania podium, pokazujemy je na projektorze (read-only).
+  // #5 - gdy admin ułoży/odsłania podium, pokazujemy je na projektorze (read-only).
   if (podium?.results?.length) return <PodiumScreen results={podium.results} podStep={podium.podStep} readOnly />;
 
   if (cdNum !== null) return firstOfModule
@@ -91,7 +91,7 @@ export default function LiveView({ city }) {
         </div>
       )}
 
-      {/* Koniec testu (G8) — do wypchnięcia podium z panelu */}
+      {/* Koniec testu (G8) - do wypchnięcia podium z panelu */}
       {phase === "ended" && (
         <div className="fi" style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>🏁</div>
@@ -100,13 +100,13 @@ export default function LiveView({ city }) {
         </div>
       )}
 
-      {/* Przerwa planowa (po module 3 — sekcja 46; plany sprzed 46: 2 i 4) — następny moduł */}
+      {/* Przerwa planowa (po module 3 - sekcja 46; plany sprzed 46: 2 i 4) - następny moduł */}
       {phase === "paused" && breakNext && (
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>☕</div>
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Przerwa</p>
           <p style={{ color: "#9B89CC", fontSize: 18, marginTop: 8 }}>
-            {`Po przerwie: ${breakNext.icon ?? ""} Moduł ${breakNext.id} — ${breakNext.name}`}
+            {`Po przerwie: ${breakNext.icon ?? ""} Moduł ${breakNext.id} - ${breakNext.name}`}
           </p>
         </div>
       )}
@@ -116,7 +116,7 @@ export default function LiveView({ city }) {
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>⏸️</div>
           <p style={{ fontFamily: '"Bebas Neue"', fontSize: 48, letterSpacing: 2, color: "#F5C518" }}>Wstrzymano</p>
-          <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8 }}>Administrator wstrzymał quiz — za chwilę wznowienie.</p>
+          <p style={{ color: "#9B89CC", fontSize: 16, marginTop: 8 }}>Administrator wstrzymał quiz - za chwilę wznowienie.</p>
         </div>
       )}
 

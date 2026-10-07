@@ -15,7 +15,7 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Best-effort remote log — never throws (recordClientError swallows failures).
+    // Best-effort remote log - never throws (recordClientError swallows failures).
     recordClientError({
       where: "ErrorBoundary",
       message: error?.message || String(error),
@@ -38,7 +38,7 @@ export default class ErrorBoundary extends Component {
             Coś poszło nie tak
           </h2>
           <p style={{ color: "#9B89CC", fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
-            Aplikacja napotkała nieoczekiwany błąd. Odśwież stronę — Twój kod uczestnika
+            Aplikacja napotkała nieoczekiwany błąd. Odśwież stronę - Twój kod uczestnika
             i postęp w quizie pozostają zapisane.
           </p>
           <button

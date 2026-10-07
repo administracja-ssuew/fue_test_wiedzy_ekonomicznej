@@ -219,7 +219,7 @@ describe("applySnapshot", () => {
   });
 });
 
-describe("applySnapshot — keepControl (stary snapshot nie cofa pauzy, G2/H1)", () => {
+describe("applySnapshot - keepControl (stary snapshot nie cofa pauzy, G2/H1)", () => {
   const plan = [
     { i: 0, id: "q1", m: 1, tpq: 20, lead: 10, o: 10000, c: 30000, r: 41500 },
     { i: 1, id: "q2", m: 1, tpq: 20, lead: 4, o: 45500, c: 65500, r: 77000 },
@@ -265,7 +265,7 @@ describe("applySnapshot — keepControl (stary snapshot nie cofa pauzy, G2/H1)",
     expect(next.session.plan_paused_at).toBeNull();
   });
 
-  it("keepControl ignorowane przy switched (inna sesja) — stan w całości ze snapshotu", () => {
+  it("keepControl ignorowane przy switched (inna sesja) - stan w całości ze snapshotu", () => {
     const other = { ...stale, session: { ...stale.session, id: "s2" } };
     const next = applySnapshot(prev, other, { keepControl: true });
     expect(next.switched).toBe(true);

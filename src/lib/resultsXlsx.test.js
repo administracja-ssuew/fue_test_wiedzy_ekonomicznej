@@ -4,7 +4,7 @@ import { buildXlsxBytes } from "./xlsx.js";
 
 // Fixture: 2 uczestników × 3 pytania z planu. A1 nie odpowiedział na pytanie 3
 // (brak wiersza w answers → get_session_detailed_results zwraca pusty wybór,
-// isCorrect false i pełny czas pytania — 20 s).
+// isCorrect false i pełny czas pytania - 20 s).
 const row = (code, name, qNo, chosenLabel, isCorrect, responseTimeMs) => ({
   participantCode: code, participantName: name, city: "Kraków",
   qNo, module: 1, moduleName: "Obliczenia", question: `Pytanie ${qNo}`,
@@ -53,12 +53,12 @@ describe("buildResultsSheets", () => {
     expect(card).toContainEqual(["Poprawne odpowiedzi", 2, "z 3"]);
     expect(card).toContainEqual(["Bez odpowiedzi", 1]);
     const q3 = card.find((r) => r[0] === 3 && r[2] === "Pytanie 3");
-    expect(q3).toContain("— brak odpowiedzi");
+    expect(q3).toContain("- brak odpowiedzi");
   });
 
   it("karta uczestnika: średni czas liczy brak odpowiedzi jako pełny czas pytania (G6)", () => {
     const avg = sheets[2].rows.find((r) => r[0] === "Średni czas odpowiedzi (s)");
-    // (5 + 11 + 20) / 3 = 12 s — spójnie z get_session_results
+    // (5 + 11 + 20) / 3 = 12 s - spójnie z get_session_results
     expect(avg[1]).toEqual({ v: 12, fmt: "0.000" });
   });
 
@@ -108,7 +108,7 @@ describe("buildResultsSheets z naruszeniami", () => {
     expect(r[2].at(-1)).toBe(0);
   });
 
-  it("karta: łącznie, wyjście z aplikacji, zrzut ekranu — kolejno po „Bez odpowiedzi”", () => {
+  it("karta: łącznie, wyjście z aplikacji, zrzut ekranu - kolejno po „Bez odpowiedzi”", () => {
     const card = sheets[2].rows;
     const i = card.findIndex((x) => x[0] === "Bez odpowiedzi");
     expect(card.slice(i + 1, i + 4)).toEqual([
@@ -121,7 +121,7 @@ describe("buildResultsSheets z naruszeniami", () => {
 });
 
 describe("resultsFileName", () => {
-  it("z nazwą sesji — slug bez polskich znaków", () => {
+  it("z nazwą sesji - slug bez polskich znaków", () => {
     expect(resultsFileName({ city: "Kraków", dateIso: "2026-10-28T09:00:00Z", name: "TWE finał" }))
       .toBe("wyniki_Kraków_2026-10-28_TWE-final.xlsx");
   });
@@ -129,7 +129,7 @@ describe("resultsFileName", () => {
     expect(resultsFileName({ city: "Kraków", dateIso: "2026-10-28T09:00:00Z" })).toBe("wyniki_Kraków_2026-10-28.xlsx");
   });
   it("slug: ł → l, brzegowe myślniki obcięte, maks. 40 znaków", () => {
-    const n = resultsFileName({ city: "Łódź", dateIso: "2026-10-28", name: "  Łódzki etap — próba!  " + "x".repeat(60) });
+    const n = resultsFileName({ city: "Łódź", dateIso: "2026-10-28", name: "  Łódzki etap - próba!  " + "x".repeat(60) });
     const slug = n.replace("wyniki_Łódź_2026-10-28_", "").replace(".xlsx", "");
     expect(slug.startsWith("Lodzki-etap-proba-")).toBe(true);
     expect(slug.length).toBeLessThanOrEqual(40);

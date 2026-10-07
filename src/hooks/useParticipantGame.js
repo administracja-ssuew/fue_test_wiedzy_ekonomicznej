@@ -15,9 +15,9 @@ import {
 // ─── useParticipantGame (Faza 6) ──────────────────────────────────────────────
 // Jedyne źródło fazy dla ekranu uczestnika. Model:
 //  • PRAWDA = snapshot get_participant_state (plan + kotwica + moje odpowiedzi + reveal).
-//  • Realtime to tylko SYGNAŁ „coś się zmieniło” (kanał publiczny — payloadu nie ufamy,
+//  • Realtime to tylko SYGNAŁ „coś się zmieniło” (kanał publiczny - payloadu nie ufamy,
 //    poza polami wiersza quiz_sessions z postgres_changes, które przechodzą przez RLS).
-//  • Faza liczona lokalnie co klatkę z planu i serverNow() — działa też offline (SC3).
+//  • Faza liczona lokalnie co klatkę z planu i serverNow() - działa też offline (SC3).
 // Hook nie zna czasów modułów: wszystkie terminy są w zamrożonym planie (SC4).
 
 const EMPTY_GAME = { session: null, plan: null, myAnswers: {}, reveal: null, correctTotal: 0 };
@@ -25,7 +25,7 @@ const SAFETY_NET_MS = 15000;
 const RETRY_MS = 700;
 // G7 (06-17, przebieg 05): jedno żądanie snapshotu utknęło na 20,9 s i zablokowało pobranie
 // planu po starcie. Snapshot w locie żyje najwyżej SNAPSHOT_TIMEOUT_MS, a gdy telefon ma kotwicę
-// bez planu, snapshot wysłany PRZED ostatnim wierszem Realtime — najwyżej STALE_PLAN_WAIT_MS.
+// bez planu, snapshot wysłany PRZED ostatnim wierszem Realtime - najwyżej STALE_PLAN_WAIT_MS.
 const SNAPSHOT_TIMEOUT_MS = 4000;
 const STALE_PLAN_WAIT_MS = 1500;
 const STALL_RETRY_MAX_MS = 8000;
@@ -58,7 +58,7 @@ function canViewTransition() {
   if (!("startViewTransition" in document) || document.hidden) return false;
   try {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
-  } catch (_) { /* brak matchMedia — traktujemy jak brak ograniczeń */ }
+  } catch (_) { /* brak matchMedia - traktujemy jak brak ograniczeń */ }
   return true;
 }
 
@@ -76,10 +76,10 @@ function bgImageUrls(...values) {
 
 function initialGame(participant) {
   // Inicjalizacja SYNCHRONICZNA z cache: po refreshu pierwsza klatka pokazuje już
-  // właściwą fazę z zapamiętanego planu, zanim wróci snapshot (SC2 — brak pustego ekranu).
+  // właściwą fazę z zapamiętanego planu, zanim wróci snapshot (SC2 - brak pustego ekranu).
   const c = participant?.sessionId ? loadGameCache(participant.sessionId) : null;
   if (!c?.session) return EMPTY_GAME;
-  // Odpowiedzi też z cache — blokada wybranej odpowiedzi widoczna od pierwszej klatki.
+  // Odpowiedzi też z cache - blokada wybranej odpowiedzi widoczna od pierwszej klatki.
   const myAnswers = c.myAnswers && typeof c.myAnswers === "object" ? c.myAnswers : {};
   return withCorrectTotal({ ...EMPTY_GAME, session: c.session, plan: c.plan ?? null, myAnswers });
 }
@@ -98,7 +98,7 @@ export default function useParticipantGame(participant) {
 
   const inFlightRef = useRef(false);
   const pendingRef = useRef(null);            // jedno oczekujące wywołanie (najnowszy hint)
-  const jitterRef = useRef(null);             // { timer, opts } — scalony rozrzucony snapshot
+  const jitterRef = useRef(null);             // { timer, opts } - scalony rozrzucony snapshot
   const timeoutsRef = useRef(new Set());
   const disposedRef = useRef(false);
   const emptySentRef = useRef(new Set());     // item.id z wysłanym pustym zapisem
@@ -122,17 +122,17 @@ export default function useParticipantGame(participant) {
   }, []);
 
   // Publikacja nowego widoku. Zmiana fazy lub pytania (nie sam tik sekund) idzie przez
-  // View Transitions. Pułapka 10: w React 18 setState jest asynchroniczny — bez flushSync
+  // View Transitions. Pułapka 10: w React 18 setState jest asynchroniczny - bez flushSync
   // przeglądarka zrobiłaby zrzut „po” przed renderem (brak animacji / mignięcie).
-  // Callback przejścia odpala się asynchronicznie, więc ustawia NAJNOWSZY widok z refa —
+  // Callback przejścia odpala się asynchronicznie, więc ustawia NAJNOWSZY widok z refa -
   // widok podmieniony w międzyczasie nie zostanie nadpisany starszym.
   // H2 (06-DIAG): faza NIGDY nie czeka na callback dłużej niż VT_MAX_DELAY_MS, a nowe
   // przejście nie startuje, gdy poprzednie trwa (drugie = zwykłe setView, bez animacji).
-  // 06-17: sam limit nie wystarcza — przy wolnym przechwyceniu render jest zamrożony do końca
+  // 06-17: sam limit nie wystarcza - przy wolnym przechwyceniu render jest zamrożony do końca
   // przechwycenia (skipTransition go nie skraca). Dlatego przejście NIE startuje, gdy klatki
   // są zdławione, a po przekroczeniu limitu VT jest wyłączone CZASOWO (wraca po serii płynnych
   // klatek); NA STAŁE dopiero po 2. porażce (P7-VT-SMOOTH). Start pytania (countdown/intro →
-  // quiz) NIGDY nie idzie przez VT — wejście pytania animuje CSS w Quiz.jsx.
+  // quiz) NIGDY nie idzie przez VT - wejście pytania animuje CSS w Quiz.jsx.
   const pushView = useCallback((v, k) => {
     const prev = viewRef.current;
     viewKeyRef.current = k;
@@ -162,12 +162,12 @@ export default function useParticipantGame(participant) {
         });
         vtRef.current = vt;
         const clear = () => { if (vtRef.current === vt) vtRef.current = null; };
-        // Pominięte przejście odrzuca ready/updateCallbackDone („Transition was skipped”) —
+        // Pominięte przejście odrzuca ready/updateCallbackDone („Transition was skipped”) -
         // bez catch trafiało do konsoli jako pageerror (06-DIAG, obserwacja 2).
         vt.ready?.catch?.(() => {});
         vt.updateCallbackDone?.catch?.(() => {});
         if (vt.finished?.then) vt.finished.then(clear, clear); else clear();
-        // Callback przejścia bywa odkładany (zdławiony render) — faza NIGDY nie czeka dłużej niż 150 ms.
+        // Callback przejścia bywa odkładany (zdławiony render) - faza NIGDY nie czeka dłużej niż 150 ms.
         later(() => {
           if (applied) return;
           strike();
@@ -176,7 +176,7 @@ export default function useParticipantGame(participant) {
           setView(viewRef.current);
         }, VT_MAX_DELAY_MS);
         return;
-      } catch (_) { vtRef.current = null; /* przejście niedostępne — zwykła zmiana stanu */ }
+      } catch (_) { vtRef.current = null; /* przejście niedostępne - zwykła zmiana stanu */ }
     }
     setView(v);
   }, [later]);
@@ -205,7 +205,7 @@ export default function useParticipantGame(participant) {
       };
       // G7 (06-17): kotwica bez planu = brak fazy (ekran ładowania). Snapshot w locie wysłany
       // PRZED ostatnim wierszem Realtime (np. siatka bezpieczeństwa z lobby, a potem start) nie
-      // może trzymać planu dłużej niż STALE_PLAN_WAIT_MS od wysłania — porzucamy go i od razu
+      // może trzymać planu dłużej niż STALE_PLAN_WAIT_MS od wysłania - porzucamy go i od razu
       // idzie oczekujące wywołanie z planem.
       const g = gameRef.current;
       const f = flightRef.current;
@@ -225,10 +225,10 @@ export default function useParticipantGame(participant) {
       if (!cur.plan) inc = true;                                        // bez planu nie ma fazy
       if (sessionIdHint && sessionIdHint !== cur.session?.id) inc = true; // inna sesja = inny plan
       // Świeżość (G2/H1): wiersz Realtime odebrany w trakcie RPC może być nowszy niż stan
-      // w odpowiedzi — wtedy pola sterujące zostają z Realtime, a snapshot jest dociągany ponownie.
+      // w odpowiedzi - wtedy pola sterujące zostają z Realtime, a snapshot jest dociągany ponownie.
       const seq0 = rowSeqRef.current;
       // Limit czasu (G7): wyścig odpowiedzi z terminem. Po terminie żądanie jest anulowane,
-      // a jego późniejsza odpowiedź — ignorowana (obietnica już rozstrzygnięta), więc stary
+      // a jego późniejsza odpowiedź - ignorowana (obietnica już rozstrzygnięta), więc stary
       // stan nigdy nie nadpisze nowszego. Zwykły setTimeout (nie `later`): sprzątanie
       // odmontowania w StrictMode nie może skasować terminu żądania, które wciąż wisi.
       const res = await new Promise((resolve) => {
@@ -289,7 +289,7 @@ export default function useParticipantGame(participant) {
       if (keepControl && !switched) needFresh = true;
       if (switched) {
         // Serwer zwrócił inną sesję niż przypięta (np. przypięta próba jest `ended`, a admin
-        // utworzył nową) — refy per-sesja od zera, żeby nic ze starej sesji nie przeciekło.
+        // utworzył nową) - refy per-sesja od zera, żeby nic ze starej sesji nie przeciekło.
         emptySentRef.current.clear();
         revealMissRef.current.clear();
         planLoadRef.current = null;
@@ -299,7 +299,7 @@ export default function useParticipantGame(participant) {
       commit(withCorrectTotal(g));
       if (g.session) saveGameCache(g.session.id, { plan: g.plan, session: g.session, myAnswers: g.myAnswers });
       // Przypinamy zawsze to, co zwrócił serwer (sam porzuca nieaktualne przypięcie, 39.6b).
-      // NIE czyścimy id przy `ended` — zniknąłby ekran wyników.
+      // NIE czyścimy id przy `ended` - zniknąłby ekran wyników.
       saveParticipant({ ...p, sessionId: g.session?.id ?? null });
       setLoad("ready");
     } finally {
@@ -316,8 +316,8 @@ export default function useParticipantGame(participant) {
       if (pend && !disposedRef.current) snapshot(pend);
       else if (stalled && !disposedRef.current) {
         // Ponowienie po przekroczeniu limitu. Bez sesji albo z kotwicą bez planu telefon nie ma
-        // czego pokazać → pierwsze od razu, kolejne z rozrzutem 0–1 s. Inaczej projekcja działa,
-        // więc z rozrzutem i narastającą przerwą (0,5–1 s, 1–2 s, … do 8 s) — 500 telefonów
+        // czego pokazać → pierwsze od razu, kolejne z rozrzutem 0-1 s. Inaczej projekcja działa,
+        // więc z rozrzutem i narastającą przerwą (0,5-1 s, 1-2 s, … do 8 s) - 500 telefonów
         // na przeciążonym serwerze nie może ponawiać wszystkie naraz.
         const g = gameRef.current;
         const n = stallRef.current;
@@ -333,7 +333,7 @@ export default function useParticipantGame(participant) {
   }, [commit, setLoad]);
 
   // Snapshot z losowym opóźnieniem 0..maxMs. Sygnał Realtime dociera do ~500 telefonów
-  // naraz — bez rozrzutu to 500 jednoczesnych RPC (na starcie z ~20 KB planu każdy).
+  // naraz - bez rozrzutu to 500 jednoczesnych RPC (na starcie z ~20 KB planu każdy).
   // Kolejne rozrzucone wywołania przed odpaleniem scalają się w jedno.
   const snapshotJittered = useCallback((opts = {}, maxMs = 1000) => {
     const j = jitterRef.current;
@@ -360,7 +360,7 @@ export default function useParticipantGame(participant) {
   useEffect(() => {
     disposedRef.current = false;
     if (mountedCodeRef.current !== code) {
-      // Inny uczestnik niż przy inicjalizacji — stan od nowa z jego cache.
+      // Inny uczestnik niż przy inicjalizacji - stan od nowa z jego cache.
       // Bez View Transition (commit → pushView): przejście odkłada setView do asynchronicznego
       // callbacku, a do tego czasu `view` zostaje pusty (no_session) → App pokazywał
       // po refreshu poczekalnię zamiast bieżącej fazy (sonda 06-08, REFRESH w intro).
@@ -374,10 +374,10 @@ export default function useParticipantGame(participant) {
     }
     if (!code) { setLoad("idle"); return undefined; }
     if (loadStateRef.current === "idle") setLoad("loading");
-    snapshot({}); // bez jitteru — akcja jednego klienta
+    snapshot({}); // bez jitteru - akcja jednego klienta
 
     // Powrót karty / sieci (Pułapka 11): telefon z zablokowanym ekranem albo po zmianie
-    // Wi-Fi → LTE ma przespane zdarzenia — jeden snapshot nadrabia wszystko.
+    // Wi-Fi → LTE ma przespane zdarzenia - jeden snapshot nadrabia wszystko.
     const onVisible = () => { if (!document.hidden) snapshot({}); };
     const onOnline = () => snapshot({});
     document.addEventListener("visibilitychange", onVisible);
@@ -399,8 +399,8 @@ export default function useParticipantGame(participant) {
 
   // ── Ticker rAF ─────────────────────────────────────────────────────────────
   // Faza z projekcji planu co klatkę, ale setView TYLKO przy zmianie klucza
-  // (faza | idx | sekundy | otwarcie) — nie 60 renderów na sekundę. Zmiana fazy/pytania
-  // przechodzi przez View Transitions (pushView), sam tik sekund — zwykłe setView.
+  // (faza | idx | sekundy | otwarcie) - nie 60 renderów na sekundę. Zmiana fazy/pytania
+  // przechodzi przez View Transitions (pushView), sam tik sekund - zwykłe setView.
   useEffect(() => {
     const raf = typeof requestAnimationFrame === "function"
       ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
@@ -411,7 +411,7 @@ export default function useParticipantGame(participant) {
       // Przerwa między klatkami: zdławiony render → zmiana fazy bez View Transition (06-17).
       const now = Date.now();
       frameGapRef.current = now - lastFrameRef.current;
-      // Seria płynnych klatek przywraca VT po porażce (P7-VT-SMOOTH); bez porażek — bez alokacji.
+      // Seria płynnych klatek przywraca VT po porażce (P7-VT-SMOOTH); bez porażek - bez alokacji.
       vtStateRef.current = nextVtState(vtStateRef.current, { type: "frame", gapMs: frameGapRef.current });
       lastFrameRef.current = now;
       const g = gameRef.current;
@@ -426,7 +426,7 @@ export default function useParticipantGame(participant) {
 
   // ── Prefetch ───────────────────────────────────────────────────────────────
   // Treść WSZYSTKICH pytań (q/opts) przychodzi w planie ze snapshotu i leży w cache
-  // localStorage, więc następne pytanie jest lokalnie dostępne na długo przed otwarciem —
+  // localStorage, więc następne pytanie jest lokalnie dostępne na długo przed otwarciem -
   // osobne pobieranie pytań byłoby zbędnym ruchem (×500 telefonów). Jedyne, co jeszcze
   // może dociągać się z sieci w chwili zmiany ekranu, to grafika tła sesji: wczytujemy ją
   // z wyprzedzeniem raz na sesję, żeby pierwszy ekran modułu nie mrugał pustym tłem.
@@ -450,7 +450,7 @@ export default function useParticipantGame(participant) {
     if (!code || !sessionId) return undefined;
 
     if (DEMO) {
-      // DEMO: brak Realtime — snapshot z localStorage co 1 s (tani, lokalny).
+      // DEMO: brak Realtime - snapshot z localStorage co 1 s (tani, lokalny).
       const poll = setInterval(() => snapshot({ includePlan: false }), 1000);
       return () => clearInterval(poll);
     }
@@ -482,10 +482,10 @@ export default function useParticipantGame(participant) {
     const connect = () => {
       if (disposed) return;
       // Socket mógł zostać rozłączony przez removeChannel innego ekranu (lista kanałów
-      // pusta → supabase-js zamyka socket) — bez tego subscribe() wisiałby na martwym.
+      // pusta → supabase-js zamyka socket) - bez tego subscribe() wisiałby na martwym.
       try { supabase.realtime.connect(); } catch (_) { /* nieistotne */ }
       ch = supabase.channel(`quiz-${sessionId}`)
-        // Broadcast to tylko SYGNAŁ — kanał publiczny, payload mógłby być sfałszowany.
+        // Broadcast to tylko SYGNAŁ - kanał publiczny, payload mógłby być sfałszowany.
         .on("broadcast", { event: "quiz_event" }, () => snapshotJittered({ includePlan: false }, 1000))
         .on("postgres_changes", {
           event: "UPDATE", schema: "public", table: "quiz_sessions", filter: `id=eq.${sessionId}`,
@@ -513,7 +513,7 @@ export default function useParticipantGame(participant) {
       snapshotJittered({ includePlan: false }, 2000);
     }, 3000);
 
-    // Siatka bezpieczeństwa co 15 s, start z losowym przesunięciem 0–15 s, żeby 500
+    // Siatka bezpieczeństwa co 15 s, start z losowym przesunięciem 0-15 s, żeby 500
     // telefonów nie pytało serwera w tej samej sekundzie.
     let net = null;
     const netStart = setTimeout(() => {
@@ -546,7 +546,7 @@ export default function useParticipantGame(participant) {
       return;
     }
     // Koniec pytań (finished, ≤ 1 s przed status 'results' od zamiatacza): jeden rozrzucony
-    // snapshot na sesję — is_correct ostatnich pytań odsłonięte przez serwer, bez czekania na Realtime.
+    // snapshot na sesję - is_correct ostatnich pytań odsłonięte przez serwer, bez czekania na Realtime.
     if (v.phase === "finished" && finishedSnapRef.current !== g.session?.id) {
       finishedSnapRef.current = g.session?.id ?? null;
       snapshotJittered({ includePlan: false }, 1500);
@@ -555,7 +555,7 @@ export default function useParticipantGame(participant) {
     const underReveal = v.phase === "reveal" || (v.phase === "paused" && v.underPhase === "reveal");
 
     // Pusty zapis po deadline (Pułapka 7): brak odpowiedzi → serwer zapisuje timeout, żeby
-    // wyniki miały komplet wierszy. Rozrzut 0–1000 ms, raz na pytanie, bez zmiany UI.
+    // wyniki miały komplet wierszy. Rozrzut 0-1000 ms, raz na pytanie, bez zmiany UI.
     if (underReveal && !g.myAnswers[v.item.id] && !emptySentRef.current.has(v.item.id)) {
       const qid = v.item.id;
       const sid = g.session?.id;
@@ -580,7 +580,7 @@ export default function useParticipantGame(participant) {
   }, [view, later, snapshotJittered]);
 
   // Poprawność moich odpowiedzi WYŁĄCZNIE z danych odsłoniętych przez serwer
-  // (revealed_* z Realtime albo reveal ze snapshotu) — nigdy z odpowiedzi submit.
+  // (revealed_* z Realtime albo reveal ze snapshotu) - nigdy z odpowiedzi submit.
   useEffect(() => {
     const g = gameRef.current;
     if (!g.plan || !g.session) return;
@@ -613,7 +613,7 @@ export default function useParticipantGame(participant) {
 
   // Zapis odpowiedzi z ponawianiem (sieć: do closes_at + 1,5 s; pauza: po wznowieniu).
   // Jeden zapis w locie na pytanie. Wołane z pick() i przy restore wpisu „pending” z cache
-  // (reload w trakcie zapisu — bez tego wpis wisiałby jako „Zapisywanie…” na zawsze).
+  // (reload w trakcie zapisu - bez tego wpis wisiałby jako „Zapisywanie…” na zawsze).
   const runSubmit = useCallback((sid, qid, choice, fallbackClosesAt) => {
     if (submitsRef.current.has(qid)) return;
     submitsRef.current.add(qid);
@@ -645,7 +645,7 @@ export default function useParticipantGame(participant) {
             const cv = viewRef.current;
             if (cv.item?.id === qid && cv.phase === "quiz") break;
             if (cv.item?.id === qid && cv.phase === "paused") continue;
-            // Po wznowieniu pytanie już się skończyło — ostatnia próba tylko w strefie tolerancji.
+            // Po wznowieniu pytanie już się skończyło - ostatnia próba tylko w strefie tolerancji.
             if (cv.item?.id === qid && serverNow() <= cv.closesAt + REVEAL_GATE_MS) break;
             setAnswer(sid, qid, { status: "failed" });
             return;
@@ -696,7 +696,7 @@ export default function useParticipantGame(participant) {
   // Render między zmianą uczestnika (po refreshu App przełącza ekran na „game” i hook
   // dostaje kod zamiast null) a efektem montażu, który wczytuje cache: stan jest jeszcze
   // pusty i App pokazałby przez klatkę poczekalnię. Ten jeden render liczymy wprost
-  // z cache (czysto, bez zapisu stanu) — efekt montażu zaraz ustawi to samo.
+  // z cache (czysto, bez zapisu stanu) - efekt montażu zaraz ustawi to samo.
   const stale = mountedCodeRef.current !== code;
   const outGame = stale ? initialGame(participant) : game;
   const outView = stale ? computeView(outGame) : view;

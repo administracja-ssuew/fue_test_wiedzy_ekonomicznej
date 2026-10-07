@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { CITIES } from "../data/questions.js";
 
 // ─── Start testu: 27.10.2026, 10:00 czasu polskiego ──────────────────────────
-// 27.10 to już czas zimowy (CET, UTC+1) — jawny offset, żeby nie zależeć od strefy telefonu.
+// 27.10 to już czas zimowy (CET, UTC+1) - jawny offset, żeby nie zależeć od strefy telefonu.
 const TEST_START = new Date("2026-10-27T10:00:00+01:00");
 
 // SVG icons (no icon library needed)
@@ -32,7 +32,7 @@ const SOCIAL_LINKS = [
   { label: "Strona FUE",    icon: IconGlobe,     href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
 ];
 
-// Bez logotypów (decyzja organizatorów 261007-ihg) — znaczek ze skrótem w kolorze uczelni.
+// Bez logotypów (decyzja organizatorów 261007-ihg) - znaczek ze skrótem w kolorze uczelni.
 const UNIVERSITIES = [
   { abbr: "UEK",   city: "Kraków",    color: "#D41D1F" },
   { abbr: "SGH",   city: "Warszawa",  color: "#82179F" },
@@ -71,7 +71,7 @@ const UNIV_COLORS = {
 };
 
 // Zdjęcia: wrzuć pliki JPG/PNG do folderu /public/photos/ i podaj ścieżkę w polu photo.
-// Np. photo: "/photos/krakow.jpg" — lub zostaw null żeby wyświetlać skrót uczelni.
+// Np. photo: "/photos/krakow.jpg" - lub zostaw null żeby wyświetlać skrót uczelni.
 const COORDINATORS_DATA = {
   Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",                  phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#D41D1F", photo: null },
   Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",                     phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#82179F", photo: null },
@@ -88,7 +88,7 @@ const SCHEDULE = {
     { time: "11:30", label: "Zakończenie testu · przerwa",            icon: "⏸️" },
     { time: "12:00", label: "Ogłoszenie wyników i wręczenie nagród",  icon: "🏆" },
   ],
-  // Per-city overrides — fill in before the event:
+  // Per-city overrides - fill in before the event:
   // Kraków: [ ... ],
 };
 
@@ -98,7 +98,7 @@ const RULES = {
     "Podczas testu obowiązuje zakaz używania telefonów i notatek.",
     "Test składa się z 4 modułów tematycznych i 32 pytań zamkniętych (A/B/C/D).",
     "Punktacja: 500 pkt za poprawną odpowiedź + bonus za szybkość do 500 pkt.",
-    "Raz zatwierdzonej odpowiedzi nie można zmienić — odpowiadaj uważnie.",
+    "Raz zatwierdzonej odpowiedzi nie można zmienić - odpowiadaj uważnie.",
     "Top 5 uczestników z każdego miasta awansuje do Etapu Ogólnopolskiego.",
     "Organizatorzy zastrzegają sobie prawo do dyskwalifikacji uczestnika.",
   ],
@@ -260,9 +260,9 @@ function Shape({ style, gradient, delay = 0 }) {
   );
 }
 
-// Wspólny formularz zapisów dla wszystkich miast — podmień na właściwy URL.
+// Wspólny formularz zapisów dla wszystkich miast - podmień na właściwy URL.
 const REGISTRATION_URL = "#";
-// Jeden infopack dla wszystkich miast — podmień na link do PDF.
+// Jeden infopack dla wszystkich miast - podmień na link do PDF.
 const INFOPACK_URL = "#";
 
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
@@ -300,7 +300,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6B21E8", animation: "pulse 2s .5s infinite" }} />
         </div>
 
-        {/* Title — staggered blur-in */}
+        {/* Title - staggered blur-in */}
         <div style={{ marginBottom: 8 }}>
           <h1 style={{ animation: "blurIn .65s .15s ease both", animationPlayState: play, fontFamily: '"Bebas Neue",sans-serif', fontSize: isDesktop ? 136 : 92, letterSpacing: 5, color: "#ffffff", lineHeight: .85, margin: 0 }}>
             TEST
@@ -325,7 +325,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
           }} />
         </div>
 
-        {/* CTA Zapisy — wspólny formularz dla wszystkich miast (placeholder URL) */}
+        {/* CTA Zapisy - wspólny formularz dla wszystkich miast (placeholder URL) */}
         <div style={{ animation: "blurIn .55s .58s ease both", animationPlayState: play, display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <a href={REGISTRATION_URL} target="_blank" rel="noopener noreferrer"
             onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px) scale(1.03)"; e.currentTarget.style.boxShadow = "0 18px 46px rgba(245,197,24,.55)"; }}
@@ -342,7 +342,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
             onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px) scale(1.03)"; e.currentTarget.style.boxShadow = "0 16px 40px rgba(107,33,232,.6)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 28px rgba(107,33,232,.4)"; }}
             style={{ ...W.btn("primary", { fontSize: 15, padding: "16px 32px", width: "auto", transition: "all .2s" }) }}>
-            🎟️ Mam kod — dołącz
+            🎟️ Mam kod - dołącz
           </button>
           <button
             onClick={onAdminLogin}
@@ -364,7 +364,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
 
 // ─── Tab: Organizatorzy ───────────────────────────────────────────────────────
 
-// Pełne nazwy uczelni (placeholder — podmień gdy będą oficjalne).
+// Pełne nazwy uczelni (placeholder - podmień gdy będą oficjalne).
 const UNIV_NAMES = {
   UEK: "Uniwersytet Ekonomiczny w Krakowie",
   SGH: "Szkoła Główna Handlowa w Warszawie",
@@ -373,8 +373,8 @@ const UNIV_NAMES = {
   UEKat: "Uniwersytet Ekonomiczny w Katowicach",
 };
 
-// Oficjalne nazwy samorządów studenckich. Warszawa (SGH) i Wrocław (UEW) — Samorząd
-// Studentów; pozostałe — Parlament Studencki UE. `type` = nagłówek, `of` = dopełniacz uczelni.
+// Oficjalne nazwy samorządów studenckich. Warszawa (SGH) i Wrocław (UEW) - Samorząd
+// Studentów; pozostałe - Parlament Studencki UE. `type` = nagłówek, `of` = dopełniacz uczelni.
 const STUDENT_GOV = {
   UEK:   { type: "Parlament Studencki", of: "Uniwersytetu Ekonomicznego w Krakowie" },
   SGH:   { type: "Samorząd Studentów",  of: "Szkoły Głównej Handlowej w Warszawie" },
@@ -393,7 +393,7 @@ function OrganizatorszyTab() {
           <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", margin: "10px auto 0" }} />
         </div>
 
-        {/* FUE — główny organizator (na samej górze) */}
+        {/* FUE - główny organizator (na samej górze) */}
         <div style={{ animation: "blurIn .5s .1s ease both", marginBottom: 40 }}>
           <div style={{
             position: "relative", overflow: "hidden", borderRadius: 20, padding: "34px 28px", textAlign: "center",
@@ -405,7 +405,7 @@ function OrganizatorszyTab() {
             <div style={{ margin: "16px auto 12px", width: 96, height: 96, borderRadius: 22, background: "linear-gradient(135deg,#6B21E8,#4F46E5)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 40, letterSpacing: 2, color: "#fff", boxShadow: "0 10px 30px rgba(107,33,232,.45)" }}>FUE</div>
             <h3 style={{ fontFamily: '"Bebas Neue"', fontSize: 30, letterSpacing: 1.5, color: "#EDE9FE", lineHeight: 1 }}>Forum Uczelni Ekonomicznych</h3>
             <p style={{ color: "#9B89CC", fontSize: 14, marginTop: 10, maxWidth: 560, marginInline: "auto", lineHeight: 1.6 }}>
-              Ogólnopolska inicjatywa łącząca pięć czołowych uczelni ekonomicznych — koordynuje Test Wiedzy Ekonomicznej w skali kraju.
+              Ogólnopolska inicjatywa łącząca pięć czołowych uczelni ekonomicznych - koordynuje Test Wiedzy Ekonomicznej w skali kraju.
             </p>
           </div>
         </div>
@@ -426,10 +426,10 @@ function OrganizatorszyTab() {
           ))}
         </div>
 
-        {/* Samorządy — za ich sprawą */}
+        {/* Samorządy - za ich sprawą */}
         <SectionLabel text="Samorządy studenckie" />
         <p style={{ textAlign: "center", color: "#9B89CC", fontSize: 14, lineHeight: 1.7, maxWidth: 600, margin: "0 auto 22px" }}>
-          To <strong style={{ color: "#F5C518" }}>za ich sprawą</strong> Test Wiedzy Ekonomicznej odbywa się na każdej uczelni — samorządy studenckie organizują wydarzenie lokalnie i zapraszają uczestników.
+          To <strong style={{ color: "#F5C518" }}>za ich sprawą</strong> Test Wiedzy Ekonomicznej odbywa się na każdej uczelni - samorządy studenckie organizują wydarzenie lokalnie i zapraszają uczestników.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 14 }}>
           {UNIVERSITIES.map((u, i) => {
@@ -518,12 +518,12 @@ function KoordynatorzyTab({ city, setCity }) {
 
 // ─── Tab: Informator ──────────────────────────────────────────────────────────
 
-// Harmonogram wyłączony do czasu ustalenia realnych godzin i numerów sal — dane w SCHEDULE
+// Harmonogram wyłączony do czasu ustalenia realnych godzin i numerów sal - dane w SCHEDULE
 // są jeszcze zaślepkami, a publikowanie zmyślonego rozkładu przed wydarzeniem myli uczestników.
 // Przywrócenie: zmień na true. Kod sekcji poniżej zostaje nietknięty.
 const SHOW_HARMONOGRAM = false;
 
-// Informator jest wspólny dla wszystkich miast (decyzja 261007-ihg) — bez wyboru miasta;
+// Informator jest wspólny dla wszystkich miast (decyzja 261007-ihg) - bez wyboru miasta;
 // kontakty per miasto są w zakładce Koordynatorzy.
 function InformatorTab({ onShowCoordinators }) {
   const INFO_SECTIONS = [
@@ -543,7 +543,7 @@ function InformatorTab({ onShowCoordinators }) {
           <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
         </div>
 
-        {/* Sekcja tabs — ukryte, gdy została tylko jedna sekcja (pojedyncza zakładka
+        {/* Sekcja tabs - ukryte, gdy została tylko jedna sekcja (pojedyncza zakładka
             wygląda jak niedokończony interfejs). Wróci samo po SHOW_HARMONOGRAM = true. */}
         <div style={{ display: INFO_SECTIONS.length > 1 ? "flex" : "none", borderBottom: "1px solid rgba(255,255,255,.09)", marginBottom: 28 }}>
           {INFO_SECTIONS.map((s) => (
@@ -577,7 +577,7 @@ function InformatorTab({ onShowCoordinators }) {
             <div style={{ ...W.card({ padding: "28px", borderColor: "rgba(245,197,24,.28)" }), background: "linear-gradient(135deg, rgba(245,197,24,.08), rgba(107,33,232,.06))", textAlign: "center" }}>
               <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 28, letterSpacing: 1.5, color: "#EDE9FE", lineHeight: 1 }}>📄 Infopack uczestnika</p>
               <p style={{ fontSize: 14, color: "#9B89CC", lineHeight: 1.6, margin: "12px auto 22px", maxWidth: 440 }}>
-                Jeden informator dla wszystkich miast — zasady testu, harmonogram i praktyczne informacje.
+                Jeden informator dla wszystkich miast - zasady testu, harmonogram i praktyczne informacje.
               </p>
               <a href={INFOPACK_URL} target="_blank" rel="noopener noreferrer"
                 onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px) scale(1.02)"; e.currentTarget.style.boxShadow = "0 14px 38px rgba(245,197,24,.5)"; }}

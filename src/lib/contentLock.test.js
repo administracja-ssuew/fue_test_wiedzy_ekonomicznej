@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { canEditContent, friendlyWriteError, CONTENT_LOCKED_TEXT } from "./contentLock.js";
 
 describe("canEditContent", () => {
-  it("superadmin edytuje zawsze — także przy blokadzie", () => {
+  it("superadmin edytuje zawsze - także przy blokadzie", () => {
     expect(canEditContent({ role: "superadmin", locked: true })).toBe(true);
     expect(canEditContent({ role: "superadmin", locked: false })).toBe(true);
   });
@@ -30,7 +30,7 @@ describe("friendlyWriteError", () => {
     const want = `${CONTENT_LOCKED_TEXT} Zmiana nie została zapisana.`;
     expect(friendlyWriteError("content locked")).toBe(want);
     expect(friendlyWriteError('new row violates row-level security policy for table "questions"')).toBe(want);
-    expect(friendlyWriteError("Zapis odrzucony — edycja zablokowana albo pytanie nie istnieje.")).toBe(want);
+    expect(friendlyWriteError("Zapis odrzucony - edycja zablokowana albo pytanie nie istnieje.")).toBe(want);
   });
 
   it("inny komunikat → bez zmian", () => {

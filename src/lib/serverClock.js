@@ -10,7 +10,7 @@ let offset = 0;        // serverNow − Date.now() w ms
 let synced = false;
 let timer = null;
 
-// serverNow() — czas, na którym MUSZĄ zgadzać się wszystkie ekrany.
+// serverNow() - czas, na którym MUSZĄ zgadzać się wszystkie ekrany.
 export function serverNow() { return Date.now() + offset; }
 export function getClockOffset() { return offset; }
 export function isClockSynced() { return synced; }
@@ -25,7 +25,7 @@ const SAMPLE_BUFFER = 8;
 // przekłamaną próbkę (np. pakiet opóźniony tylko w jedną stronę).
 // Dlaczego pasmo min-RTT, a nie „mediana ± odchylenie” po wszystkich próbkach: przy
 // rozrzucie RTT 20/600/1000 odchylenie jest tak duże, że filtr zatrzymałby wszystkie
-// próbki, a mediana wybrałaby zaszumioną — pasmo min-RTT trzyma się tylko najlepszych.
+// próbki, a mediana wybrałaby zaszumioną - pasmo min-RTT trzyma się tylko najlepszych.
 // samples: [{ t0, t1, serverMs }]
 export function computeOffset(samples) {
   const list = [];
@@ -51,7 +51,7 @@ function traceClock(kind, sample, next) {
   if (log.length > 400) log.splice(0, log.length - 400);
 }
 
-// Próbka z dowolnej odpowiedzi serwera niosącej jego czas (np. snapshot sesji) —
+// Próbka z dowolnej odpowiedzi serwera niosącej jego czas (np. snapshot sesji) -
 // darmowa synchronizacja bez dodatkowych wywołań server_now.
 export function addClockSample(sample) {
   if (!Number.isFinite(sample?.serverMs)) return;
@@ -93,7 +93,7 @@ export async function syncServerClock(rounds = 6) {
 // refreshMs = 5 min, nie 60 s: syncServerClock robi 6 sekwencyjnych wywołań server_now,
 // więc przy 500 uczestnikach odświeżanie co minutę to 3000 zapytań/min (50/s) czystego
 // narzutu przez całe wydarzenie. Offset raz zmierzony nie dryfuje w ciągu godziny na
-// tyle, żeby to uzasadniało — a timery i tak liczą się z q_started_at, nie z licznika.
+// tyle, żeby to uzasadniało - a timery i tak liczą się z q_started_at, nie z licznika.
 export function startServerClock(refreshMs = 300000) {
   syncServerClock();
   if (timer) clearInterval(timer);
@@ -102,12 +102,12 @@ export function startServerClock(refreshMs = 300000) {
   // Telefon z zablokowanym ekranem to najbardziej realne źródło rozjazdu na sali:
   // przeglądarka usypia timery, więc odświeżenie co 5 min może nie wykonać się wcale,
   // a uczestnik wraca do quizu z offsetem sprzed kilkunastu minut. Przy powrocie karty
-  // na pierwszy plan mierzymy od nowa — to jedna seria zapytań na odblokowanie
+  // na pierwszy plan mierzymy od nowa - to jedna seria zapytań na odblokowanie
   // telefonu, więc kosztu przy 500 osobach praktycznie nie ma.
   const onVisible = () => { if (!document.hidden) syncServerClock(); };
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
 
-  // Powrót sieci (zmiana Wi-Fi → LTE na sali) potrafi zmienić trasę i RTT — mierzymy od nowa.
+  // Powrót sieci (zmiana Wi-Fi → LTE na sali) potrafi zmienić trasę i RTT - mierzymy od nowa.
   const onOnline = () => syncServerClock();
   if (typeof window !== "undefined") window.addEventListener("online", onOnline);
 

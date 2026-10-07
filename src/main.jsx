@@ -1,7 +1,7 @@
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// Gdy nowy Service Worker (po deployu) przejmie kontrolę — odśwież stronę raz, żeby
+// Gdy nowy Service Worker (po deployu) przejmie kontrolę - odśwież stronę raz, żeby
 // świeży kod wszedł automatycznie (bez ręcznego czyszczenia cache). Nie przeładowuje
 // przy PIERWSZEJ instalacji (gdy wcześniej nie było SW).
 if ('serviceWorker' in navigator) {
@@ -19,7 +19,7 @@ import { ModulesProvider } from './context/ModulesContext.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import ConnectionBanner from './components/ConnectionBanner.jsx'
 
-// Fallback dla ekranów ładowanych leniwie (AdminPanel/Practice/LiveView) — minimalny,
+// Fallback dla ekranów ładowanych leniwie (AdminPanel/Practice/LiveView) - minimalny,
 // w kolorze tła aplikacji, żeby nie było migotania przy code-splittingu.
 const Loading = () => (
   <div style={{ minHeight: '100vh', background: 'var(--fue-bg, #070215)' }} />

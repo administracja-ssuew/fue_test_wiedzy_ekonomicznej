@@ -14,7 +14,7 @@ export default function useAuth() {
     }
 
     // Read existing session, then hydrate the admin profile.
-    // Backend może być nieosiągalny (projekt uśpiony, brak sieci, DNS) — wtedy promise
+    // Backend może być nieosiągalny (projekt uśpiony, brak sieci, DNS) - wtedy promise
     // ODRZUCA. Bez .catch()/.finally() loading zostawał true na zawsze i cała aplikacja
     // wisiała na ekranie „Ładowanie…". Zawsze kończymy ładowanie: brak sesji = ekran
     // powitalny, na którym uczestnik i tak może spróbować wpisać kod.

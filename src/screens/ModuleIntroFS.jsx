@@ -1,4 +1,4 @@
-// Pełnoekranowa zapowiedź modułu (30 s) — wspólna dla uczestnika i Live View.
+// Pełnoekranowa zapowiedź modułu (30 s) - wspólna dla uczestnika i Live View.
 // Sterowana liczbą sekund do startu (z q_started_at), więc jest zsynchronizowana.
 export default function ModuleIntroFS({ mod, secondsLeft }) {
   const color = mod?.color || "#6B21E8";

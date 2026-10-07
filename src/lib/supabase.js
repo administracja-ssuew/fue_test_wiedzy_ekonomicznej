@@ -13,7 +13,7 @@ export const DEMO = !SUPABASE_URL || !SUPABASE_KEY;
 if (DEMO && import.meta.env.PROD) {
   throw new Error(
     "Brak konfiguracji Supabase (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). " +
-    "Tryb DEMO jest zablokowany w buildzie produkcyjnym — ustaw zmienne środowiskowe i zbuduj ponownie."
+    "Tryb DEMO jest zablokowany w buildzie produkcyjnym - ustaw zmienne środowiskowe i zbuduj ponownie."
   );
 }
 
@@ -28,18 +28,18 @@ export const supabase = DEMO ? null : createClient(SUPABASE_URL, SUPABASE_KEY);
 //
 // Ten kanał jest subskrybowany raz i nigdy nie usuwany, więc lista kanałów nigdy nie
 // schodzi do zera i socket nie ma powodu się rozłączyć. Nie przesyła żadnych danych
-// i nie tworzy dodatkowego połączenia — Supabase liczy sockety, nie kanały.
+// i nie tworzy dodatkowego połączenia - Supabase liczy sockety, nie kanały.
 let keepAliveCh = null;
 export function keepRealtimeAlive() {
   if (DEMO || !supabase || keepAliveCh) return;
   try { keepAliveCh = supabase.channel("fue-keepalive").subscribe(); } catch (_) { /* nieistotne */ }
 }
 
-// Kod uczestnika: 4 cyfry (np. KRK-1111) — decyzja użytkownika (07-CONTEXT): 4 cyfry
+// Kod uczestnika: 4 cyfry (np. KRK-1111) - decyzja użytkownika (07-CONTEXT): 4 cyfry
 // łatwiej podyktować i wpisać na telefonie. Zgadywanie (zgadnięty kod przy
 // device-bindingu blokuje prawowitego uczestnika) ogranicza limit prób w SQL
 // (sekcja 44: 5 porażek / 60 s z jednego urządzenia), a nie długość kodu.
-// Stare kody 6-cyfrowe (KRK-482910) pozostają ważne — SQL porównuje pełny tekst.
+// Stare kody 6-cyfrowe (KRK-482910) pozostają ważne - SQL porównuje pełny tekst.
 // CITY_PREFIX pochodzi z codeFormat.js (jedno źródło prefiksów).
 function randomCodeBody(len = 4) {
   const bytes = (typeof crypto !== "undefined" && crypto.getRandomValues)
@@ -94,7 +94,7 @@ export async function getCurrentAdmin() {
 
 // ─── PARTICIPANT CODES ────────────────────────────────────────────────────────
 
-// Stały identyfikator urządzenia (localStorage) — do wiązania kodu z urządzeniem (#7).
+// Stały identyfikator urządzenia (localStorage) - do wiązania kodu z urządzeniem (#7).
 export function getDeviceId() {
   try {
     let id = localStorage.getItem("fue_device_id");
@@ -105,7 +105,7 @@ export function getDeviceId() {
 
 // Teksty UI-SPEC §4 (pole kodu). Limit prób: dosłownie, z półpauzą, bez kropki.
 const CODE_NOT_FOUND = "Nie znaleziono kodu. Sprawdź litery i cyfry na karcie od organizatora.";
-const CODE_RATE_LIMITED = "Za dużo prób — spróbuj za minutę";
+const CODE_RATE_LIMITED = "Za dużo prób - spróbuj za minutę";
 
 // DEMO: znaczniki czasu nieudanych prób (ten sam limit co SQL: 5 porażek / 60 s).
 const demoFails = [];
@@ -125,7 +125,7 @@ export async function validateParticipantCode(rawCode) {
   }
   // claim_participant_code (sekcja 34, limit prób od sekcji 44): waliduje + wiąże kod
   // z urządzeniem. To samo urządzenie wchodzi ponownie; inne dostaje 'taken'; po
-  // 5 porażkach w 60 s z urządzenia — 'rate_limited' z retry_after_s.
+  // 5 porażkach w 60 s z urządzenia - 'rate_limited' z retry_after_s.
   // Soft-fallback gdy nie wgrane.
   const device = getDeviceId();
   const { data, error } = await supabase.rpc("claim_participant_code", { p_code: code, p_device: device });
@@ -144,7 +144,7 @@ export async function validateParticipantCode(rawCode) {
   return sel ? { data: sel, error: null } : { error: CODE_NOT_FOUND };
 }
 
-// Admin: zwolnij kod (wyczyść powiązanie z urządzeniem) — zmiana telefonu itp.
+// Admin: zwolnij kod (wyczyść powiązanie z urządzeniem) - zmiana telefonu itp.
 export async function releaseCode(id) {
   if (DEMO) return { error: null };
   const { error } = await supabase.rpc("admin_release_code", { p_id: id });
@@ -163,7 +163,7 @@ export async function markCodeUsed(code, sessionId) {
   // If RPC doesn't exist yet, fall back to direct UPDATE.
   const { error: rpcErr } = await supabase.rpc("mark_code_used", { p_code: code, p_session_id: sessionId });
   if (!rpcErr) return { error: null };
-  // Fallback: direct UPDATE. No "used=false" guard — a participant rejoining a NEW
+  // Fallback: direct UPDATE. No "used=false" guard - a participant rejoining a NEW
   // session (after a reset) must update their session_id, else they aren't counted.
   const { error: updErr } = await supabase.from("participant_codes")
     .update({ used: true, session_id: sessionId }).eq("code", code);
@@ -172,7 +172,7 @@ export async function markCodeUsed(code, sessionId) {
 
 // Tworzy kod uczestnika. `number` (4 cyfry, np. "0042") = numer podany przez admina
 // (ręcznie albo z pliku CSV): jedna próba, zajęty → błąd z `conflict: true`, BEZ
-// ponawiania (admin musi wiedzieć, że dostał inny kod niż na karcie). Bez numeru —
+// ponawiania (admin musi wiedzieć, że dostał inny kod niż na karcie). Bez numeru -
 // losowy 4-cyfrowy, do 30 prób przy kolizji (23505). Pętla zamiast rekurencji.
 const MAX_RANDOM_CODE_TRIES = 30;
 
@@ -180,7 +180,7 @@ export async function generateParticipantCode({ name, surname, city, createdBy, 
   const prefix = CITY_PREFIX[city] || "XXX";
   const manual = number != null && number !== "";
   if (manual && !/^\d{4}$/.test(String(number))) {
-    return { data: null, error: "Kod musi mieć 4 cyfry (np. 0042) — albo zostaw pole puste, a numer zostanie wylosowany." };
+    return { data: null, error: "Kod musi mieć 4 cyfry (np. 0042) - albo zostaw pole puste, a numer zostanie wylosowany." };
   }
   const conflictResult = (code) => ({ data: null, error: `Kod ${code} jest już zajęty w mieście ${city}.`, conflict: true, code });
 
@@ -215,7 +215,7 @@ export async function generateParticipantCode({ name, surname, city, createdBy, 
     if (r.ok) return { data: r.data, error: null };
     if (!r.dup) return { data: null, error: r.error };
   }
-  return { data: null, error: "Nie udało się wylosować wolnego numeru — spróbuj ponownie." };
+  return { data: null, error: "Nie udało się wylosować wolnego numeru - spróbuj ponownie." };
 }
 
 export async function getParticipantCodes(city) {
@@ -289,7 +289,7 @@ export async function updateContentLock(locked) {
     .update({ content_locked: !!locked, updated_at: new Date().toISOString(), updated_by: u?.user?.id ?? null })
     .eq("id", 1).select("content_locked");
   if (error) return { error: error.message };
-  if (!data?.length) return { error: "Nie zapisano — blokadę zmienia tylko superadmin (albo sekcja 46 nie jest wgrana)." };
+  if (!data?.length) return { error: "Nie zapisano - blokadę zmienia tylko superadmin (albo sekcja 46 nie jest wgrana)." };
   return { error: null };
 }
 
@@ -299,9 +299,9 @@ export async function getQuestions(city) {
   if (DEMO) {
     return JSON.parse(localStorage.getItem(`fue_questions_${city}`) || "[]");
   }
-  // get_quiz_questions (sekcja 29): anon NIE dostaje 'ans' (M-2 — antycheat).
+  // get_quiz_questions (sekcja 29): anon NIE dostaje 'ans' (M-2 - antycheat).
   // Admin (rola) dostaje ans. Soft-fallback do bezpośredniego selecta, gdy
-  // sekcja 29 nie jest jeszcze wgrana (wtedy ans jest obecne — jak dawniej).
+  // sekcja 29 nie jest jeszcze wgrana (wtedy ans jest obecne - jak dawniej).
   const { data, error } = await supabase.rpc("get_quiz_questions", { p_city: city });
   if (!error) return data || [];
   const missing = error.code === "PGRST202" || /Could not find the function/i.test(error.message || "");
@@ -315,7 +315,7 @@ export async function getPracticeQuestions(city) {
   if (DEMO) {
     return JSON.parse(localStorage.getItem(`fue_practice_${city}`) || "[]");
   }
-  // RPC (sekcja 29) — anon stracił bezpośredni SELECT na questions. Praktyka ma ans
+  // RPC (sekcja 29) - anon stracił bezpośredni SELECT na questions. Praktyka ma ans
   // (tryb osobisty). Soft-fallback do selecta, gdy sekcja 29 nie wgrana.
   const { data, error } = await supabase.rpc("get_practice_questions", { p_city: city });
   if (!error) return data || [];
@@ -354,10 +354,10 @@ export async function updateQuestion(id, updates) {
     return { error: null };
   }
   // .select("id"): UPDATE odrzucony przez RLS (blokada edycji, sekcja 46.4) nie zwraca
-  // błędu, tylko 0 zmienionych wierszy — bez tego zapis „udawałby” sukces.
+  // błędu, tylko 0 zmienionych wierszy - bez tego zapis „udawałby” sukces.
   const { data, error } = await supabase.from("questions").update(updates).eq("id", id).select("id");
   if (error) return { error: error.message };
-  if (!data?.length) return { error: "Zapis odrzucony — edycja zablokowana albo pytanie nie istnieje." };
+  if (!data?.length) return { error: "Zapis odrzucony - edycja zablokowana albo pytanie nie istnieje." };
   return { error: null };
 }
 
@@ -371,7 +371,7 @@ export async function deleteQuestion(id) {
     }
     return { error: null };
   }
-  // RPC (sekcja 32) usuwa też odpowiedzi (FK) — pytanie z odpowiedziami nie dawało się
+  // RPC (sekcja 32) usuwa też odpowiedzi (FK) - pytanie z odpowiedziami nie dawało się
   // usunąć bezpośrednio. Soft-fallback do bezpośredniego delete, gdy RPC nie wgrany.
   const { error: rpcErr } = await supabase.rpc("admin_delete_question", { p_id: id });
   if (!rpcErr) return { error: null };
@@ -382,7 +382,7 @@ export async function deleteQuestion(id) {
 }
 
 // Zmiana kolejności pytań modułu (P7-Q-REORDER). ids = pełna lista id modułu w nowej kolejności.
-// RPC admin_reorder_questions (sekcja 44) — atomowo, gęsto 0..n-1; soft-fallback: N × update.
+// RPC admin_reorder_questions (sekcja 44) - atomowo, gęsto 0..n-1; soft-fallback: N × update.
 export async function reorderQuestions(ids, { city, isPractice = false } = {}) {
   if (DEMO) {
     const key = isPractice ? `fue_practice_${city}` : `fue_questions_${city}`;
@@ -448,7 +448,7 @@ export async function endAndResetSession(city, adminId, isPractice = false) {
   return getOrCreateSession(city, adminId, isPractice);
 }
 
-// Historia: zakończone sesje (status ended/results), w tym próbne — do podglądu rankingu.
+// Historia: zakończone sesje (status ended/results), w tym próbne - do podglądu rankingu.
 export async function getEndedSessions(city) {
   if (DEMO) return [];
   let q = supabase.from("quiz_sessions")
@@ -484,10 +484,10 @@ export async function updateSession(sessionId, updates) {
     }
     return { error: null };
   }
-  // Ensure the access token is fresh before calling the RPC — getSession() automatically
+  // Ensure the access token is fresh before calling the RPC - getSession() automatically
   // uses the stored refresh token when the access token has expired.
   await supabase.auth.getSession();
-  // Use SECURITY DEFINER RPC — direct UPDATE is silently blocked by sessions_admin_write RLS
+  // Use SECURITY DEFINER RPC - direct UPDATE is silently blocked by sessions_admin_write RLS
   // when get_my_role() returns NULL (expired JWT, missing profile, etc.).
   const { error } = await supabase.rpc("update_quiz_session_admin", {
     p_session_id: sessionId,
@@ -506,7 +506,7 @@ export async function getSessionForCity(city) {
     return active[0] || null;
   }
   // Smart priority: running session first, then paused, then most recent waiting.
-  // No is_practice filter — admin decides which session is active.
+  // No is_practice filter - admin decides which session is active.
   const { data } = await supabase.from("quiz_sessions")
     .select("*").eq("city", city).neq("status", "ended")
     .order("created_at", { ascending: false });
@@ -544,7 +544,7 @@ export async function getParticipantsInSession(city, sessionId) {
   return data || [];
 }
 
-// Tylko LICZBA uczestników w sesji — dla anonimowego Live View (licznik X/N).
+// Tylko LICZBA uczestników w sesji - dla anonimowego Live View (licznik X/N).
 // SECURITY DEFINER RPC nie ujawnia kodów/nazwisk. Soft-fallback do listy, gdy
 // sekcja 27 SQL nie jest jeszcze wgrana (anon ma wtedy jeszcze SELECT).
 export async function getParticipantCount(city, sessionId) {
@@ -566,14 +566,14 @@ export async function saveAnswer({ sessionId, participantCode, participantName, 
     localStorage.setItem("fue_answers", JSON.stringify(answers));
     return { error: null };
   }
-  // Plain INSERT — PostgREST upsert checks UPDATE policy even with DO NOTHING,
+  // Plain INSERT - PostgREST upsert checks UPDATE policy even with DO NOTHING,
   // which anon doesn't have. Use INSERT and swallow 23505 (duplicate = already answered).
   const { error } = await supabase.from("answers").insert({
     session_id: sessionId, participant_code: participantCode, participant_name: participantName,
     city, question_id: questionId, module, chosen, is_correct: isCorrect, points,
     response_time_s: responseTimeS ?? null,
   });
-  if (error?.code === "23505") return { error: null }; // already answered — ignore duplicate
+  if (error?.code === "23505") return { error: null }; // already answered - ignore duplicate
   return { error: error?.message || null };
 }
 
@@ -609,31 +609,31 @@ export async function getSessionResults(sessionId) {
       if (a.isCorrect) grouped[a.participantCode].correct += 1;
       if (a.responseTimeS != null) { grouped[a.participantCode].totalTime += a.responseTimeS; grouped[a.participantCode].timedAnswers += 1; }
     }
-    // Mianownik z planu sesji (G6, lustro sekcji 43) — brak odpowiedzi = błędna.
+    // Mianownik z planu sesji (G6, lustro sekcji 43) - brak odpowiedzi = błędna.
     const planLen = demoPlan(sessionId)?.length || 0;
     return Object.values(grouped)
       .sort((a, b) => (b.correct - a.correct) || ((a.timedAnswers ? a.totalTime / a.timedAnswers : 1e9) - (b.timedAnswers ? b.totalTime / b.timedAnswers : 1e9)))
       .map((g) => ({
         code: g.code, name: g.name, city: g.city, correct: g.correct, total: planLen || g.total,
-        // W MS — tak jak zwraca get_session_results (sekcja 31/43); panel dzieli przez 1000.
+        // W MS - tak jak zwraca get_session_results (sekcja 31/43); panel dzieli przez 1000.
         avgResponseTime: g.timedAnswers ? Math.round((g.totalTime / g.timedAnswers) * 1000) : null,
       }));
   }
-  // Use RPC to aggregate on DB side — avoids PostgREST 1000-row default limit
+  // Use RPC to aggregate on DB side - avoids PostgREST 1000-row default limit
   // which would truncate results for 500 participants × 32 questions = 16 000 rows.
   // Ranking wg liczby poprawnych odpowiedzi (bez punktów); remis → krótszy średni czas.
   const { data } = await supabase.rpc("get_session_results", { p_session_id: sessionId });
   if (!data) return [];
-  // Number(...) || 0 — chroni przed NaN, gdyby na bazie była jeszcze STARA wersja
+  // Number(...) || 0 - chroni przed NaN, gdyby na bazie była jeszcze STARA wersja
   // funkcji (sekcja 25 nie wgrana → brak correct_count/total_count).
   // avgResponseTime zawsze w MS (sekcja 31). Fallback: jeśli baza zwraca jeszcze sekundy.
   return data.map((r) => ({ code: r.participant_code, name: r.participant_name, city: r.city, correct: Number(r.correct_count) || 0, total: Number(r.total_count) || 0, avgResponseTime: r.avg_response_time_ms ?? (r.avg_response_time_s != null ? r.avg_response_time_s * 1000 : null) }));
 }
 
-// Karta odpowiedzi KAŻDEGO uczestnika sesji — zasila eksport XLSX (arkusz per osoba).
+// Karta odpowiedzi KAŻDEGO uczestnika sesji - zasila eksport XLSX (arkusz per osoba).
 // Zwraca iloczyn uczestnicy × pytania (pytania bez odpowiedzi mają puste chosen_*),
 // więc dla 500 osób × 58 pytań to ~29 000 wierszy. PostgREST tnie odpowiedź na strony,
-// dlatego pobieramy zakresami aż do wyczerpania — inaczej eksport po cichu gubiłby
+// dlatego pobieramy zakresami aż do wyczerpania - inaczej eksport po cichu gubiłby
 // ogon listy i nikt by tego nie zauważył aż do reklamacji uczestnika.
 export async function getSessionDetailedResults(sessionId) {
   if (DEMO) {
@@ -673,7 +673,7 @@ export async function getSessionDetailedResults(sessionId) {
 
 // Live stats for current question (admin panel).
 // Uses a SECURITY DEFINER RPC to bypass answers_admin_select RLS
-// — ensures the count works regardless of JWT/RLS edge cases.
+// - ensures the count works regardless of JWT/RLS edge cases.
 export async function getLiveQuestionStats(sessionId, questionId) {
   if (DEMO) {
     const raw = JSON.parse(localStorage.getItem("fue_answers") || "[]")
@@ -707,7 +707,7 @@ export async function getLiveAnswerSummary(sessionId, questionId) {
       .filter((a) => a.sessionId === sessionId && a.questionId === questionId);
     return { total: raw.length, correct: raw.filter((a) => a.isCorrect).length, ans: null };
   }
-  // ans: poprawna odpowiedź BRAMKOWANA serwerowo (tylko po końcu czasu pytania) —
+  // ans: poprawna odpowiedź BRAMKOWANA serwerowo (tylko po końcu czasu pytania) -
   // do podświetlenia w reveal na publicznym LiveView, bez wycieku przed czasem.
   const { data } = await supabase.rpc("get_admin_answer_summary", {
     p_session_id: sessionId, p_question_id: questionId,
@@ -768,7 +768,7 @@ export async function getQuestionAnswerPresence(sessionId, questionId) {
 
 const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";
 
-// Returns { bg, bgMobile } — both may be null.
+// Returns { bg, bgMobile } - both may be null.
 export async function getCityBg(city) {
   if (DEMO) return {
     bg:       localStorage.getItem(`fue_bg_${city}`) || null,
@@ -809,7 +809,7 @@ export async function uploadCityBg(city, file, isMobile = false) {
       reader.readAsDataURL(file);
     });
   }
-  // Refresh access token before upload — storage RLS requires authenticated role.
+  // Refresh access token before upload - storage RLS requires authenticated role.
   await supabase.auth.getSession();
   const ext = file.name.split(".").pop().toLowerCase();
   const safeCity = city.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -828,11 +828,11 @@ export { DEFAULT_BG };
 
 import { MODULES as FALLBACK_MODULES } from "../data/questions.js";
 
-// Zwraca { modules, fromDb } — rozróżnienie KRYTYCZNE dla uczciwości testu.
+// Zwraca { modules, fromDb } - rozróżnienie KRYTYCZNE dla uczciwości testu.
 // ZMIERZONE 24.09.2026 sondą pełnej ścieżki: telefon, któremu ten jeden fetch się
 // nie udał, przez CAŁY test używał zaszytych w kodzie czasów awaryjnych
 // (90/30/60/75/45 s) zamiast tych z bazy (20 s). Na tym samym pytaniu jeden
-// uczestnik odliczał od 70, drugi od 15 — i nic tego nigdy nie korygowało, bo
+// uczestnik odliczał od 70, drugi od 15 - i nic tego nigdy nie korygowało, bo
 // stary getModules() gubił `error`, więc awaria sieci wyglądała identycznie jak
 // pusta tabela. Wywołujący nie miał czym odróżnić „baza nie odpowiedziała" od
 // „modułów naprawdę nie ma", więc nie mógł ponowić próby.
@@ -848,10 +848,10 @@ export async function fetchModules() {
   }
   // `data` MUSI być sprawdzone na null. Bez tego `data.length` rzuca TypeError wewnątrz
   // pętli ponowień w ModulesProvider, ponowienie nigdy nie następuje i uczestnik cicho
-  // zostaje na czasach awaryjnych — czyli dokładnie ten błąd, który ta funkcja naprawia.
+  // zostaje na czasach awaryjnych - czyli dokładnie ten błąd, który ta funkcja naprawia.
   // Zgubiłem ten warunek w pierwszej wersji naprawy (24.09); sonda to wychwyciła.
   if (!data) {
-    console.error("[fetchModules] brak danych i brak błędu — traktuję jak awarię");
+    console.error("[fetchModules] brak danych i brak błędu - traktuję jak awarię");
     return { modules: FALLBACK_MODULES, fromDb: false };
   }
   if (!data.length) return { modules: FALLBACK_MODULES, fromDb: true }; // tabela naprawdę pusta
@@ -882,7 +882,7 @@ export async function addModule({ id, name, icon, color, timePerQ, desc }) {
 
 export async function updateModule(id, updates) {
   // Akceptuj OBA warianty kluczy. AdminPanel wysyła snake_case (time_per_q, description),
-  // a mapowane były wyłącznie camelCase (timePerQ, desc) — przez co czas na pytanie
+  // a mapowane były wyłącznie camelCase (timePerQ, desc) - przez co czas na pytanie
   // i opis znikały po cichu przy każdym zapisie z panelu.
   const timePerQ = updates.timePerQ !== undefined ? updates.timePerQ : updates.time_per_q;
   const desc     = updates.desc     !== undefined ? updates.desc     : updates.description;
@@ -909,7 +909,7 @@ export async function updateModule(id, updates) {
 
   // Zero zaktualizowanych wierszy = moduł istnieje TYLKO w fallbacku, bo tabela modules
   // jest pusta (getModules() zwraca wtedy MODULES z data/questions.js). Wcześniej ten
-  // przypadek kończył się cichym no-op i wyglądał jak niedziałająca edycja — teraz
+  // przypadek kończył się cichym no-op i wyglądał jak niedziałająca edycja - teraz
   // materializujemy moduł w bazie, dokładając brakujące pola z fallbacku.
   const fb = FALLBACK_MODULES.find((m) => m.id === id);
   const row = {
@@ -937,10 +937,10 @@ export async function deleteModule(id) {
 
 // ─── ANTI-CHEAT VIOLATIONS ────────────────────────────────────────────────────
 
-// count = łączna liczba naruszeń uczestnika (wszystkie typy — semantyka bez zmian,
+// count = łączna liczba naruszeń uczestnika (wszystkie typy - semantyka bez zmian,
 // stary panel działa), typeCount = licznik danego typu (kolumna type_count, sekcja 44).
 // Zapis przez RPC record_violation (SECURITY DEFINER), które celowo NIE zwraca
-// informacji, czy kod istnieje (sekcja 44.8 — brak wyroczni kodów; w sekcji 45 anon
+// informacji, czy kod istnieje (sekcja 44.8 - brak wyroczni kodów; w sekcji 45 anon
 // traci bezpośredni INSERT do violations). Soft-fallback: dotychczasowy INSERT bez
 // type_count, bo przed sekcją 44 tej kolumny nie ma.
 export async function recordViolation({ participantCode, sessionId, type, count, typeCount = null }) {
@@ -986,9 +986,9 @@ export async function getViolationsForSession(sessionId) {
 
 // Podsumowanie naruszeń sesji dla raportu (XLSX / panel): Map kod → { total, tab_switch,
 // screenshot_attempt }. Brak kodu w mapie = 0 naruszeń (violationsFor z violations.js).
-// Prod: RPC admina get_session_violation_summary (sekcja 44) — agregat w bazie, bez
+// Prod: RPC admina get_session_violation_summary (sekcja 44) - agregat w bazie, bez
 // limitu 200 wierszy. Soft-fallback: stronicowany select całej sesji + ta sama agregacja
-// w JS (bez type_count — przed sekcją 44 kolumny nie ma, więc per typ = liczba wierszy).
+// w JS (bez type_count - przed sekcją 44 kolumny nie ma, więc per typ = liczba wierszy).
 export async function getViolationSummary(sessionId) {
   if (DEMO) {
     return summarizeViolations(
@@ -1062,7 +1062,7 @@ export async function getEventLog(sessionId) {
 
 // ─── Faza 6: rozgrywka z planu (RPC v2) ───────────────────────────────────────
 // Serwer jest jedynym źródłem prawdy: plan sesji zamrażany przy starcie, pozycja
-// liczona z kotwicy i zegara serwera. Wrappery nigdy nie rzucają — konwencja repo
+// liczona z kotwicy i zegara serwera. Wrappery nigdy nie rzucają - konwencja repo
 // { data, error }. DEMO buduje ten sam plan lokalnie (plan.js), więc tryb bez kluczy
 // Supabase przechodzi dokładnie tę samą ścieżkę uczestnika co produkcja.
 
@@ -1091,7 +1091,7 @@ function demoPlan(sessionId) {
   try { return JSON.parse(localStorage.getItem(`fue_plan_${sessionId}`) || "null"); } catch { return null; }
 }
 
-// DEMO: przerwa planowa (lustro advance_due_sessions, sekcja 42) — wiersz w localStorage
+// DEMO: przerwa planowa (lustro advance_due_sessions, sekcja 42) - wiersz w localStorage
 // przechodzi w 'paused' dokładnie na anchor + r przerwy; wznowienie jak zwykła pauza.
 function demoApplyHold(key, s, items, nowMs) {
   if (!key || !s || s.status !== "running" || s.plan_anchor_at == null || s.plan_paused_at != null || !items?.length) return s;
@@ -1139,7 +1139,7 @@ export async function startQuizSessionV2(sessionId) {
   await supabase.auth.getSession();
   const { data, error } = await supabase.rpc("start_quiz_session_v2", { p_session_id: sessionId });
   if (error) {
-    if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: "Na bazie brak sekcji 39 (start_quiz_session_v2) — wgraj SQL." };
+    if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: "Na bazie brak sekcji 39 (start_quiz_session_v2) - wgraj SQL." };
     return { ok: false, reason: null, session: null, error: error.message };
   }
   return { ok: !!data?.ok, reason: data?.reason ?? null, session: data?.session ?? null, error: null };
@@ -1184,7 +1184,7 @@ function demoParticipantState(rawCode, sessionId, includePlan) {
   if (!s) {
     return { server_now: nowMs, error: null, session: null, position: null, plan: null, my_answers: [], reveal: null, correct_total: 0 };
   }
-  // Przerwa planowa (lustro zamiatacza) — zanim policzymy pozycję.
+  // Przerwa planowa (lustro zamiatacza) - zanim policzymy pozycję.
   s = demoApplyHold(demoFindSession(s.id)?.key, s, demoPlan(s.id), nowMs);
 
   const anchorMs = toMs(s.plan_anchor_at);
@@ -1203,7 +1203,7 @@ function demoParticipantState(rawCode, sessionId, includePlan) {
       position = { idx: pos.idx, phase: pos.phase, opens_at: pos.opensAt, closes_at: pos.closesAt, reveal_until: pos.revealUntil };
     }
     if (includePlan) {
-      // Plan BEZ `ans` — poprawność tylko przez reveal.
+      // Plan BEZ `ans` - poprawność tylko przez reveal.
       plan = items.map((it) => {
         const q = qById(it.id);
         return { ...it, q: q?.q ?? "(pytanie usunięte)", opts: q?.opts ?? [] };
@@ -1238,7 +1238,7 @@ function demoParticipantState(rawCode, sessionId, includePlan) {
 }
 
 // Jeden snapshot stanu uczestnika. t0/t1 wokół wywołania → próbka zegara (server_now).
-// signal (AbortController) — hook porzuca zawieszone żądanie po limicie czasu (G7, 06-17);
+// signal (AbortController) - hook porzuca zawieszone żądanie po limicie czasu (G7, 06-17);
 // anulowanie zwalnia połączenie przeglądarki zamiast trzymać je do odpowiedzi.
 export async function getParticipantState(code, { sessionId = null, includePlan = true, signal = null } = {}) {
   const t0 = Date.now();
@@ -1253,12 +1253,12 @@ export async function getParticipantState(code, { sessionId = null, includePlan 
   const { data, error } = await req;
   const t1 = Date.now();
   if (error) {
-    return { data: null, error: isMissingFn(error) ? "Na bazie brak sekcji 39 (get_participant_state) — wgraj SQL." : error.message, t0, t1 };
+    return { data: null, error: isMissingFn(error) ? "Na bazie brak sekcji 39 (get_participant_state) - wgraj SQL." : error.message, t0, t1 };
   }
   return { data, error: null, t0, t1 };
 }
 
-// Zapis odpowiedzi. Odpowiedź serwera NIE niesie poprawności (SC5) — kolor poprawnej
+// Zapis odpowiedzi. Odpowiedź serwera NIE niesie poprawności (SC5) - kolor poprawnej
 // odpowiedzi przychodzi wyłącznie z reveal / revealed_*.
 export async function submitAnswerV2({ sessionId, participantCode, participantName, questionId, chosen }) {
   if (DEMO) {
@@ -1327,7 +1327,7 @@ export async function getAnswerSummaryV2(sessionId, questionId) {
   return { total: data?.total || 0, correct: data?.correct ?? null, ans: data?.ans ?? null };
 }
 
-// DEMO: wspólny szkielet akcji admina — przesunięcie kotwicy na wierszu w localStorage.
+// DEMO: wspólny szkielet akcji admina - przesunięcie kotwicy na wierszu w localStorage.
 function demoAdminAction(sessionId, fn) {
   const found = demoFindSession(sessionId);
   if (!found) return { ok: false, reason: "not found", session: null, error: null };
@@ -1344,7 +1344,7 @@ async function adminRpc(name, args) {
   await supabase.auth.getSession();
   const { data, error } = await supabase.rpc(name, args);
   if (error) {
-    if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: `Na bazie brak sekcji 39 (${name}) — wgraj SQL.` };
+    if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: `Na bazie brak sekcji 39 (${name}) - wgraj SQL.` };
     return { ok: false, reason: null, session: null, error: error.message };
   }
   return { ok: !!data?.ok, reason: data?.reason ?? null, session: data?.session ?? null, error: null };

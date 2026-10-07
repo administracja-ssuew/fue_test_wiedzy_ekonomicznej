@@ -74,7 +74,7 @@ describe("parseCodesCsv", () => {
     expect(r.valid).toEqual([{ line: 3, name: "Jan", surname: "Kowalski", number: "1111" }]);
     expect(r.errors).toEqual([]);
   });
-  it("plik bez nagłówka — pierwszy wiersz to dane", () => {
+  it("plik bez nagłówka - pierwszy wiersz to dane", () => {
     const r = parseCodesCsv("Jan;Kowalski;1111", OPTS);
     expect(r.valid).toEqual([{ line: 1, name: "Jan", surname: "Kowalski", number: "1111" }]);
   });
@@ -101,7 +101,7 @@ describe("parseCodesCsv", () => {
     expect(r.errors).toEqual([{
       line: 2,
       name: "Jan Kowalski",
-      reason: "kod „111” musi mieć 4 cyfry — jeśli w Excelu zniknęły zera z przodu, sformatuj kolumnę Kod jako Tekst",
+      reason: "kod „111” musi mieć 4 cyfry - jeśli w Excelu zniknęły zera z przodu, sformatuj kolumnę Kod jako Tekst",
     }]);
   });
   it("nie-cyfry → błąd bez dopisku o Excelu", () => {
@@ -124,7 +124,7 @@ describe("parseCodesCsv", () => {
       { line: 3, name: "Jan", reason: "brak imienia lub nazwiska" },
     ]);
   });
-  it("duplikat w pliku — oba wiersze w błędach", () => {
+  it("duplikat w pliku - oba wiersze w błędach", () => {
     const r = parseCodesCsv(
       "Imię;Nazwisko;Kod\nJan;Kowalski;1111\nAnna;Nowak;2222\nOla;Lis;\nEwa;Kot;1111",
       OPTS,

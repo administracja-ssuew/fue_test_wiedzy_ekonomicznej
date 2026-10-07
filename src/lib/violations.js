@@ -1,6 +1,6 @@
 // ─── NARUSZENIA ANTY-CHEAT: ETYKIETY I AGREGACJA ─────────────────────────────────
 // Wiersz w `violations` niesie `count` = łączna liczba naruszeń uczestnika (wszystkie
-// typy) oraz — od sekcji 44 — `type_count` = licznik danego typu. Stare wiersze nie
+// typy) oraz - od sekcji 44 - `type_count` = licznik danego typu. Stare wiersze nie
 // mają `type_count`; wtedy zapasem jest liczba wierszy danego typu (dolne oszacowanie).
 // Ta sama agregacja służy za fallback, gdy RPC get_session_violation_summary nie jest
 // wgrane, oraz w trybie DEMO (klucze camelCase z localStorage).

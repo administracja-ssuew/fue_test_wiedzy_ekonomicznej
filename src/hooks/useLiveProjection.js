@@ -13,7 +13,7 @@ import { projectorIdlePhase } from "../lib/projector.js";
 const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)";
 
 // Pure projection of the DB session state for any "spectator" view (standalone
-// LiveView, admin ghost embed). It runs NO quiz state machine of its own — a single
+// LiveView, admin ghost embed). It runs NO quiz state machine of its own - a single
 // 250ms ticker derives phase/timer/countdown.
 //
 // Faza 6: sesja z planem (plan_anchor_at) → projekcja z planu sesji (items + kotwica
@@ -29,7 +29,7 @@ const DEFAULT_BG = "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)"
 // phase: "waiting" | "ended" | "paused" | "quiz" | "reveal"
 export default function useLiveProjection(city, { detailed = false } = {}) {
   const MODULES = useModules();
-  // tickPlan żyje w efekcie z pustymi zależnościami — moduły czyta przez ref, nie z domknięcia.
+  // tickPlan żyje w efekcie z pustymi zależnościami - moduły czyta przez ref, nie z domknięcia.
   const modulesRef = useRef(MODULES);
   modulesRef.current = MODULES;
   const [phase, setPhase]         = useState("waiting");
@@ -103,7 +103,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     if (!DEMO && supabase) {
       const ch = supabase.channel(`live-proj-${city}`)
         .on("broadcast", { event: "quiz_event" }, () => {
-          // Sygnał, nie źródło prawdy — pobierz autorytatywny stan z bazy (anty-spoofing).
+          // Sygnał, nie źródło prawdy - pobierz autorytatywny stan z bazy (anty-spoofing).
           getSessionForCity(city).then(apply);
         })
         .on("postgres_changes", {
@@ -113,7 +113,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       // detailed = embed w panelu admina. Ten jeden klient MUSI nadążać, bo prowadzący
       // patrzy na niego i na salę jednocześnie. Broadcast go nie ratuje: Supabase ma
       // domyślnie broadcast.self=false, więc podgląd NIE dostaje przejścia rozgłoszonego
-      // przez ten sam panel — zmierzone na produkcji. Zostaje postgres_changes (~670 ms)
+      // przez ten sam panel - zmierzone na produkcji. Zostaje postgres_changes (~670 ms)
       // i ten poll, więc dla admina schodzimy na 1 s. Publiczne projektory (anon) mają
       // działający broadcast od admina i zostają na 5 s.
       const poll = setInterval(() => getSessionForCity(city).then(apply), detailed ? 1000 : 5000);
@@ -123,14 +123,14 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     return () => clearInterval(poll);
   }, [city]); // eslint-disable-line
 
-  // Szybki kanał broadcast sesji (quiz-${id}) — łapie INSTANT push przejścia pytania
+  // Szybki kanał broadcast sesji (quiz-${id}) - łapie INSTANT push przejścia pytania
   // rozgłaszany przez uczestnika (advanceQuestion) oraz admina, bez czekania na wolny
   // postgres_changes/polling. Dzięki temu reveal kończy się równo z uczestnikiem.
   useEffect(() => {
     if (!sessionId || DEMO || !supabase) return;
     const ch = supabase.channel(`quiz-${sessionId}`)
       .on("broadcast", { event: "quiz_event" }, () => {
-        // Sygnał do szybkiego odświeżenia — stan bierzemy z bazy, nie z payloadu (anty-spoofing).
+        // Sygnał do szybkiego odświeżenia - stan bierzemy z bazy, nie z payloadu (anty-spoofing).
         getSessionForCity(city).then(applySession);
       })
       .subscribe();
@@ -168,7 +168,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       setReveal([]); setLiveCount(0); setRevealTotal(0); setRevealCorrect(0); setRevealAns(null);
     };
 
-    // Sesja z planem: faza i czas to funkcja (plan, kotwica, serverNow) — jak u uczestnika.
+    // Sesja z planem: faza i czas to funkcja (plan, kotwica, serverNow) - jak u uczestnika.
     const tickPlan = (s) => {
       const nowMs = serverNow();
       const v = projectPlanState({
@@ -180,7 +180,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         holdIdx: s.plan_hold_idx ?? null, // przerwa już obsłużona → brak powrotu do niej po wznowieniu
       });
       if (!v.item) {
-        // lobby/legacy → waiting; results/ended → ended (G8) — do wypchnięcia podium
+        // lobby/legacy → waiting; results/ended → ended (G8) - do wypchnięcia podium
         setPhase(projectorIdlePhase(v, s.status)); setCdNum(null); setFirstOfModule(false); setBreakNext(null);
         return;
       }
@@ -206,7 +206,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
         setPhase("quiz"); setCdNum(null);
         setTimer(v.secondsLeft);
       } else if (v.phase === "reveal" || v.phase === "finished") {
-        // finished: ≤ 1 s do przejścia zamiatacza w status results — zostajemy na reveal bez mignięcia.
+        // finished: ≤ 1 s do przejścia zamiatacza w status results - zostajemy na reveal bez mignięcia.
         setPhase("reveal"); setCdNum(null);
         setAutoSec(v.phase === "finished" ? 0 : v.secondsLeft);
       } else if (v.phase === "paused") {
@@ -248,7 +248,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   }, []);
 
   // Liczba uczestników w sesji (do licznika "X/N" na Live View). Wolno się zmienia
-  // → odpyt co 5 s. Tylko liczba przez SECURITY DEFINER RPC — anon nie czyta
+  // → odpyt co 5 s. Tylko liczba przez SECURITY DEFINER RPC - anon nie czyta
   // kodów/nazwisk (hardening, sekcja 27).
   useEffect(() => {
     if (!city) return;
@@ -261,16 +261,16 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     return () => clearInterval(iv);
   }, [city]);
 
-  // #5 — odbiór podium wypchniętego przez admina (kanał miasta).
+  // #5 - odbiór podium wypchniętego przez admina (kanał miasta).
   // UWAGA (residual risk): anon nie może czytać wyników z bazy (get_session_results
   // jest admin-only), więc podium MUSI przyjść broadcastem od admina i nie da się go
   // zweryfikować z bazy jak stanu quizu. Skutek ewentualnego sfałszowania jest
   // kosmetyczny i przejściowy (błędny ranking na projektorze), a admin re-broadcastuje
   // stan co 2 s, nadpisując podszywkę. Pełne domknięcie wymaga Realtime Authorization
-  // (kanały prywatne z RLS) — świadomie poza zakresem tej poprawki.
+  // (kanały prywatne z RLS) - świadomie poza zakresem tej poprawki.
   useEffect(() => {
     if (!city || DEMO || !supabase) return;
-    const ch = supabase.channel(`podium-${encodeURIComponent(city)}`) // ASCII — zgodne z nadawcą (App)
+    const ch = supabase.channel(`podium-${encodeURIComponent(city)}`) // ASCII - zgodne z nadawcą (App)
       .on("broadcast", { event: "podium" }, ({ payload }) => { if (payload?.results) setPodium(payload); })
       .subscribe();
     return () => supabase.removeChannel(ch);

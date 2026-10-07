@@ -2,13 +2,13 @@
 //
 // Dlaczego własny zamiast SheetJS: paczka `xlsx` z npm (0.18.5) ma dwa otwarte
 // advisory o wysokiej wadze (prototype pollution, ReDoS) i NIE ma na npm wersji
-// z poprawką — SheetJS przeniósł wydania na własny CDN. Wnoszenie tego do projektu,
+// z poprawką - SheetJS przeniósł wydania na własny CDN. Wnoszenie tego do projektu,
 // który przechodzi audyt bezpieczeństwa, byłoby długiem nie do spłacenia jednym
 // `npm audit fix`. Do tego waży ~800 kB, a my potrzebujemy ułamka jego możliwości:
 // tylko ZAPIS, nigdy odczyt (oba advisory dotyczą parsowania cudzych plików).
 //
 // Plik .xlsx to ZIP z kilkoma XML-ami. Zapisujemy wpisy metodą "stored" (bez
-// kompresji), bo deflate wymagałby prawdziwego kompresora — a rozmiar i tak
+// kompresji), bo deflate wymagałby prawdziwego kompresora - a rozmiar i tak
 // trzymają w ryzach sharedStrings: treść pytania powtarza się w arkuszu każdego
 // uczestnika, więc trafia do pliku RAZ, a komórki niosą tylko indeks liczbowy.
 
@@ -36,7 +36,7 @@ function xmlEscape(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&apos;")
     // XML 1.0 nie dopuszcza znaków sterujących, a treści pytań bywają wklejane
-    // z Worda/PDF-a i potrafią je nieść — jeden taki bajt psuje cały plik.
+    // z Worda/PDF-a i potrafią je nieść - jeden taki bajt psuje cały plik.
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
 
@@ -48,7 +48,7 @@ function colName(i) {
 }
 
 // Excel: max 31 znaków, bez [ ] : * ? / \, bez apostrofu na brzegach, nazwy unikalne.
-// Imiona uczestników bywają długie i się powtarzają, więc deduplikacja jest konieczna —
+// Imiona uczestników bywają długie i się powtarzają, więc deduplikacja jest konieczna -
 // duplikat nazwy arkusza powoduje, że Excel odmawia otwarcia całego pliku.
 export function safeSheetName(raw, used) {
   let base = String(raw || "Arkusz").replace(/[[\]:*?/\\]/g, " ").replace(/^'+|'+$/g, "").trim().slice(0, 31).trim();
@@ -110,7 +110,7 @@ function sheetXml(rows, sst) {
 }
 
 // Minimalny arkusz stylów. cellXfs: 0 = ogólny (domyślny), 1 = wbudowany format
-// numFmtId 2 („0.00”), 2 = własny format numFmtId 164 („0.000”, z <numFmts> —
+// numFmtId 2 („0.00”), 2 = własny format numFmtId 164 („0.000”, z <numFmts> -
 // ECMA-376 wymaga numFmts PRZED fonts). Excel wymaga kompletu
 // fonts/fills/borders/cellStyleXfs, inaczej zgłasza uszkodzony plik.
 const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -126,7 +126,7 @@ const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
   + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
   + '</styleSheet>';
 
-// ZIP (stored). Pola daty/godziny ustawiamy na 1980-01-01 — Excel ich nie używa,
+// ZIP (stored). Pola daty/godziny ustawiamy na 1980-01-01 - Excel ich nie używa,
 // a zero w polu daty bywa odczytywane jako uszkodzony wpis.
 function zip(files) {
   const u16 = (n) => [n & 255, (n >> 8) & 255];
@@ -173,7 +173,7 @@ function zip(files) {
 
 /**
  * Buduje skoroszyt .xlsx jako surowe bajty. Wydzielone z buildXlsx, bo Blob w jsdom
- * nie implementuje arrayBuffer() — testy sprawdzają strukturę ZIP-a na bajtach.
+ * nie implementuje arrayBuffer() - testy sprawdzają strukturę ZIP-a na bajtach.
  * Komórka: string | number | null | { v: number, fmt?: "0.00" | "0.000" } (liczba z formatem 2 lub 3 miejsc).
  * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"|"0.000"}>>}>} sheets
  * @returns {Uint8Array}

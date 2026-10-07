@@ -15,7 +15,7 @@ export const MODULES = [
 ];
 
 export const QUESTIONS = [
-  // ═══ MODUŁ 1 — OBLICZENIA (90s) ═══
+  // ═══ MODUŁ 1 - OBLICZENIA (90s) ═══
   {
     id: 1, module: 1,
     q: "PKB nominalne = 2 400 mld zł, deflator PKB = 150 (rok bazowy = 100). Oblicz PKB realne.",
@@ -73,7 +73,7 @@ export const QUESTIONS = [
     exp: "Luka PKB = −2 × (u − u*) = −2 × (9%−5%) = −8%. PKB realne jest o 8% poniżej potencjalnego.",
   },
 
-  // ═══ MODUŁ 2 — TERMINY (30s) ═══
+  // ═══ MODUŁ 2 - TERMINY (30s) ═══
   {
     id: 9, module: 2,
     q: "NAIRU (Non-Accelerating Inflation Rate of Unemployment) to:",
@@ -144,7 +144,7 @@ export const QUESTIONS = [
       "Optymalna dźwignia wynosi dokładnie 50/50",
     ],
     ans: 1,
-    exp: "W idealnym rynku (bez podatków, kosztów bankructwa, asymetrii info) – wartość firmy niezależna od struktury finansowania.",
+    exp: "W idealnym rynku (bez podatków, kosztów bankructwa, asymetrii info) - wartość firmy niezależna od struktury finansowania.",
   },
   {
     id: 15, module: 2,
@@ -160,7 +160,7 @@ export const QUESTIONS = [
   },
   {
     id: 16, module: 2,
-    q: "Model IS-LM — krzywa IS reprezentuje równowagę na rynku:",
+    q: "Model IS-LM - krzywa IS reprezentuje równowagę na rynku:",
     opts: [
       "Pieniężnym (podaż = popyt na pieniądz)",
       "Dóbr i usług (inwestycje = oszczędności)",
@@ -168,16 +168,16 @@ export const QUESTIONS = [
       "Walutowym (kurs vs. bilans płatniczy)",
     ],
     ans: 1,
-    exp: "IS (Investment = Savings) — kombinacje stopy % i PKB, przy których rynek dóbr jest w równowadze. LM = rynek pieniężny.",
+    exp: "IS (Investment = Savings) - kombinacje stopy % i PKB, przy których rynek dóbr jest w równowadze. LM = rynek pieniężny.",
   },
 
-  // ═══ MODUŁ 3 — LOGIKA EKONOMICZNA (60s) ═══
+  // ═══ MODUŁ 3 - LOGIKA EKONOMICZNA (60s) ═══
   {
     id: 17, module: 3,
     q: "Rząd wprowadza płacę minimalną powyżej poziomu równowagi rynkowej. Bezpośrednim skutkiem jest:",
     opts: [
       "Wzrost zatrudnienia przy wyższej płacy",
-      "Nadwyżka podaży pracy — bezrobocie przymusowe",
+      "Nadwyżka podaży pracy - bezrobocie przymusowe",
       "Niedobór siły roboczej na rynku",
       "Neutralny wpływ na zatrudnienie",
     ],
@@ -200,8 +200,8 @@ export const QUESTIONS = [
     id: 19, module: 3,
     q: "Negatywna eksternalność produkcji (np. zanieczyszczenie) powoduje, że wolny rynek:",
     opts: [
-      "Produkuje za mało — cena jest za wysoka",
-      "Produkuje za dużo — koszt społeczny > koszt prywatny",
+      "Produkuje za mało - cena jest za wysoka",
+      "Produkuje za dużo - koszt społeczny > koszt prywatny",
       "Osiąga optimum Pareto bez interwencji",
       "Automatycznie internalizuje koszty zewnętrzne",
     ],
@@ -225,7 +225,7 @@ export const QUESTIONS = [
       "Boomu inwestycyjnego finansowanego kredytem",
     ],
     ans: 1,
-    exp: "Pułapka płynności + deflacja → obniżka stóp do 0% traci skuteczność. Kanał transmisji monetarnej się załamuje (Japonia, EBC 2014–2019).",
+    exp: "Pułapka płynności + deflacja → obniżka stóp do 0% traci skuteczność. Kanał transmisji monetarnej się załamuje (Japonia, EBC 2014-2019).",
   },
   {
     id: 22, module: 3,
@@ -249,7 +249,7 @@ export const QUESTIONS = [
       "Ceny surowców są stabilne w długim okresie",
     ],
     ans: 1,
-    exp: "Choroba holenderska, rentiership, korupcja, brak dywersyfikacji i inwestycji w kapitał ludzki — bogate w zasoby kraje często rosną wolniej.",
+    exp: "Choroba holenderska, rentiership, korupcja, brak dywersyfikacji i inwestycji w kapitał ludzki - bogate w zasoby kraje często rosną wolniej.",
   },
   {
     id: 24, module: 3,
@@ -264,7 +264,7 @@ export const QUESTIONS = [
     exp: "Laffer: za punktem optymalnym podwyżka podatku zmniejsza aktywność → baza podatkowa kurczy się → dochody rosną wolniej niż stawka.",
   },
 
-  // ═══ MODUŁ 4 — KREATYWNE (75s) ═══
+  // ═══ MODUŁ 4 - KREATYWNE (75s) ═══
   {
     id: 25, module: 4,
     q: "Kraj wprowadza cło na import stali. W krótkim okresie: kto traci, kto zyska?",
@@ -272,7 +272,7 @@ export const QUESTIONS = [
       "Tracą: krajowi producenci; Zyskują: importerzy i konsumenci",
       "Tracą: konsumenci i branże zużywające stal; Zyskują: krajowi producenci",
       "Wszyscy tracą równomiernie przez redukcję handlu",
-      "Zyski i straty dokładnie się znoszą — efekt zerowy",
+      "Zyski i straty dokładnie się znoszą - efekt zerowy",
     ],
     ans: 1,
     exp: "Cło podnosi cenę krajową → konsumenci i producenci używający stali tracą. Krajowy przemysł stalowy zyska ochronę. Efekt netto: deadweight loss.",
@@ -287,19 +287,19 @@ export const QUESTIONS = [
       "Gospodarka planowa z darmową alokacją",
     ],
     ans: 1,
-    exp: "Two-sided market: platforma łączy użytkowników (subwencjonowani — darmowe) z reklamodawcami/kupcami danych (płatna strona). Wartość sieci rośnie z obu stron.",
+    exp: "Two-sided market: platforma łączy użytkowników (subwencjonowani - darmowe) z reklamodawcami/kupcami danych (płatna strona). Wartość sieci rośnie z obu stron.",
   },
   {
     id: 27, module: 4,
     q: "Dwie linie lotnicze. Macierz zysków: (Obniż,Obniż)=(2,2), (Utrzymaj,Utrzymaj)=(5,5), (Obniż,Utrzymaj)=(7,1), (Utrzymaj,Obniż)=(1,7). Równowaga Nasha:",
     opts: [
-      "(Utrzymaj, Utrzymaj) — obie utrzymują ceny",
-      "(Obniż, Obniż) — obie obniżają ceny",
-      "(Obniż, Utrzymaj) — asymetryczna",
+      "(Utrzymaj, Utrzymaj) - obie utrzymują ceny",
+      "(Obniż, Obniż) - obie obniżają ceny",
+      "(Obniż, Utrzymaj) - asymetryczna",
       "Brak równowagi Nasha w tej grze",
     ],
     ans: 1,
-    exp: "Obniżka to dominująca strategia (7>5 i 2>1). EN: (Obniż,Obniż)=(2,2). Klasyczny dylemat więźnia — wynik gorszy dla obu niż kooperacja (5,5).",
+    exp: "Obniżka to dominująca strategia (7>5 i 2>1). EN: (Obniż,Obniż)=(2,2). Klasyczny dylemat więźnia - wynik gorszy dla obu niż kooperacja (5,5).",
   },
   {
     id: 28, module: 4,
@@ -307,8 +307,8 @@ export const QUESTIONS = [
     opts: [
       "Wszystkie trzy: stały kurs, niezależna polityka monetarna, swobodny przepływ kapitału",
       "Dwa z trzech: stały kurs / niezależna pол. monetarna / swoboda przepływu kapitału",
-      "Tylko jeden — kurs stały zawsze dominuje",
-      "Żadnego — polityka monetarna jest zawsze nieskuteczna w otwartej gospodarce",
+      "Tylko jeden - kurs stały zawsze dominuje",
+      "Żadnego - polityka monetarna jest zawsze nieskuteczna w otwartej gospodarce",
     ],
     ans: 1,
     exp: "Niemożliwa trójca: stały kurs + swoboda kapitałowa = brak niezależności monetarnej. Trzeba zrezygnować z jednego (np. ERM II, rezerwa dewizowa).",
@@ -329,7 +329,7 @@ export const QUESTIONS = [
     id: 30, module: 4,
     q: "Kraj A ma absolutną przewagę zarówno w produkcji pszenicy, jak i tkanin. Teoria Ricardo mówi, że powinien:",
     opts: [
-      "Produkować wszystko sam — absolutna przewaga eliminuje korzyści z handlu",
+      "Produkować wszystko sam - absolutna przewaga eliminuje korzyści z handlu",
       "Specjalizować się w dobru o niższym koszcie alternatywnym (komparatywna przewaga)",
       "Importować oba dobra z tańszych źródeł, by obniżyć koszty",
       "Nałożyć cła ochronne na oba dobra",
@@ -344,10 +344,10 @@ export const QUESTIONS = [
       "Poprawy bilansu handlowego i umocnienia waluty",
       "Pogorszenia bilansu, deprecjacji waluty i presji recesyjnej",
       "Wzrostu PKB przez efekt mnożnikowy tańszej energii",
-      "Neutralnego efektu — surowce nie wpływają na kurs waluty",
+      "Neutralnego efektu - surowce nie wpływają na kurs waluty",
     ],
     ans: 1,
-    exp: "Mniejsze przychody eksportowe → gorszy rachunek bieżący → deprecjacja → inflacja importowana → recesja. Rosja 2014–16 jako case study.",
+    exp: "Mniejsze przychody eksportowe → gorszy rachunek bieżący → deprecjacja → inflacja importowana → recesja. Rosja 2014-16 jako case study.",
   },
   {
     id: 32, module: 4,

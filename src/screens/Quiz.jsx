@@ -36,13 +36,13 @@ const W = {
   ),
 };
 
-// Ekran pytania — czysto prezentacyjny (Faza 6). Faza, sekundy i czas pytania (item.tpq)
+// Ekran pytania - czysto prezentacyjny (Faza 6). Faza, sekundy i czas pytania (item.tpq)
 // przychodzą z projekcji zamrożonego planu (useParticipantGame); brak własnych timerów.
-// Pasek i pierścień czasu to animacje CSS zakotwiczone w terminie otwarcia (opensAt) —
+// Pasek i pierścień czasu to animacje CSS zakotwiczone w terminie otwarcia (opensAt) -
 // animuje je przeglądarka, niezależnie od zadławienia wątku JS; cyfry liczy ticker rAF hooka.
 export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt, revealUntil, picked, answerStatus, correctAns,
   qNumGlobal, totalQuestions, qNumInModule, moduleCount, correctTotal, isDesktop, isPractice, participantCode, sessionId, onPick }) {
-  // All hooks must run unconditionally (Rules of Hooks) — guard comes after.
+  // All hooks must run unconditionally (Rules of Hooks) - guard comes after.
   const { violations, showWarning, lastType, dismiss } = useAntiCheat({
     active: true,
     participantCode,
@@ -51,7 +51,7 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
 
   // Ujemny animation-delay liczony RAZ na (pytanie, otwarcie). Gdyby liczyć go w każdym
   // renderze (co tik sekund), przeglądarka zaktualizowałaby opóźnienie działającej
-  // animacji przy niezmienionym czasie startu — pasek przeskakiwałby do przodu.
+  // animacji przy niezmienionym czasie startu - pasek przeskakiwałby do przodu.
   // Nowy opensAt (skip/repeat/wznowienie) = nowy klucz = restart animacji.
   const animKey = item ? `${item.id}-${opensAt}` : "";
   const animRef = useRef({ key: null, delay: 0 });
@@ -69,16 +69,16 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
   const hasReveal = answered && correctIdx != null;
 
   const tpq = item.tpq || 1;
-  // W reveal secondsLeft liczy do revealUntil („następne” w pasku) — licznik pytania stoi na 0.
+  // W reveal secondsLeft liczy do revealUntil („następne” w pasku) - licznik pytania stoi na 0.
   const timer = phase === "quiz" ? (secondsLeft ?? 0) : 0;
   const timerPct = phase === "quiz" ? Math.min(1, timer / tpq) : 0;
   const r = 22, circ = 2 * Math.PI * r;
   const tColor = timer > tpq * 0.5 ? "#10D9A0" : timer > tpq * 0.25 ? "#FF9A3C" : "#E8376B";
   const total = totalQuestions || 1;
-  // iOS 18+: nakładka z przełącznikiem w kafelku (haptyka) — tylko gdy wybór jest jeszcze możliwy.
+  // iOS 18+: nakładka z przełącznikiem w kafelku (haptyka) - tylko gdy wybór jest jeszcze możliwy.
   const haptic = hasSwitchHaptics() && !answered && picked === null;
 
-  // Plain JSX value (not a nested component) — rendering <QuizContent /> created a
+  // Plain JSX value (not a nested component) - rendering <QuizContent /> created a
   // brand-new component type every render, remounting the whole subtree on each
   // 1-second timer tick. Computing it as a value keeps the DOM stable.
   const quizContent = (
@@ -116,7 +116,7 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
         </div>
       </div>
 
-      {/* Pasek czasu — animacja CSS fueDrain (transform: scaleX) zakotwiczona w opensAt:
+      {/* Pasek czasu - animacja CSS fueDrain (transform: scaleX) zakotwiczona w opensAt:
           animuje kompozytor, więc jest płynna nawet przy zadławionym wątku JS. Inline
           transform to skokowy zapas dla prefers-reduced-motion (animacja ma pierwszeństwo). */}
       <div style={{ height: 6, background: "rgba(255,255,255,.07)", overflow: "hidden", flexShrink: 0 }}>
@@ -146,14 +146,14 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
           const sel = picked === i, ok = hasReveal && i === correctIdx;
           let bg = ANSWER_BG[i], opacity = 1, border = "none";
           if (!hasReveal && sel) {
-            // Wybrane, a poprawna odpowiedź jeszcze nieznana — obrys „zablokowane”, bez koloru
+            // Wybrane, a poprawna odpowiedź jeszcze nieznana - obrys „zablokowane”, bez koloru
             opacity = 1;
             border = "3px solid rgba(255,255,255,.9)";
           } else if (answered && !hasReveal) {
-            // Czas minął, czekamy na odsłonięcie z serwera — przygaś niewybrane
+            // Czas minął, czekamy na odsłonięcie z serwera - przygaś niewybrane
             opacity = .45;
           } else if (hasReveal) {
-            // Timer ended — reveal correct/wrong
+            // Timer ended - reveal correct/wrong
             if (sel && ok)       bg = "#0B9E6B";
             else if (sel && !ok) bg = "#C0284A";
             else if (!sel && ok) { bg = "#0B9E6B"; opacity = .85; }
@@ -167,7 +167,7 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
                 if (answered || picked !== null) return;
                 // Optymistyczny lock-in: hook ustawia `picked` synchronicznie (ta sama klatka),
                 // krótka wibracja potwierdza dotyk na Androidzie; na iOS 18+ tyknięcie daje
-                // przełącznik w nakładce poniżej (vibrate tam nie istnieje — bez szkody).
+                // przełącznik w nakładce poniżej (vibrate tam nie istnieje - bez szkody).
                 vibrateTap();
                 onPick(i);
               }}
@@ -213,21 +213,21 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
         {quizContent}
       </div>
 
-      {/* Stały pasek potwierdzenia wyboru — zawsze widoczny u dołu (bez scrolla na mobile) */}
+      {/* Stały pasek potwierdzenia wyboru - zawsze widoczny u dołu (bez scrolla na mobile) */}
       {picked !== null && !answered && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.97)", borderTop: "2px solid rgba(16,217,160,.55)", padding: "12px 18px", textAlign: "center", fontFamily: '"Space Grotesk",sans-serif' }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} — {item.opts[picked]}</p>
+          <p style={{ fontSize: 15, fontWeight: 800, color: "#10D9A0" }}>✔ Twoja odpowiedź: {ANSWER_LABELS[picked]} - {item.opts[picked]}</p>
           {answerStatus === "failed" ? (
             <p style={{ fontSize: 13, color: "#E8376B", marginTop: 3, fontWeight: 700 }}>⚠️ Nie udało się zapisać odpowiedzi</p>
           ) : answerStatus === "pending" ? (
             <p style={{ fontSize: 13, color: "#9B89CC", marginTop: 3, fontWeight: 600 }}>⏳ Zapisywanie…</p>
           ) : (
-            <p style={{ fontSize: 13, color: "#EDE9FE", marginTop: 3, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> — nie można jej zmienić.</p>
+            <p style={{ fontSize: 13, color: "#EDE9FE", marginTop: 3, fontWeight: 600 }}>Odpowiedź jest <strong style={{ color: "#F5C518" }}>OSTATECZNA</strong> - nie można jej zmienić.</p>
           )}
         </div>
       )}
 
-      {/* Pasek wyniku w fazie reveal — licznik „następne” = secondsLeft do revealUntil */}
+      {/* Pasek wyniku w fazie reveal - licznik „następne” = secondsLeft do revealUntil */}
       {answered && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "rgba(7,2,21,.96)", borderTop: "1px solid rgba(255,255,255,.1)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", fontFamily: '"Space Grotesk",sans-serif' }}>
           {hasReveal ? (
@@ -273,7 +273,7 @@ export default function Quiz({ item, mod, phase, secondsLeft, opensAt, closesAt,
             )}
             <button onClick={dismiss}
               style={{ background: "linear-gradient(135deg,#6B21E8,#4F46E5)", color: "#fff", border: "none", borderRadius: 12, padding: "14px 32px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: '"Space Grotesk",sans-serif' }}>
-              Rozumiem — wracam do testu
+              Rozumiem - wracam do testu
             </button>
           </div>
         </div>

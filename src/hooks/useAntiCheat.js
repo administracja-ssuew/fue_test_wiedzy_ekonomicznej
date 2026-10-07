@@ -6,15 +6,15 @@ import { recordViolation } from "../lib/supabase.js";
 // uczestnikach przez godzinę tabela violations rośnie do tysięcy rekordów, które
 // panel admina odpytuje co kilka sekund. Zdarzenia z okna deduplikacji NIE giną:
 // planujemy jeden zapis na koniec okna (i natychmiast przy odmontowaniu), który
-// niesie AKTUALNE liczniki — ostatni wiersz w bazie zawsze ma stan końcowy.
+// niesie AKTUALNE liczniki - ostatni wiersz w bazie zawsze ma stan końcowy.
 // (iOS wstrzymuje JS po wyjściu z aplikacji, więc zapis z handlera dojdzie po
-// powrocie — dosłanie po oknie to pokrywa.)
+// powrocie - dosłanie po oknie to pokrywa.)
 const DEDUPE_MS = 10000;
 const TYPES = ["tab_switch", "screenshot_attempt"];
 const ZERO = () => ({ total: 0, tab_switch: 0, screenshot_attempt: 0 });
 
 // Licznik w localStorage = „licznik na telefonie”: ciągły przez moduły, przerwy
-// (Quiz jest odmontowywany w intro/countdown/przerwie) i refresh — per sesja + kod.
+// (Quiz jest odmontowywany w intro/countdown/przerwie) i refresh - per sesja + kod.
 const storageKey = (sessionId, participantCode) =>
   `fue_viol_${sessionId || "none"}_${participantCode || "none"}`;
 
@@ -32,7 +32,7 @@ function load(key) {
 }
 
 function save(key, c) {
-  try { localStorage.setItem(key, JSON.stringify(c)); } catch { /* tryb prywatny / brak miejsca — licznik zostaje w pamięci */ }
+  try { localStorage.setItem(key, JSON.stringify(c)); } catch { /* tryb prywatny / brak miejsca - licznik zostaje w pamięci */ }
 }
 
 export default function useAntiCheat({ active, participantCode, sessionId }) {
@@ -106,7 +106,7 @@ export default function useAntiCheat({ active, participantCode, sessionId }) {
       }
     };
 
-    // Deterrents — silently block right-click menu, copy and text selection.
+    // Deterrents - silently block right-click menu, copy and text selection.
     // These are friction, not violations (would be far too noisy to record).
     const block = (e) => e.preventDefault();
 
@@ -116,7 +116,7 @@ export default function useAntiCheat({ active, participantCode, sessionId }) {
     document.addEventListener("copy", block);
     document.addEventListener("cut", block);
     return () => {
-      // Zaległe dosłania wysyłamy od razu — odmontowanie (koniec modułu, refresh
+      // Zaległe dosłania wysyłamy od razu - odmontowanie (koniec modułu, refresh
       // w SPA, zmiana sesji) nie może zgubić ostatniego stanu licznika.
       for (const type of TYPES) {
         if (pendingRef.current[type]) {

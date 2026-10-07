@@ -1,7 +1,7 @@
 import { toMs } from "./plan.js";
 
 // ─── Stan lokalny uczestnika (Faza 6) ─────────────────────────────────────────
-// Czyste funkcje bez Supabase — testowalne bez sieci. Uczestnik i zamrożony plan żyją
+// Czyste funkcje bez Supabase - testowalne bez sieci. Uczestnik i zamrożony plan żyją
 // w localStorage (przeżywają zamknięcie karty / restart telefonu), a ważność cache
 // wyznacza session_id: plan z innej sesji nigdy nie zostanie użyty.
 
@@ -36,7 +36,7 @@ export function loadParticipant() {
 }
 
 export function saveParticipant(p) {
-  try { localStorage.setItem(PARTICIPANT_KEY, JSON.stringify(p)); } catch (_) { /* pełny magazyn — nieistotne */ }
+  try { localStorage.setItem(PARTICIPANT_KEY, JSON.stringify(p)); } catch (_) { /* pełny magazyn - nieistotne */ }
 }
 
 export function clearParticipant() {
@@ -60,7 +60,7 @@ export function saveGameCache(sessionId, { plan, session, myAnswers }) {
     localStorage.setItem(GAME_CACHE_KEY, JSON.stringify({
       sessionId, plan: plan ?? null, session: session ?? null, myAnswers: answers ?? null, savedAt: Date.now(),
     }));
-  } catch (_) { /* ~20 KB planu — przy pełnym magazynie po prostu bez cache */ }
+  } catch (_) { /* ~20 KB planu - przy pełnym magazynie po prostu bez cache */ }
 }
 
 export function loadGameCache(sessionId) {
@@ -93,14 +93,14 @@ export function normalizeSnapshot(json) {
   };
 }
 
-// Pola sterujące przebiegiem sesji — dokładnie te, które niesie wiersz Realtime quiz_sessions.
+// Pola sterujące przebiegiem sesji - dokładnie te, które niesie wiersz Realtime quiz_sessions.
 export const CONTROL_FIELDS = ["status", "plan_anchor_at", "plan_paused_at", "plan_hold_idx", "revealed_idx", "revealed_ans"];
 const ROW_FIELDS = CONTROL_FIELDS;
 const MS_FIELDS = new Set(["plan_anchor_at", "plan_paused_at"]);
 
 // UPDATE quiz_sessions z Realtime → scal do sesji. Pole nieobecne w wierszu zostaje;
 // jawny null nadpisuje (wznowienie zeruje plan_paused_at). plan_hold_idx (sekcja 42) to
-// indeks przerwy planowej już obsłużonej/trwającej — bez niego telefon po wznowieniu
+// indeks przerwy planowej już obsłużonej/trwającej - bez niego telefon po wznowieniu
 // przerwy wróciłby do niej z projekcji lokalnej. To indeks, nie znacznik czasu (bez toMs).
 export function mergeSessionRow(session, row) {
   const out = { ...(session || {}) };
@@ -110,7 +110,7 @@ export function mergeSessionRow(session, row) {
   return out;
 }
 
-// Poprawna odpowiedź dla idx — WYŁĄCZNIE z danych odsłoniętych przez serwer.
+// Poprawna odpowiedź dla idx - WYŁĄCZNIE z danych odsłoniętych przez serwer.
 export function revealAnsFor(session, reveal, idx) {
   if (idx == null) return null;
   if (session?.revealed_idx != null && session.revealed_idx === idx) return session.revealed_ans ?? null;
@@ -135,15 +135,15 @@ export function snapshotSessionId(hint, currentSession) {
 }
 
 // prev = { session, plan, myAnswers, reveal, correctTotal } → nowy stan + switched.
-// keepControl: wiersz Realtime przyszedł, gdy snapshot był w locie — nie wiadomo, który stan
+// keepControl: wiersz Realtime przyszedł, gdy snapshot był w locie - nie wiadomo, który stan
 // jest nowszy; zostawiamy pola sterujące z Realtime (kolejność commitów) i dociągamy nowy
-// snapshot (G2/H1, 06-DIAG). Przy przełączeniu sesji ignorowane — stan w całości ze snapshotu.
+// snapshot (G2/H1, 06-DIAG). Przy przełączeniu sesji ignorowane - stan w całości ze snapshotu.
 export function applySnapshot(prev, normalized, { keepControl = false } = {}) {
   const p = prev || {};
   const n = normalized || {};
   const switched = (n.session?.id ?? null) !== (p.session?.id ?? null);
   if (switched) {
-    // Inna sesja niż przypięta — nic ze starej nie może przeciec (plan, odpowiedzi, wynik).
+    // Inna sesja niż przypięta - nic ze starej nie może przeciec (plan, odpowiedzi, wynik).
     return {
       session: n.session ?? null,
       plan: n.plan ?? null,
@@ -157,14 +157,14 @@ export function applySnapshot(prev, normalized, { keepControl = false } = {}) {
   for (const [qid, a] of Object.entries(p.myAnswers || {})) {
     const srv = myAnswers[qid];
     if (!srv) {
-      // Zapis w locie (pending) albo nieudany — serwer jeszcze go nie zna; nie gubimy wyboru.
+      // Zapis w locie (pending) albo nieudany - serwer jeszcze go nie zna; nie gubimy wyboru.
       if (a.status === "pending" || a.status === "failed") myAnswers[qid] = a;
     } else if (srv.correct == null && a.correct != null && a.chosen === srv.chosen) {
-      // Poprawność odsłonięta lokalnie (revealed_*) a snapshot jeszcze przed bramką — zostaw.
+      // Poprawność odsłonięta lokalnie (revealed_*) a snapshot jeszcze przed bramką - zostaw.
       myAnswers[qid] = { ...srv, correct: a.correct };
     }
   }
-  // Snapshot nie niesie revealed_* — zachowaj je z Realtime.
+  // Snapshot nie niesie revealed_* - zachowaj je z Realtime.
   let session = n.session ? { ...(p.session || {}), ...n.session } : null;
   if (session && keepControl && p.session) {
     for (const k of CONTROL_FIELDS) {

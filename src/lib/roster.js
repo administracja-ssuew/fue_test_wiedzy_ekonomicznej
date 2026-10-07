@@ -1,9 +1,9 @@
 // ─── Lista uczestników „kto utknął” dla admina (P7-ADMIN-STUCK, 07-RESEARCH Wzorzec 10) ─
 // Dlaczego BEZ presence w trakcie gry: limity Realtime (Pro: 500 msg/s, 50 presence msg/s)
-// liczą doręczenia z fan-outem — fala reconnectu 100 telefonów w kanale presence miasta to
+// liczą doręczenia z fan-outem - fala reconnectu 100 telefonów w kanale presence miasta to
 // ~10 000 doręczeń w kilka sekund, a przekroczenie limitu rozłącza połączenia (w tym jedyny
 // kanał sterujący rozgrywką). Sygnałem żywotności jest więc wiersz w `answers` ostatniego
-// ZAMKNIĘTEGO pytania: żywy telefon zawsze go zostawia (odpowiedź albo pusty zapis 0–1 s
+// ZAMKNIĘTEGO pytania: żywy telefon zawsze go zostawia (odpowiedź albo pusty zapis 0-1 s
 // po `closes`). Koszt: +1 RPC na pytanie (wynik po zamknięciu się nie zmienia → cache).
 // W poczekalni (waiting) używamy istniejącej listy presence lobby admina.
 
@@ -19,7 +19,7 @@ export const ROSTER_STATES = {
 // Okno, w którym próba wejścia z innego telefonu (code_attempts reason='taken') jest „świeża”.
 export const CONFLICT_WINDOW_MS = 5 * 60 * 1000;
 
-// Zapas po `closes`: pusty zapis telefonu (0–1 s) + bramka odsłonięcia (1,5 s) + opóźnienie sieci.
+// Zapas po `closes`: pusty zapis telefonu (0-1 s) + bramka odsłonięcia (1,5 s) + opóźnienie sieci.
 export const CLOSED_GRACE_MS = 4500;
 
 // Indeks ostatniego pytania, które zamknęło się co najmniej graceMs temu (czas planu,
@@ -36,7 +36,7 @@ export function lastClosedIndex(items, anchorMs, pausedAtMs, nowMs, graceMs = CL
 }
 
 // lastClosed: null (brak zamkniętego pytania / danych) | "answered" | "empty" (pusty zapis) | "missing" (brak wiersza).
-// inLobby: true / false / null (presence nieznane — np. kanał nie działa → nie oznaczamy jako rozłączony).
+// inLobby: true / false / null (presence nieznane - np. kanał nie działa → nie oznaczamy jako rozłączony).
 export function classifyParticipant({ status, inLobby = null, lastClosed = null, conflictAt = null, nowMs }) {
   if (conflictAt != null && nowMs - conflictAt <= CONFLICT_WINDOW_MS) return "conflict";
   if (status === "waiting") return inLobby === false ? "disconnected" : "lobby";

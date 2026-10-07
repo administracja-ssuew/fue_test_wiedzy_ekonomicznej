@@ -1,14 +1,14 @@
 import { render, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-// Anti-cheat nie jest przedmiotem testu — cały hook podmieniony.
+// Anti-cheat nie jest przedmiotem testu - cały hook podmieniony.
 vi.mock("../hooks/useAntiCheat.js", () => ({
   default: () => ({ violations: 0, showWarning: false, lastType: "", dismiss: () => {} }),
 }));
 
 import Quiz from "./Quiz.jsx";
 
-// P7-IOS-HAPTIC — nakładka <label> z ukrytym przełącznikiem (iOS 18+) w kafelku odpowiedzi.
+// P7-IOS-HAPTIC - nakładka <label> z ukrytym przełącznikiem (iOS 18+) w kafelku odpowiedzi.
 function baseProps(extra = {}) {
   return {
     item: { id: "q1", q: "Pytanie?", opts: ["A1", "B1", "C1", "D1"], tpq: 20 },
@@ -44,7 +44,7 @@ afterEach(() => {
   delete navigator.vibrate;
 });
 
-describe("Quiz — haptyka iOS (P7-IOS-HAPTIC)", () => {
+describe("Quiz - haptyka iOS (P7-IOS-HAPTIC)", () => {
   it("przełącznik dostępny, faza quiz, brak wyboru → każdy kafelek ma label[aria-hidden] z input[switch]", () => {
     enableSwitch();
     const { container } = render(<Quiz {...baseProps()} />);

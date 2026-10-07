@@ -42,7 +42,7 @@ export default function ConnectionBanner() {
         animation: offline ? "pulse 1s infinite" : "none", display: "inline-block",
       }} />
       {offline
-        ? "Brak połączenia z internetem — próbuję połączyć ponownie…"
+        ? "Brak połączenia z internetem - próbuję połączyć ponownie…"
         : "Połączenie przywrócone"}
     </div>
   );

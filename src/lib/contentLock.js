@@ -1,11 +1,11 @@
 // ─── Blokada edycji treści (paczka 261007-ihg, sekcja 46 SQL) ────────────────
 // Superadmin włącza/wyłącza blokadę (app_settings.content_locked). Przy włączonej
-// city_admin nie może dodawać/edytować/usuwać/przestawiać pytań — wymusza to RLS
-// w bazie (46.4–46.7); tu tylko logika UI. Czysta logika, bez React/supabase.
+// city_admin nie może dodawać/edytować/usuwać/przestawiać pytań - wymusza to RLS
+// w bazie (46.4-46.7); tu tylko logika UI. Czysta logika, bez React/supabase.
 
 export const CONTENT_LOCKED_TEXT = "🔒 Edycja pytań i modułów jest zablokowana przez superadmina.";
 
-// Superadmin zawsze; city_admin tylko bez blokady; inne role — nigdy.
+// Superadmin zawsze; city_admin tylko bez blokady; inne role - nigdy.
 export function canEditContent({ role, locked } = {}) {
   if (role === "superadmin") return true;
   if (role === "city_admin") return !locked;

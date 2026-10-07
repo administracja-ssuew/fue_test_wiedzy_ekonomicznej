@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-// Audio TYLKO dla Live View (projektor) — nie obciąża telefonów uczestników.
+// Audio TYLKO dla Live View (projektor) - nie obciąża telefonów uczestników.
 // Pliki w public/audio/ (bg/countdown/reveal/podium .mp3). Brak pliku = dźwięk nie gra.
-// Autoplay przeglądarki wymaga gestu — stąd przycisk 🔊/🔇.
+// Autoplay przeglądarki wymaga gestu - stąd przycisk 🔊/🔇.
 // Suwaki: osobno głośność tła i efektów. Ducking: tło przycisza się na czas efektu.
 const FILES = {
   bg:        "/audio/bg.mp3",
@@ -30,7 +30,7 @@ export default function useLiveAudio() {
     return () => { try { bg.pause(); } catch (_) {} clearTimeout(duckRef.current); };
   }, []);
 
-  // Głośność tła (z uwzględnieniem aktualnego duckingu wyłączamy — ustawiamy pełną).
+  // Głośność tła (z uwzględnieniem aktualnego duckingu wyłączamy - ustawiamy pełną).
   useEffect(() => {
     bgVolRef.current = bgVol;
     if (bgRef.current) bgRef.current.volume = bgVol;
@@ -48,7 +48,7 @@ export default function useLiveAudio() {
     if (!enabled) return;
     const a = sfxRef.current[k]; if (!a) return;
     a.volume = sfxVol;
-    // Ducking — przycisz tło na czas efektu, potem przywróć.
+    // Ducking - przycisz tło na czas efektu, potem przywróć.
     const bg = bgRef.current;
     if (bg) {
       bg.volume = bgVolRef.current * DUCK;

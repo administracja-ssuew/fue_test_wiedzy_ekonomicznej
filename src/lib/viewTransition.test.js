@@ -37,7 +37,7 @@ describe("isSlowViewTransition", () => {
 });
 
 // P7-VT-SMOOTH (07-RESEARCH Wzorzec 4)
-describe("shouldStartViewTransition — granica startu pytania", () => {
+describe("shouldStartViewTransition - granica startu pytania", () => {
   const ok = { structural: true, available: true, busy: false, slow: false, frameGapMs: 16 };
 
   it("countdown/intro → quiz nigdy przez VT (start pytania mierzony sondą)", () => {

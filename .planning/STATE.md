@@ -133,7 +133,8 @@ None — Phase 1 can start immediately.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260902-lp2 | Naprawy po audycie obciążeniowym + 5 zadań użytkownika | 2026-09-02 | `5d76829` | [260902-lp2-naprawy-po-audycie-obciazeniowym-5-zadan](./quick/260902-lp2-naprawy-po-audycie-obciazeniowym-5-zadan/) |
-| 261007-ihg | Paczka 9 poprawek przed TWE 27.10 (landing, przerwa tylko po module 3, potwierdzenie podium, blokada edycji, średni czas 3 miejsca) — czeka na SQL 46 + deploy | 2026-10-07 | `3013231` | [261007-ihg-paczka-9-poprawek-przed-twe-27-10](./quick/261007-ihg-paczka-9-poprawek-przed-twe-27-10/) |
+| 261007-ihg | Paczka 9 poprawek przed TWE 27.10 (landing, przerwa tylko po module 3, potwierdzenie podium, blokada edycji, średni czas 3 miejsca) — SQL 46 na prod, front wdrożony (index-B4Lo_n1O.js), verify-prod 70/70, verify-plan 47/47 | 2026-10-07 | `3013231` | [261007-ihg-paczka-9-poprawek-przed-twe-27-10](./quick/261007-ihg-paczka-9-poprawek-przed-twe-27-10/) |
+| fast-47 | Sekcja 47 SQL: city_admin usuwa pytania tylko we własnym mieście (admin_delete_question / admin_delete_city_questions) — czeka na wgranie w SQL Editorze | 2026-10-07 | `f43e52c` | — |
 
 **Otwarte po 260902-lp2** (szczegóły w SUMMARY):
 

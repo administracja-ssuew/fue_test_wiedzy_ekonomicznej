@@ -9,7 +9,8 @@ import { REVEAL_MS } from "./gameLogic.js";
 
 const A = fixtures.anchorMs;
 const ITEMS = fixtures.items;          // legacy: plan zamrożony przed sekcją 42 (reveal 6 s, bez przerw)
-const V2 = fixtures.v2;                // reveal 11,5 s + przerwy planowe po modułach 2 i 4
+const V2 = fixtures.v2;                // plan zamrożony przy sekcji 42 (przerwy po 2 i 4) — sesje sprzed sekcji 46
+const V3 = fixtures.v3;                // sekcja 46: przerwa tylko po module 3
 const rel = (t) => (t == null ? null : A + t);
 
 describe("stałe i toMs", () => {
@@ -28,8 +29,8 @@ describe("stałe i toMs", () => {
 });
 
 describe("buildPlanItems", () => {
-  it("buduje items zgodne z fixture'ami v2 (kontrakt z SQL build_plan_items)", () => {
-    expect(buildPlanItems(V2.questions, V2.modules)).toEqual(V2.items);
+  it("buduje items zgodne z fixture'ami v3 (kontrakt z SQL build_plan_items, sekcja 46)", () => {
+    expect(buildPlanItems(V2.questions, V2.modules)).toEqual(V3.items);
   });
 
   it("pytania legacy → okno odsłony 11,5 s, brak przerwy po module 1", () => {
@@ -42,12 +43,15 @@ describe("buildPlanItems", () => {
     }
   });
 
-  it("znacznik h tylko na ostatnim pytaniu modułu 2 i 4, gdy po nim jest kolejny moduł", () => {
+  it("znacznik h tylko na ostatnim pytaniu modułu 3, gdy po nim jest kolejny moduł", () => {
     const items = buildPlanItems(V2.questions, V2.modules);
-    expect(items.filter((x) => x.h).map((x) => x.i)).toEqual([2, 4]);
-    // moduł 4 jako ostatni w planie → brak przerwy (quiz się po prostu kończy)
-    const tail = buildPlanItems(V2.questions.slice(0, 5), V2.modules);
-    expect(tail.filter((x) => x.h).map((x) => x.i)).toEqual([2]);
+    expect(items.filter((x) => x.h).map((x) => x.i)).toEqual([3]);
+    // moduł 3 jako ostatni w planie → brak przerwy (quiz się po prostu kończy)
+    const tail = buildPlanItems(V2.questions.slice(0, 4), V2.modules);
+    expect(tail.filter((x) => x.h).map((x) => x.i)).toEqual([]);
+    // po module 3 jest moduł 4 → przerwa
+    const five = buildPlanItems(V2.questions.slice(0, 5), V2.modules);
+    expect(five.filter((x) => x.h).map((x) => x.i)).toEqual([3]);
   });
 
   it("puste pytania → pusta lista", () => {
@@ -415,7 +419,7 @@ describe("moduły — plan zamrożony przy budowie", () => {
     mods[1].timePerQ = 5;
     const after = projectPlanState({ items, anchorMs: A, status: "running", nowMs: A + 50000 });
     expect(after).toEqual(before);
-    expect(items).toEqual(V2.items);
+    expect(items).toEqual(V3.items);
   });
 
   it("brak modułu → tpq 60", () => {

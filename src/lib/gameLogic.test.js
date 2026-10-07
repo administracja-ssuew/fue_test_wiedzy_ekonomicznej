@@ -8,8 +8,8 @@ describe("stałe planu (G1/G3)", () => {
     expect(REVEAL_MS).toBe(11500);
     expect(REVEAL_SECONDS).toBe(11.5);
   });
-  it("przerwy planowe po modułach 2 i 4", () => {
-    expect(BREAK_AFTER_MODULES).toEqual([2, 4]);
+  it("przerwa planowa tylko po module 3 (decyzja 261007-ihg)", () => {
+    expect(BREAK_AFTER_MODULES).toEqual([3]);
   });
 });
 

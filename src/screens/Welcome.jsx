@@ -1,12 +1,9 @@
 import { useState, useEffect } from "react";
 import { CITIES } from "../data/questions.js";
 
-// ─── TODO: ustaw datę i godzinę startu testu ─────────────────────────────────
-const TEST_START = new Date("2026-10-01T10:00:00"); // <-- zmień przed eventem
-
-// ─── Placeholder content — podmień przed eventem ─────────────────────────────
-
-const EVENT_LINK = "#TODO"; // TODO: URL strony wydarzenia TWE
+// ─── Start testu: 27.10.2026, 10:00 czasu polskiego ──────────────────────────
+// 27.10 to już czas zimowy (CET, UTC+1) — jawny offset, żeby nie zależeć od strefy telefonu.
+const TEST_START = new Date("2026-10-27T10:00:00+01:00");
 
 // SVG icons (no icon library needed)
 const IconFacebook = () => (
@@ -35,12 +32,13 @@ const SOCIAL_LINKS = [
   { label: "Strona FUE",    icon: IconGlobe,     href: "https://fue.psrp.org.pl/", color: "#6B21E8" },
 ];
 
+// Bez logotypów (decyzja organizatorów 261007-ihg) — znaczek ze skrótem w kolorze uczelni.
 const UNIVERSITIES = [
-  { abbr: "UEK",   city: "Kraków",    logo: "/uek.jpg",   color: "#D41D1F" },
-  { abbr: "SGH",   city: "Warszawa",  logo: "/sgh.png",   color: "#82179F" },
-  { abbr: "UEP",   city: "Poznań",    logo: "/uep.png",   color: "#699BF2" },
-  { abbr: "UEW",  city: "Wrocław",   logo: "/uewr.png",  color: "#00A74D" },
-  { abbr: "UEKat", city: "Katowice",  logo: "/uekat.png", color: "#FFCC3C" },
+  { abbr: "UEK",   city: "Kraków",    color: "#D41D1F" },
+  { abbr: "SGH",   city: "Warszawa",  color: "#82179F" },
+  { abbr: "UEP",   city: "Poznań",    color: "#699BF2" },
+  { abbr: "UEW",   city: "Wrocław",   color: "#00A74D" },
+  { abbr: "UEKat", city: "Katowice",  color: "#FFCC3C" },
 ];
 
 const ORGANIZERS = [
@@ -108,14 +106,6 @@ const RULES = {
   // Kraków: [ ... ],
 };
 
-const CITY_ADDRESSES = {
-  Kraków:   "ul. Rakowicka 27, 31-510 Kraków — TODO: sala",
-  Warszawa: "al. Niepodległości 162, 02-554 Warszawa — TODO: sala",
-  Poznań:   "al. Niepodległości 10, 61-875 Poznań — TODO: sala",
-  Wrocław:  "ul. Komandorska 118/120, 53-345 Wrocław — TODO: sala",
-  Katowice: "ul. 1 Maja 50, 40-287 Katowice — TODO: sala",
-};
-
 // ─── Style helpers ───────────────────────────────────────────────────────────
 
 const W = {
@@ -133,48 +123,11 @@ const W = {
   }),
 };
 
-// ─── University ticker ────────────────────────────────────────────────────────
-
-function UniversityTicker() {
-  const items = [...UNIVERSITIES, ...UNIVERSITIES, ...UNIVERSITIES];
-  return (
-    <div style={{ background: "rgba(0,0,0,.35)", borderTop: "1px solid rgba(255,255,255,.08)", overflow: "hidden", padding: "18px 0", flexShrink: 0 }}>
-      <div style={{ display: "flex", width: "max-content", animation: "ticker 24s linear infinite", alignItems: "center" }}>
-        {items.map((u, i) => (
-          <div key={i} style={{ background: "#fff", borderRadius: 14, width: 200, height: 80, flexShrink: 0, marginRight: 24, display: "flex", alignItems: "center", justifyContent: "center", padding: "10px 20px" }}>
-            <img src={u.logo} alt={u.abbr} style={{ height: 52, width: "auto", objectFit: "contain", maxWidth: 160 }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Social bar ───────────────────────────────────────────────────────────────
 
 function SocialBar() {
   return (
-    <div style={{ background: "rgba(0,0,0,.5)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-
-        {/* Event link — animowany */}
-        <a href={EVENT_LINK} target="_blank" rel="noreferrer"
-          style={{
-            display: "flex", alignItems: "center", gap: 7,
-            background: "linear-gradient(135deg, rgba(107,33,232,.22), rgba(79,70,229,.18))",
-            borderRadius: 20, padding: "5px 14px",
-            fontSize: 11, color: "#C4B5FD", textDecoration: "none", fontWeight: 600,
-            whiteSpace: "nowrap", letterSpacing: .3,
-            animation: "borderGlow 2.5s ease infinite",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "linear-gradient(135deg, rgba(107,33,232,.4), rgba(79,70,229,.35))")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "linear-gradient(135deg, rgba(107,33,232,.22), rgba(79,70,229,.18))")}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10D9A0", boxShadow: "0 0 6px #10D9A0", animation: "pulse 1.5s infinite", flexShrink: 0 }} />
-          TWE 2026 — Strona wydarzenia
-          <span style={{ fontSize: 12, opacity: .7 }}>↗</span>
-        </a>
-      </div>
-
+    <div style={{ background: "rgba(0,0,0,.5)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
       <div style={{ display: "flex", gap: 7 }}>
         {SOCIAL_LINKS.map((s) => {
           const Icon = s.icon;
@@ -192,7 +145,7 @@ function SocialBar() {
   );
 }
 
-// ─── City selector (shared between Koordynatorzy / Informator) ───────────────
+// ─── City selector (Koordynatorzy) ────────────────────────────────────────────
 
 function CitySelector({ city, setCity }) {
   return (
@@ -309,6 +262,8 @@ function Shape({ style, gradient, delay = 0 }) {
 
 // Wspólny formularz zapisów dla wszystkich miast — podmień na właściwy URL.
 const REGISTRATION_URL = "#";
+// Jeden infopack dla wszystkich miast — podmień na link do PDF.
+const INFOPACK_URL = "#";
 
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   const [play, setPlay] = useState(() => document.fonts.status === "loaded" ? "running" : "paused");
@@ -463,8 +418,8 @@ function OrganizatorszyTab() {
               style={{ ...W.card({ padding: "20px 16px" }), textAlign: "center", animation: "cardIn .5s ease both", animationDelay: `${.15 + i * .07}s`, transition: "transform .2s, box-shadow .2s" }}
               onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-4px)"; e.currentTarget.style.boxShadow = `0 12px 30px ${u.color}25`; }}
               onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
-              <div style={{ width: 56, height: 56, margin: "0 auto 12px", borderRadius: 14, background: u.logo ? "#fff" : `linear-gradient(135deg,${u.color}30,${u.color}12)`, border: `1px solid ${u.color}45`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 20, letterSpacing: 1, color: u.color, overflow: "hidden" }}>
-                {u.logo ? <img src={u.logo} alt={u.abbr} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6 }} /> : u.abbr}
+              <div style={{ width: 56, height: 56, margin: "0 auto 12px", borderRadius: 14, background: `linear-gradient(135deg,${u.color}30,${u.color}12)`, border: `1px solid ${u.color}45`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: '"Bebas Neue"', fontSize: 20, letterSpacing: 1, color: u.color, overflow: "hidden" }}>
+                {u.abbr}
               </div>
               <p style={{ fontSize: 12, color: "#C4B5FD", fontWeight: 700, lineHeight: 1.35 }}>{UNIV_NAMES[u.abbr] || u.abbr}</p>
             </div>
@@ -482,8 +437,8 @@ function OrganizatorszyTab() {
             return (
               <div key={u.abbr}
                 style={{ ...W.card({ padding: "16px 18px", borderColor: `${u.color}30` }), display: "flex", alignItems: "center", gap: 13, animation: "cardIn .5s ease both", animationDelay: `${.2 + i * .07}s` }}>
-                <div style={{ width: 46, height: 46, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: u.logo ? "#fff" : `linear-gradient(135deg,${u.color}30,${u.color}12)`, border: `1px solid ${u.color}45`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {u.logo ? <img src={u.logo} alt={u.abbr} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} /> : <span style={{ fontFamily: '"Bebas Neue"', fontSize: 18, letterSpacing: 1, color: u.color }}>{u.abbr}</span>}
+                <div style={{ width: 46, height: 46, borderRadius: 12, flexShrink: 0, overflow: "hidden", background: `linear-gradient(135deg,${u.color}30,${u.color}12)`, border: `1px solid ${u.color}45`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontFamily: '"Bebas Neue"', fontSize: 18, letterSpacing: 1, color: u.color }}>{u.abbr}</span>
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <p style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{gov.type}</p>
@@ -568,15 +523,16 @@ function KoordynatorzyTab({ city, setCity }) {
 // Przywrócenie: zmień na true. Kod sekcji poniżej zostaje nietknięty.
 const SHOW_HARMONOGRAM = false;
 
-function InformatorTab({ city, setCity }) {
+// Informator jest wspólny dla wszystkich miast (decyzja 261007-ihg) — bez wyboru miasta;
+// kontakty per miasto są w zakładce Koordynatorzy.
+function InformatorTab({ onShowCoordinators }) {
   const INFO_SECTIONS = [
     ...(SHOW_HARMONOGRAM ? [{ id: "harmonogram", label: "📅 Harmonogram" }] : []),
-    { id: "kontakt",     label: "📞 Kontakt"      },
+    { id: "infopack", label: "📄 Infopack" },
   ];
 
-  const [section, setSection] = useState(INFO_SECTIONS[0].id);
-  const coord = COORDINATORS_DATA[city];
-  const address = CITY_ADDRESSES[city];
+  const [section, setSection] = useState("infopack");
+  const schedule = SCHEDULE.default;
 
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
@@ -585,10 +541,6 @@ function InformatorTab({ city, setCity }) {
           <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Wszystko co musisz wiedzieć</span>
           <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Informator uczestnika</h2>
           <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
-        </div>
-
-        <div style={{ animation: "blurIn .4s .1s ease both" }}>
-          <CitySelector city={city} setCity={setCity} />
         </div>
 
         {/* Sekcja tabs — ukryte, gdy została tylko jedna sekcja (pojedyncza zakładka
@@ -605,15 +557,11 @@ function InformatorTab({ city, setCity }) {
 
         {SHOW_HARMONOGRAM && section === "harmonogram" && (
           <div key="harmonogram" style={{ animation: "blurIn .35s ease both" }}>
-            <div style={{ ...W.card({ padding: "14px 18px", marginBottom: 24, background: "rgba(107,33,232,.07)", borderColor: "rgba(107,33,232,.28)" }) }}>
-              <p style={{ fontSize: 10, color: "#9B89CC", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>📍 Miejsce</p>
-              <p style={{ fontSize: 14, fontWeight: 600 }}>{address}</p>
-            </div>
-            {(SCHEDULE[city] || SCHEDULE.default).map((s, i) => (
+            {schedule.map((s, i) => (
               <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start", paddingBottom: 20, animation: "cardIn .4s ease both", animationDelay: `${i * .07}s` }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 20 }}>
                   <div style={{ width: 10, height: 10, borderRadius: "50%", background: i === 2 ? "#6B21E8" : "#4F46E5", border: "2px solid rgba(107,33,232,.4)", marginTop: 5, ...(i === 2 ? { boxShadow: "0 0 8px rgba(107,33,232,.6)" } : {}) }} />
-                  {i < (SCHEDULE[city] || SCHEDULE.default).length - 1 && <div style={{ width: 2, flex: 1, background: "rgba(107,33,232,.2)", marginTop: 4, minHeight: 24 }} />}
+                  {i < schedule.length - 1 &&<div style={{ width: 2, flex: 1, background: "rgba(107,33,232,.2)", marginTop: 4, minHeight: 24 }} />}
                 </div>
                 <div>
                   <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 22, color: "#F5C518", letterSpacing: 1.5, lineHeight: 1 }}>{s.time}</p>
@@ -624,19 +572,25 @@ function InformatorTab({ city, setCity }) {
           </div>
         )}
 
-        {section === "kontakt" && (
-          <div key="kontakt" style={{ animation: "blurIn .35s ease both" }}>
-            <div style={{ ...W.card({ padding: "28px", borderColor: `${coord.color}35` }), background: `linear-gradient(135deg, ${coord.color}10, ${coord.color}05)` }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: `${coord.color}22`, border: `2px solid ${coord.color}44`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 6px 20px ${coord.color}25`, fontFamily: '"Bebas Neue"', fontSize: 16, letterSpacing: 1, color: coord.color }}>
-                  {coord.abbr}
-                </div>
-                <div>
-                  <p style={{ fontWeight: 700, fontSize: 16 }}>{coord.name}</p>
-                  <p style={{ fontSize: 12, color: "#9B89CC", marginTop: 2 }}>{coord.role}</p>
-                </div>
-              </div>
-              <ContactRows coord={coord} />
+        {section === "infopack" && (
+          <div key="infopack" style={{ animation: "blurIn .35s ease both" }}>
+            <div style={{ ...W.card({ padding: "28px", borderColor: "rgba(245,197,24,.28)" }), background: "linear-gradient(135deg, rgba(245,197,24,.08), rgba(107,33,232,.06))", textAlign: "center" }}>
+              <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 28, letterSpacing: 1.5, color: "#EDE9FE", lineHeight: 1 }}>📄 Infopack uczestnika</p>
+              <p style={{ fontSize: 14, color: "#9B89CC", lineHeight: 1.6, margin: "12px auto 22px", maxWidth: 440 }}>
+                Jeden informator dla wszystkich miast — zasady testu, harmonogram i praktyczne informacje.
+              </p>
+              <a href={INFOPACK_URL} target="_blank" rel="noopener noreferrer"
+                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px) scale(1.02)"; e.currentTarget.style.boxShadow = "0 14px 38px rgba(245,197,24,.5)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 26px rgba(245,197,24,.35)"; }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", background: "linear-gradient(135deg,#F5C518,#E5A800)", color: "#07021A", fontWeight: 800, fontSize: 15, padding: "14px 32px", borderRadius: 12, boxShadow: "0 8px 26px rgba(245,197,24,.35)", transition: "all .2s", fontFamily: '"Space Grotesk",sans-serif', letterSpacing: .3 }}>
+                📥 Pobierz infopack
+              </a>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+              <button onClick={onShowCoordinators}
+                style={{ ...W.btn("ghost", { width: "auto", fontSize: 13, padding: "10px 18px" }) }}>
+                Kontakt do koordynatora Twojej uczelni →
+              </button>
             </div>
           </div>
         )}
@@ -719,10 +673,8 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
         {tab === "organizatorzy" && <OrganizatorszyTab />}
         {tab === "partnerzy"     && <PartnerzyTab />}
         {tab === "koordynatorzy" && <KoordynatorzyTab city={city} setCity={setCity} />}
-        {tab === "informator"    && <InformatorTab city={city} setCity={setCity} />}
+        {tab === "informator"    && <InformatorTab onShowCoordinators={() => setTab("koordynatorzy")} />}
       </div>
-
-      <UniversityTicker />
     </div>
   );
 }

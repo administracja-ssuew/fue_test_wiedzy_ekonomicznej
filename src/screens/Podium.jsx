@@ -5,7 +5,7 @@ function PodiumScreen({ onBack, podStep, setPodStep = () => {}, results = [], re
   const shownAt = (r) => count - r + 1;       // miejsce r odsłaniane gdy podStep >= to
   const done = podStep >= count;
   const nextPlace = count - podStep;          // które miejsce odsłoni kolejny klik
-  const fmtAvg = (ms) => ms == null ? "" : "śr. " + (ms / 1000).toFixed(2).replace(".", ",") + " s";
+  const fmtAvg = (ms) => ms == null ? "" : "śr. " + (ms / 1000).toFixed(3).replace(".", ",") + " s";
 
   // Wiersz listy dla miejsc 4–10. Top-5 wyróżnione (awans do finału ogólnopolskiego).
   // #1 — renderowany DOPIERO po odsłonięciu (wskakuje z animacją pi), bez migania na starcie.

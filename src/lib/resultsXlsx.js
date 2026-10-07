@@ -8,10 +8,10 @@
 
 import { VIOLATION_LABELS, violationsFor } from "./violations.js";
 
-// ms → sekundy z 2 miejscami (12345 → 12.35), spójnie z CSV i podium.
-export const secs = (ms) => (ms == null ? "" : Math.round(ms / 10) / 100);
-// Komórka czasu z formatem 0.00 — Excel pokaże „12,30”, a nie „12,3”.
-const secsCell = (ms) => (ms == null ? "" : { v: secs(ms), fmt: "0.00" });
+// ms → sekundy z 3 miejscami (12345 → 12.345), 3 miejsca, spójnie z CSV i podium.
+export const secs = (ms) => (ms == null ? "" : Math.round(ms) / 1000);
+// Komórka czasu z formatem 0.000 — Excel pokaże „12,300”, a nie „12,3”.
+const secsCell = (ms) => (ms == null ? "" : { v: secs(ms), fmt: "0.000" });
 
 export function buildResultsSheets({ results, rows, city, violations }) {
   // Arkusz 1 — ranking (ta sama kolejność co na podium).

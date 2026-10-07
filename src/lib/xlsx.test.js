@@ -97,11 +97,16 @@ describe("buildXlsxBytes", () => {
     expect(t).not.toContain('r="B1"');
   });
 
-  it("styles.xml: cellXfs [0 ogólny, 1 numFmtId=2 (0.00)] + override i relacja", () => {
+  it("styles.xml: cellXfs [0 ogólny, 1 numFmtId=2 (0.00), 2 numFmtId=164 (0.000)] + override i relacja", () => {
     const t = text([{ name: "T", rows: [["a"]] }]);
     const styles = t.slice(t.indexOf("<styleSheet"), t.indexOf("</styleSheet>"));
-    expect(styles).toContain('<cellXfs count="2">');
+    expect(styles).toContain('<cellXfs count="3">');
     expect(styles).toContain('numFmtId="2"');
+    expect(styles).toContain('numFmtId="164"');
+    expect(styles).toContain('formatCode="0.000"');
+    // ECMA-376: <numFmts> musi stać przed <fonts>, inaczej Excel zgłasza uszkodzony plik.
+    expect(styles.indexOf("<numFmts")).toBeGreaterThan(-1);
+    expect(styles.indexOf("<numFmts")).toBeLessThan(styles.indexOf("<fonts"));
     expect(styles).toContain('applyNumberFormat="1"');
     expect(t).toContain('<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>');
     expect(t).toMatch(/<Relationship Id="rId\d+" Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/styles" Target="styles\.xml"\/>/);
@@ -119,6 +124,11 @@ describe("buildXlsxBytes", () => {
     const t = text([{ name: "T", rows: [[{ v: 12.35, fmt: "0.00" }, 7]] }]);
     expect(t).toContain('<c r="A1" s="1"><v>12.35</v></c>');
     expect(t).toContain('<c r="B1"><v>7</v></c>');
+  });
+
+  it('komórka { v, fmt: "0.000" } → s="2" (3 miejsca, średni czas)', () => {
+    const t = text([{ name: "T", rows: [[{ v: 12.345, fmt: "0.000" }]] }]);
+    expect(t).toContain('<c r="A1" s="2"><v>12.345</v></c>');
   });
 
   it("obiekt komórki z pustą wartością → brak komórki", () => {

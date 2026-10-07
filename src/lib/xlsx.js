@@ -90,11 +90,13 @@ function sheetXml(rows, sst) {
     row.forEach((v, c) => {
       if (v === null || v === undefined || v === "") return; // pusta komórka = brak <c>
       const ref = `${colName(c)}${r + 1}`;
-      // Liczba z formatem: { v: 12.35, fmt: "0.00" } → styl 1 (numFmtId 2). Bez stylu
-      // Excel pokazuje liczbę w formacie Ogólnym, czyli 12.3 jako „12,3”, a nie „12,30”.
+      // Liczba z formatem: { v: 12.35, fmt: "0.00" } → styl 1 (numFmtId 2), { v: 12.345,
+      // fmt: "0.000" } → styl 2 (własny numFmtId 164). Bez stylu Excel pokazuje liczbę
+      // w formacie Ogólnym, czyli 12.3 jako „12,3”, a nie „12,300”.
       if (v && typeof v === "object") {
         if (typeof v.v === "number" && Number.isFinite(v.v)) {
-          out.push(`<c r="${ref}"${v.fmt === "0.00" ? ' s="1"' : ""}><v>${v.v}</v></c>`);
+          const s = v.fmt === "0.00" ? ' s="1"' : v.fmt === "0.000" ? ' s="2"' : "";
+          out.push(`<c r="${ref}"${s}><v>${v.v}</v></c>`);
         }
         return; // obiekt bez liczby ({ v: "" } / { v: null }) = pusta komórka
       }
@@ -108,16 +110,19 @@ function sheetXml(rows, sst) {
 }
 
 // Minimalny arkusz stylów. cellXfs: 0 = ogólny (domyślny), 1 = wbudowany format
-// numFmtId 2 („0.00”, ECMA-376 — nie wymaga własnego <numFmts>). Excel wymaga
-// kompletu fonts/fills/borders/cellStyleXfs, inaczej zgłasza uszkodzony plik.
+// numFmtId 2 („0.00”), 2 = własny format numFmtId 164 („0.000”, z <numFmts> —
+// ECMA-376 wymaga numFmts PRZED fonts). Excel wymaga kompletu
+// fonts/fills/borders/cellStyleXfs, inaczej zgłasza uszkodzony plik.
 const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
   + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+  + '<numFmts count="1"><numFmt numFmtId="164" formatCode="0.000"/></numFmts>'
   + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
   + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
   + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
   + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-  + '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-  + '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+  + '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+  + '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+  + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
   + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
   + '</styleSheet>';
 
@@ -169,8 +174,8 @@ function zip(files) {
 /**
  * Buduje skoroszyt .xlsx jako surowe bajty. Wydzielone z buildXlsx, bo Blob w jsdom
  * nie implementuje arrayBuffer() — testy sprawdzają strukturę ZIP-a na bajtach.
- * Komórka: string | number | null | { v: number, fmt?: "0.00" } (liczba z formatem 2 miejsc).
- * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"}>>}>} sheets
+ * Komórka: string | number | null | { v: number, fmt?: "0.00" | "0.000" } (liczba z formatem 2 lub 3 miejsc).
+ * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"|"0.000"}>>}>} sheets
  * @returns {Uint8Array}
  */
 export function buildXlsxBytes(sheets) {
@@ -224,7 +229,7 @@ export function buildXlsxBytes(sheets) {
 
 /**
  * Buduje skoroszyt .xlsx gotowy do pobrania.
- * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"}>>}>} sheets
+ * @param {Array<{name: string, rows: Array<Array<string|number|null|{v:number, fmt?:"0.00"|"0.000"}>>}>} sheets
  * @returns {Blob}
  */
 export function buildXlsx(sheets) {

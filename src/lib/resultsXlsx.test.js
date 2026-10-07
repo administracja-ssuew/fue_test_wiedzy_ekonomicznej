@@ -33,10 +33,10 @@ describe("buildResultsSheets", () => {
     expect(sheets.map((s) => s.name)).toEqual(["Ranking", "Wszystkie odpowiedzi", "Jan Kowalski A1", "Anna Nowak B2"]);
   });
 
-  it("Ranking: nagłówek i wiersz z czasem (format 0.00) i naruszeniami (0 bez wpisu)", () => {
+  it("Ranking: nagłówek i wiersz z czasem (format 0.000) i naruszeniami (0 bez wpisu)", () => {
     const r = sheets[0].rows;
     expect(r[0]).toEqual(["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Skuteczność %", "Śr. czas (s)", "Naruszenia"]);
-    expect(r[1]).toEqual([1, "A1", "Jan Kowalski", "Kraków", 2, 3, 66.7, { v: 12, fmt: "0.00" }, 0]);
+    expect(r[1]).toEqual([1, "A1", "Jan Kowalski", "Kraków", 2, 3, 66.7, { v: 12, fmt: "0.000" }, 0]);
     expect(r).toHaveLength(3);
   });
 
@@ -59,7 +59,7 @@ describe("buildResultsSheets", () => {
   it("karta uczestnika: średni czas liczy brak odpowiedzi jako pełny czas pytania (G6)", () => {
     const avg = sheets[2].rows.find((r) => r[0] === "Średni czas odpowiedzi (s)");
     // (5 + 11 + 20) / 3 = 12 s — spójnie z get_session_results
-    expect(avg[1]).toEqual({ v: 12, fmt: "0.00" });
+    expect(avg[1]).toEqual({ v: 12, fmt: "0.000" });
   });
 
   it("karta uczestnika: bez violations → trzy wiersze naruszeń z zerami po „Bez odpowiedzi”", () => {
@@ -72,12 +72,12 @@ describe("buildResultsSheets", () => {
     ]);
   });
 
-  it('czasy odpowiedzi w tabelach: { v, fmt: "0.00" }', () => {
+  it('czasy odpowiedzi w tabelach: { v, fmt: "0.000" }', () => {
     const f = sheets[1].rows;
     const col = f[0].indexOf("Czas (s)");
-    expect(f[1][col]).toEqual({ v: 5, fmt: "0.00" });
+    expect(f[1][col]).toEqual({ v: 5, fmt: "0.000" });
     const q1 = sheets[2].rows.find((x) => x[0] === 1 && x[2] === "Pytanie 1");
-    expect(q1.at(-1)).toEqual({ v: 5, fmt: "0.00" });
+    expect(q1.at(-1)).toEqual({ v: 5, fmt: "0.000" });
   });
 
   it("brak czasu → pusta komórka (nie obiekt)", () => {
@@ -138,9 +138,9 @@ describe("resultsFileName", () => {
 });
 
 describe("secs", () => {
-  it("ms → sekundy z 2 miejscami po przecinku; null → pusty", () => {
-    // Świadoma zmiana (P7-AVG-2DP): dotąd 1 miejsce (12.3).
-    expect(secs(12345)).toBe(12.35);
+  it("ms → sekundy z 3 miejscami po przecinku; null → pusty", () => {
+    // Świadoma zmiana (261007-ihg, pkt 9): dotąd 2 miejsca (12.35), wcześniej 1 (12.3).
+    expect(secs(12345)).toBe(12.345);
     expect(secs(0)).toBe(0);
     expect(secs(null)).toBe("");
   });

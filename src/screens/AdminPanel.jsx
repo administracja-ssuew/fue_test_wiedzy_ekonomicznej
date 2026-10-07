@@ -1112,7 +1112,7 @@ function SesjaTab({ city, adminId, onPodium }) {
       const s = String(v ?? "");
       return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(2).replace(".", ",") : ""])];
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(3).replace(".", ",") : ""])];
     const csv ="﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -1533,7 +1533,7 @@ function SesjaTab({ city, adminId, onPodium }) {
                   {i < 5 && <span style={{ fontSize: 9, fontWeight: 800, color: "#F5C518", border: "1px solid rgba(245,197,24,.5)", borderRadius: 20, padding: "2px 8px", flexShrink: 0 }}>FINAŁ</span>}
                   <div style={{ textAlign: "right" }}>
                     <p style={{ fontFamily: '"Bebas Neue"', fontSize: 20, color: "#10D9A0", lineHeight: 1 }}>{r.correct}<span style={{ fontSize: 13, color: "#9B89CC" }}>/{r.total}</span></p>
-                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(2).replace(".", ",")} s` : "—"}</p>
+                    <p style={{ fontSize: 10, color: "#9B89CC" }}>poprawnych · ⏱ {r.avgResponseTime != null ? `${(r.avgResponseTime / 1000).toFixed(3).replace(".", ",")} s` : "—"}</p>
                   </div>
                 </div>
               ))}
@@ -1899,7 +1899,7 @@ function HistoriaTab({ city }) {
   const exportCsv = () => {
     const esc = (v) => { const x = String(v ?? ""); return /[";\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
     const header = ["Miejsce", "Kod", "Imię i nazwisko", "Miasto", "Poprawne", "Pytań", "Śr. czas (s)"];
-    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(2).replace(".", ",") : ""])];
+    const lines = [header, ...results.map((r, i) => [i + 1, r.code, r.name, r.city || city, r.correct, r.total, r.avgResponseTime != null ? (r.avgResponseTime / 1000).toFixed(3).replace(".", ",") : ""])];
     downloadCsv(`historia_${sel?.city || city}_${(sel?.created_at || "").slice(0, 10)}.csv`, "﻿" + lines.map((row) => row.map(esc).join(";")).join("\r\n"));
   };
 

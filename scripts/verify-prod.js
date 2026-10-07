@@ -14,7 +14,8 @@
  * Sekcja 46 (paczka 261007-ihg) = przerwa planowa tylko po module 3 (build_plan_items)
  * + blokada edycji treści (schema_marker_46, content_locked(), app_settings niedostępne
  * dla anona). Blok 42 sprawdza tylko okno odsłony — reguła przerw należy do bloku 46.
- * Sekcja 45 jest zarezerwowana dla planu 07-13.
+ * Sekcja 47 = admin_delete_question / admin_delete_city_questions tylko we własnym mieście
+ * city_admina (schema_marker_47). Sekcja 45 jest zarezerwowana dla planu 07-13.
  * Woła RPC z nieistniejącymi UUID/kodami → żadnego zapisu (UPDATE-y nie trafiają
  * w żaden wiersz). Bezpieczne do uruchomienia na produkcji.
  *
@@ -443,6 +444,15 @@ async function main() {
       else if (ea)       note("app_settings — niejednoznaczne", ea.message);
       else               bad("app_settings — anon CZYTA tabelę", "⚠️ REVOKE z 46.2 nie wgrany");
     }
+  }
+
+  console.log("\n🗑️  SEKCJA 47 (usuwanie pytań tylko we własnym mieście):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_47", {});
+    if (isMissing(error))      bad("schema_marker_47 — BRAK", "→ uruchom sekcję 47 (usuwanie pytań per miasto)");
+    else if (error)            bad("schema_marker_47 — błąd", error.message);
+    else if (data === true)    ok("schema_marker_47 — sekcja 47 wgrana", "city_admin usuwa tylko pytania swojego miasta");
+    else                       bad("schema_marker_47 — nieoczekiwana odpowiedź", JSON.stringify(data));
   }
 
   console.log("\n" + "─".repeat(56));

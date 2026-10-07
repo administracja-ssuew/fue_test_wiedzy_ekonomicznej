@@ -3184,6 +3184,55 @@ REVOKE EXECUTE ON FUNCTION public.schema_marker_46() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.schema_marker_46() TO anon, authenticated;
 NOTIFY pgrst, 'reload schema';
 
+-- ─── 47. USUWANIE PYTAŃ TYLKO WE WŁASNYM MIEŚCIE (city_admin) ───────────────
+-- Addytywnie: CREATE OR REPLACE z IDENTYCZNYMI sygnaturami jak 46.6/46.7. Domyka starą lukę:
+-- funkcje SECURITY DEFINER omijają RLS i nie sprawdzały miasta — city_admin znający UUID
+-- (albo nazwę miasta) mógł usunąć pytania innego miasta. Superadmin bez zmian.
+-- Wgrywać RĘCZNIE w SQL Editorze projektu ytbwmmqwbfcugouourih — 47.1–47.3 jednym wklejeniem.
+
+-- 47.1 — admin_delete_question: blokada (46.6) + pytanie musi należeć do miasta city_admina.
+CREATE OR REPLACE FUNCTION public.admin_delete_question(p_id UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF public.get_my_role() = 'city_admin' THEN
+    IF public.content_locked() THEN RAISE EXCEPTION 'content locked'; END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.questions WHERE id = p_id AND city = public.get_my_city()) THEN
+      RAISE EXCEPTION 'forbidden';
+    END IF;
+  END IF;
+  DELETE FROM public.answers WHERE question_id = p_id;
+  DELETE FROM public.questions WHERE id = p_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_question(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_question(UUID) TO authenticated;
+
+-- 47.2 — admin_delete_city_questions: blokada (46.7) + city_admin tylko dla własnego miasta.
+CREATE OR REPLACE FUNCTION public.admin_delete_city_questions(p_city TEXT, p_practice BOOLEAN)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_count INT;
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF public.get_my_role() = 'city_admin' THEN
+    IF public.content_locked() THEN RAISE EXCEPTION 'content locked'; END IF;
+    IF p_city IS DISTINCT FROM public.get_my_city() THEN RAISE EXCEPTION 'forbidden'; END IF;
+  END IF;
+  DELETE FROM public.answers WHERE question_id IN
+    (SELECT id FROM public.questions WHERE city = p_city AND is_practice = p_practice);
+  WITH d AS (DELETE FROM public.questions WHERE city = p_city AND is_practice = p_practice RETURNING 1)
+    SELECT count(*) INTO v_count FROM d;
+  RETURN v_count;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_city_questions(TEXT, BOOLEAN) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_city_questions(TEXT, BOOLEAN) TO authenticated;
+
+-- 47.3 — znacznik wgrania sekcji 47 (dla `npm run verify-prod`) + przeładowanie cache PostgREST.
+CREATE OR REPLACE FUNCTION public.schema_marker_47()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_47() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_47() TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

@@ -12,7 +12,10 @@ import {
   startQuizSessionV2, adminPauseSession, adminResumeSession, adminSkipQuestion, adminRepeatQuestion,
   getSessionPlan, getSweeperStatus, adminSweepSession,
   getRecentCodeConflicts, getQuestionAnswerPresence,
+  getContentLock, updateContentLock,
 } from "../lib/supabase.js";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import { canEditContent, friendlyWriteError, CONTENT_LOCKED_TEXT } from "../lib/contentLock.js";
 import { planPosition, breakIdxAt, toMs } from "../lib/plan.js";
 import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
 import { CITIES } from "../data/questions.js";
@@ -99,7 +102,9 @@ function CityPicker({ city, setCity }) {
 const EMPTY = { module: 1, q: "", opts: ["", "", "", ""], ans: 0, exp: "" };
 const ANS_LETTERS = { A: 0, B: 1, C: 2, D: 3 };
 
-function PytaniaTab({ city }) {
+// editLocked — ten admin nie może teraz edytować (blokada superadmina, sekcja 46);
+// lockActive — blokada jest włączona (superadmin widzi tylko informację).
+function PytaniaTab({ city, editLocked = false, lockActive = false }) {
   const MODULES = useModules();
   const [isPractice, setIsPractice] = useState(false);
   const [questions, setQuestions] = useState([]);
@@ -162,10 +167,16 @@ function PytaniaTab({ city }) {
   };
 
   const importQuestionsCsv = async () => {
-    if (!qCsvPreview?.length) return;
+    if (editLocked || !qCsvPreview?.length) return;
     setQCsvImporting(true); setQCsvProgress(0);
     for (let i = 0; i < qCsvPreview.length; i++) {
-      await addQuestion({ ...qCsvPreview[i], city, createdBy: null, isPractice });
+      const { error } = await addQuestion({ ...qCsvPreview[i], city, createdBy: null, isPractice });
+      if (error) {
+        // Blokada włączona w trakcie (albo inny błąd) — przerwij, pokaż ile weszło.
+        setQCsvImporting(false); reload();
+        alert(`${friendlyWriteError(error)} Zaimportowano ${i} z ${qCsvPreview.length}.`);
+        return;
+      }
       setQCsvProgress(i + 1);
     }
     setQCsvImporting(false); setQCsvPreview(null); reload();
@@ -178,42 +189,59 @@ function PytaniaTab({ city }) {
   // Kopiuje pytania (z wybranego miasta) do BIEŻĄCEGO miasta — szybkie uzupełnienie
   // treści, gdy wszystkie miasta mają ten sam zestaw (jak w TWE).
   const copyFromCity = async () => {
-    if (!copyFrom || copyFrom === city) return;
+    if (editLocked || !copyFrom || copyFrom === city) return;
     const pool = isPractice ? "próbne" : "główne";
     if (!confirm(`Skopiować pytania ${pool} z „${copyFrom}" do „${city}"? Dojdą do istniejących.`)) return;
     setCopying(true); setCopyProgress(0);
     const src = isPractice ? await getPracticeQuestions(copyFrom) : await getQuestions(copyFrom);
     for (let i = 0; i < src.length; i++) {
       const q = src[i];
-      await addQuestion({ module: q.module, q: q.q, opts: q.opts, ans: q.ans, exp: q.exp || "", city, createdBy: null, isPractice });
+      const { error } = await addQuestion({ module: q.module, q: q.q, opts: q.opts, ans: q.ans, exp: q.exp || "", city, createdBy: null, isPractice });
+      if (error) {
+        setCopying(false); reload();
+        alert(`${friendlyWriteError(error)} Skopiowano ${i} z ${src.length}.`);
+        return;
+      }
       setCopyProgress(i + 1);
     }
     setCopying(false); setCopyFrom(""); reload();
     alert(`Skopiowano ${src.length} pytań (${pool}) z „${copyFrom}" do „${city}".`);
   };
 
-  const openAdd  = () => { setForm({ ...EMPTY, module: mod }); setEditId(null); };
-  const openEdit = (q) => { setForm({ module: q.module, q: q.q, opts: [...q.opts], ans: q.ans, exp: q.exp || "" }); setEditId(q.id); };
+  // Wczesne return przy editLocked — obrona w głąb, gdy blokada przyjdzie w trakcie.
+  const openAdd  = () => { if (editLocked) return; setForm({ ...EMPTY, module: mod }); setEditId(null); };
+  const openEdit = (q) => { if (editLocked) return; setForm({ module: q.module, q: q.q, opts: [...q.opts], ans: q.ans, exp: q.exp || "" }); setEditId(q.id); };
 
   const save = async () => {
+    if (editLocked) return;
     if (!form.q || form.opts.some((o) => !o)) return alert("Wypełnij pytanie i wszystkie odpowiedzi.");
     setSaving(true);
-    editId ? await updateQuestion(editId, form) : await addQuestion({ ...form, city, createdBy: null, isPractice });
-    setSaving(false); setForm(null); setEditId(null); reload();
+    const { error } = editId ? await updateQuestion(editId, form) : await addQuestion({ ...form, city, createdBy: null, isPractice });
+    setSaving(false);
+    if (error) return alert(friendlyWriteError(error)); // formularz zostaje otwarty
+    setForm(null); setEditId(null); reload();
   };
 
-  const remove = async (id) => { if (!confirm("Usunąć pytanie?")) return; await deleteQuestion(id); reload(); };
+  const remove = async (id) => {
+    if (editLocked) return;
+    if (!confirm("Usunąć pytanie?")) return;
+    const { error } = await deleteQuestion(id);
+    if (error) alert(friendlyWriteError(error));
+    reload();
+  };
   const removeAll = async () => {
-    if (!questions.length) return;
+    if (editLocked || !questions.length) return;
     if (!confirm(`Usunąć WSZYSTKIE pytania ${isPractice ? "próbne" : "główne"} miasta ${city} (${questions.length})? Tego nie można cofnąć.`)) return;
     const { error } = await deleteAllQuestions(city, isPractice);
-    if (error) alert("Błąd usuwania: " + error); else reload();
+    if (error) alert("Błąd usuwania: " + friendlyWriteError(error)); else reload();
   };
   const filtered = questions.filter((q) => q.module === mod);
 
   const locked = !!lockedSession;
   const busy = saveState === "saving";
-  const canReorder = !locked && !busy;
+  const canReorder = !locked && !busy && !editLocked;
+  // Styl przycisku zapisu przy blokadzie edycji (nieaktywny, przygaszony).
+  const lockedBtn = editLocked ? { opacity: .5, cursor: "not-allowed" } : {};
 
   // Optymistycznie ustaw nową kolejność, sprawdź blokadę, zapisz; błąd → przywróć poprzednią.
   const commitOrder = async (newIds) => {
@@ -276,6 +304,15 @@ function PytaniaTab({ city }) {
 
   return (
     <div>
+      {editLocked && (
+        <div role="status" style={{ ...C.card({ padding: "12px 16px", marginBottom: 16 }), background: "rgba(232,55,107,.08)", borderColor: "rgba(232,55,107,.45)" }}>
+          <p style={{ fontSize: 13, color: "#FCA5C0", fontWeight: 600 }}>{CONTENT_LOCKED_TEXT} Możesz przeglądać pytania; zmiany wprowadza superadmin.</p>
+        </div>
+      )}
+      {!editLocked && lockActive && (
+        <p style={{ fontSize: 12, color: "#F5C518", marginBottom: 12 }}>🔒 Blokada aktywna — admini miast nie mogą edytować pytań; Ty możesz.</p>
+      )}
+
       {/* Główne / Próbne toggle */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button onClick={() => { setIsPractice(false); setForm(null); }} style={{ ...C.btn(!isPractice ? "primary" : "ghost", { fontSize: 13, padding: "8px 18px" }) }}>🏆 Pytania główne</button>
@@ -288,8 +325,8 @@ function PytaniaTab({ city }) {
             {m.icon} {m.name} <span style={{ marginLeft: 4, fontSize: 11, opacity: .7 }}>{questions.filter((q) => q.module === m.id).length}</span>
           </button>
         ))}
-        <button onClick={openAdd} style={{ ...C.btn("primary"), marginLeft: "auto" }}>+ Dodaj pytanie</button>
-        {questions.length > 0 && <button onClick={removeAll} style={C.btn("danger", { fontSize: 12, padding: "8px 12px" })}>🗑 Usuń wszystkie ({questions.length})</button>}
+        <button onClick={openAdd} disabled={editLocked} style={{ ...C.btn("primary"), marginLeft: "auto", ...lockedBtn }}>+ Dodaj pytanie</button>
+        {questions.length > 0 && <button onClick={removeAll} disabled={editLocked} style={{ ...C.btn("danger", { fontSize: 12, padding: "8px 12px" }), ...lockedBtn }}>🗑 Usuń wszystkie ({questions.length})</button>}
       </div>
 
       {/* Import pytań z CSV / Excel */}
@@ -302,7 +339,7 @@ function PytaniaTab({ city }) {
               "1;Ile to 2 + 2?;3;4;5;6;B;Podstawy matematyki\n" +
               "2;Stolica Polski?;Kraków;Warszawa;Łódź;Gdańsk;B;\n")}
               style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>📄 Pobierz przykład</button>
-            <button onClick={() => qCsvRef.current?.click()} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }) }}>Wybierz plik CSV</button>
+            <button onClick={() => qCsvRef.current?.click()} disabled={editLocked} style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }), ...lockedBtn }}>Wybierz plik CSV</button>
           </div>
           <input ref={qCsvRef} type="file" accept=".csv,.txt" onChange={handleQuestionsCsv} style={{ display: "none" }} />
         </div>
@@ -324,7 +361,7 @@ function PytaniaTab({ city }) {
                 <p style={{ fontSize: 13, color: "#10D9A0" }}>Importuję {qCsvProgress}/{qCsvPreview.length}…</p>
               ) : (
                 <>
-                  <button onClick={importQuestionsCsv} style={{ ...C.btn("success", { fontSize: 12, padding: "8px 18px" }) }}>✅ Importuj wszystkie</button>
+                  <button onClick={importQuestionsCsv} disabled={editLocked} style={{ ...C.btn("success", { fontSize: 12, padding: "8px 18px" }), ...lockedBtn }}>✅ Importuj wszystkie</button>
                   <button onClick={() => setQCsvPreview(null)} style={{ ...C.btn("ghost", { fontSize: 12, padding: "8px 14px" }) }}>Anuluj</button>
                 </>
               )}
@@ -347,7 +384,7 @@ function PytaniaTab({ city }) {
               <option value="">— wybierz miasto źródłowe —</option>
               {CITIES.filter((c) => c.name !== city).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
             </select>
-            <button onClick={copyFromCity} disabled={!copyFrom} style={{ ...C.btn(copyFrom ? "primary" : "ghost", { fontSize: 13, padding: "8px 16px" }), opacity: copyFrom ? 1 : .5 }}>
+            <button onClick={copyFromCity} disabled={!copyFrom || editLocked} style={{ ...C.btn(copyFrom && !editLocked ? "primary" : "ghost", { fontSize: 13, padding: "8px 16px" }), opacity: copyFrom && !editLocked ? 1 : .5 }}>
               📋 Kopiuj do {city}
             </button>
           </div>
@@ -384,7 +421,7 @@ function PytaniaTab({ city }) {
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setForm(null)} style={C.btn("ghost")}>Anuluj</button>
-              <button onClick={save} style={C.btn("primary")} disabled={saving}>{saving ? "Zapisuję…" : "Zapisz"}</button>
+              <button onClick={save} style={{ ...C.btn("primary"), ...lockedBtn }} disabled={saving || editLocked}>{saving ? "Zapisuję…" : "Zapisz"}</button>
             </div>
           </div>
         </div>
@@ -411,7 +448,7 @@ function PytaniaTab({ city }) {
           const arrowBtn = (disabled) => C.btn("ghost", { padding: "4px 10px", fontSize: 13, minWidth: isDesktop ? 32 : 44, minHeight: isDesktop ? 32 : 44, opacity: disabled ? .3 : 1, cursor: disabled ? "not-allowed" : "pointer" });
           const upDisabled = idx === 0 || !canReorder;
           const downDisabled = idx === filtered.length - 1 || !canReorder;
-          const lockTitle = locked ? "Zablokowane w trakcie quizu" : undefined;
+          const lockTitle = editLocked ? "Edycja zablokowana przez superadmina" : locked ? "Zablokowane w trakcie quizu" : undefined;
           return (
           <div key={q.id} {...dragProps(q)}
             style={{
@@ -420,7 +457,7 @@ function PytaniaTab({ city }) {
               ...(isTarget ? { borderColor: "rgba(107,33,232,.6)", boxShadow: overPlace === "before" ? "0 -2px 0 #6B21E8" : "0 2px 0 #6B21E8" } : {}),
             }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: isDesktop ? "nowrap" : "wrap" }}>
-              {isDesktop && !locked && (
+              {isDesktop && !locked && !editLocked && (
                 <span title="Przeciągnij, aby zmienić kolejność" style={{ fontSize: 16, color: "#9B89CC", cursor: draggingId ? "grabbing" : "grab", userSelect: "none", marginTop: 2 }}>⠿</span>
               )}
               <span style={{ background: "rgba(107,33,232,.25)", borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 700, color: "#C4B5FD", flexShrink: 0, marginTop: 2 }}>{idx + 1}</span>
@@ -440,8 +477,8 @@ function PytaniaTab({ city }) {
                   <button onClick={() => moveBy(idx, 1)} disabled={downDisabled} aria-label="Przesuń niżej" title={lockTitle} style={arrowBtn(downDisabled)}>↓</button>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => openEdit(q)} aria-label="Edytuj pytanie" title="Edytuj pytanie" style={C.btn("ghost", { padding: "5px 10px" })}>✏️</button>
-                  <button onClick={() => remove(q.id)} aria-label="Usuń pytanie" title="Usuń pytanie" style={C.btn("danger", { padding: "5px 10px" })}>🗑️</button>
+                  <button onClick={() => openEdit(q)} disabled={editLocked} aria-label="Edytuj pytanie" title={editLocked ? lockTitle : "Edytuj pytanie"} style={{ ...C.btn("ghost", { padding: "5px 10px" }), ...lockedBtn }}>✏️</button>
+                  <button onClick={() => remove(q.id)} disabled={editLocked} aria-label="Usuń pytanie" title={editLocked ? lockTitle : "Usuń pytanie"} style={{ ...C.btn("danger", { padding: "5px 10px" }), ...lockedBtn }}>🗑️</button>
                 </div>
               </div>
             </div>
@@ -711,6 +748,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [isPractice, setIsPractice]     = useState(false);
   const [cityQuestions, setCityQuestions] = useState([]);
   const [liveExpanded, setLiveExpanded] = useState(false);
+  const [podiumAsk, setPodiumAsk]       = useState(false); // okno „Na pewno ogłosić podium?” (261007-ihg)
   const pollRef          = useRef(null);
   const liveStatsRef     = useRef(null); // dedicated 1s poll for the live answer counter
   const cityQuestionsRef = useRef([]);   // always-current questions for the realtime answer handler
@@ -1518,10 +1556,15 @@ function SesjaTab({ city, adminId, onPodium }) {
                     📥 Eksport CSV
                   </button>
                   {onPodium && (
-                    <button style={C.btn("gold", { fontSize: 13, padding: "8px 16px" })} onClick={() => onPodium(results)}>
+                    <button style={C.btn("gold", { fontSize: 13, padding: "8px 16px" })} onClick={() => setPodiumAsk(true)}>
                       🏆 Podium
                     </button>
                   )}
+                  {/* Podwójne zabezpieczenie: podium dopiero po „Potwierdź”. */}
+                  <ConfirmDialog open={podiumAsk && !!onPodium} title="Na pewno ogłosić podium?"
+                    message="Wyniki zostaną pokazane na ekranie podium (również na projektorze w Live View)."
+                    onCancel={() => setPodiumAsk(false)}
+                    onConfirm={() => { setPodiumAsk(false); onPodium(results); }} />
                 </div>
               </div>
               {results.map((r, i) => (
@@ -2130,6 +2173,24 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
     if (admin?.city) setCity(admin.city);
   }, [admin?.city]);
 
+  // Blokada edycji treści (sekcja 46). Odświeżana przy każdym przełączeniu zakładki —
+  // city_admin widzi świeży stan bez Realtime. Przed wgraniem 46: available = false.
+  const [lock, setLock]         = useState({ locked: false, available: true });
+  const [lockAsk, setLockAsk]   = useState(false);
+  const [lockBusy, setLockBusy] = useState(false);
+  const [lockErr, setLockErr]   = useState("");
+  const refreshLock = () => getContentLock().then(setLock);
+  useEffect(() => { refreshLock(); }, [tab]);
+  const editLocked = !canEditContent({ role: admin?.role, locked: lock.locked });
+
+  const toggleLock = async () => {
+    setLockAsk(false); setLockBusy(true); setLockErr("");
+    const { error } = await updateContentLock(!lock.locked);
+    setLockBusy(false);
+    if (error) setLockErr(error);
+    else refreshLock();
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE", display: "flex", flexDirection: "column" }}>
 
@@ -2144,6 +2205,36 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
       {isSuperadmin && (
         <div style={{ padding: "14px 24px", borderBottom: "1px solid rgba(255,255,255,.06)", background: "rgba(0,0,0,.2)" }}>
           <CityPicker city={city} setCity={setCity} />
+          {/* Blokada edycji pytań i modułów dla adminów miast (261007-ihg, sekcja 46) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+            {!lock.available ? (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#F5C518", background: "rgba(245,197,24,.1)", border: "1px solid rgba(245,197,24,.35)", borderRadius: 20, padding: "5px 12px" }}>
+                ⚠️ Blokada niedostępna — wgraj sekcję 46 SQL
+              </span>
+            ) : lock.locked ? (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#FCA5C0", background: "rgba(232,55,107,.12)", border: "1px solid rgba(232,55,107,.45)", borderRadius: 20, padding: "5px 12px" }}>
+                🔒 Edycja zablokowana dla adminów miast
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#10D9A0", background: "rgba(16,217,160,.1)", border: "1px solid rgba(16,217,160,.35)", borderRadius: 20, padding: "5px 12px" }}>
+                🔓 Edycja pytań odblokowana
+              </span>
+            )}
+            <button onClick={() => { setLockErr(""); setLockAsk(true); }} disabled={!lock.available || lockBusy}
+              style={{ ...C.btn("ghost", { fontSize: 12, padding: "6px 14px" }), opacity: !lock.available || lockBusy ? .5 : 1, cursor: !lock.available || lockBusy ? "not-allowed" : "pointer" }}>
+              {lockBusy ? "Zapisuję…" : lock.locked ? "Odblokuj edycję" : "Zablokuj edycję"}
+            </button>
+          </div>
+          {lockErr && <p style={{ fontSize: 12, color: "#E8376B", marginTop: 8 }}>{lockErr}</p>}
+          <ConfirmDialog open={lockAsk}
+            title={lock.locked ? "Odblokować edycję?" : "Zablokować edycję pytań i modułów?"}
+            message={lock.locked
+              ? "Admini miast znów będą mogli dodawać, edytować, usuwać i przestawiać pytania."
+              : "Admini miast nie będą mogli dodawać, edytować, usuwać ani przestawiać pytań. Superadmini edytują dalej."}
+            confirmLabel={lock.locked ? "Odblokuj" : "Zablokuj"}
+            tone={lock.locked ? "gold" : "danger"}
+            onCancel={() => setLockAsk(false)}
+            onConfirm={toggleLock} />
         </div>
       )}
 
@@ -2158,7 +2249,7 @@ export default function AdminPanel({ admin, isDesktop, onLogout, onPodium }) {
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: isDesktop ? "28px 40px" : "20px 16px", maxWidth: 900, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-        {tab === "pytania"    && <PytaniaTab city={city} />}
+        {tab === "pytania"    && <PytaniaTab city={city} editLocked={editLocked} lockActive={lock.locked} />}
         {tab === "kody"       && <KodyTab    city={city} adminId={admin?.id} />}
         {/* BUG 3 FIX: SesjaTab pozostaje zamontowany przez cały czas pobytu na AdminPanel
             (używamy display:none zamiast conditional render). Dzięki temu:

@@ -3041,6 +3041,8 @@ NOTIFY pgrst, 'reload schema';
 -- Addytywnie: CREATE OR REPLACE z IDENTYCZNYMI sygnaturami, nowa tabela/funkcja,
 -- DROP POLICY IF EXISTS + CREATE POLICY. Bez DROP funkcji. Sekcja 45 zarezerwowana dla planu 07-13.
 -- 46.1 dotyczy TYLKO sesji startowanych po wgraniu (plan zamrażany przy starcie).
+-- 46.2–46.8: blokada edycji pytań/modułów — city_admin traci zapis przy content_locked;
+-- moduły zapisuje wyłącznie superadmin.
 -- Stałe MUSZĄ być zgodne z src/lib/gameLogic.js (BREAK_AFTER_MODULES = [3]). Parzystość: `npm run verify-plan`.
 -- Wgrywać RĘCZNIE w SQL Editorze projektu ytbwmmqwbfcugouourih — 46.1–46.9 jednym wklejeniem,
 -- najlepiej gdy żadna sesja nie trwa; zaraz potem wdrożyć front.
@@ -3087,6 +3089,93 @@ BEGIN
 END; $$;
 REVOKE EXECUTE ON FUNCTION public.build_plan_items(JSONB, JSONB) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.build_plan_items(JSONB, JSONB) TO anon, authenticated;
+
+-- 46.2 — app_settings: jednowierszowa tabela ustawień globalnych (blokada edycji treści).
+-- Odczyt: admini (city_admin też — UI pokazuje baner). Zmiana: wyłącznie superadmin.
+-- Bez polityk INSERT/DELETE — wiersz jest jeden (id = 1), zasiewany tutaj.
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  id             INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  content_locked BOOLEAN NOT NULL DEFAULT false,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by     UUID REFERENCES public.profiles(id) ON DELETE SET NULL
+);
+INSERT INTO public.app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "app_settings_admin_select"      ON public.app_settings;
+DROP POLICY IF EXISTS "app_settings_superadmin_update" ON public.app_settings;
+CREATE POLICY "app_settings_admin_select" ON public.app_settings FOR SELECT
+  USING (public.get_my_role() IN ('city_admin', 'superadmin'));
+CREATE POLICY "app_settings_superadmin_update" ON public.app_settings FOR UPDATE
+  USING (public.get_my_role() = 'superadmin')
+  WITH CHECK (public.get_my_role() = 'superadmin');
+REVOKE ALL ON public.app_settings FROM anon;
+GRANT SELECT, UPDATE ON public.app_settings TO authenticated;
+
+-- 46.3 — content_locked(): stan blokady dla polityk RLS i funkcji SECURITY DEFINER.
+-- SECURITY DEFINER — czyta app_settings niezależnie od RLS wołającego. EXECUTE także dla
+-- anona: polityki FOR ALL bywają ewaluowane przy SELECT; funkcja zwraca tylko boolean.
+CREATE OR REPLACE FUNCTION public.content_locked()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE((SELECT content_locked FROM public.app_settings WHERE id = 1), false)
+$$;
+REVOKE EXECUTE ON FUNCTION public.content_locked() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.content_locked() TO anon, authenticated;
+
+-- 46.4 — questions: city_admin pisze tylko, gdy blokada wyłączona.
+-- questions_superadmin i questions_admin_select bez zmian (city_admin dalej czyta pytania).
+-- admin_reorder_questions (44.9, SECURITY INVOKER) zablokuje się sam przez tę politykę
+-- → RAISE 'forbidden or missing question'. UPDATE odrzucony przez RLS zwraca 0 wierszy
+-- bez błędu — front (updateQuestion) wykrywa to przez .select("id").
+DROP POLICY IF EXISTS "questions_city_admin_write" ON public.questions;
+CREATE POLICY "questions_city_admin_write" ON public.questions FOR ALL
+  USING (public.get_my_role() = 'city_admin' AND city = public.get_my_city() AND NOT public.content_locked())
+  WITH CHECK (public.get_my_role() = 'city_admin' AND city = public.get_my_city() AND NOT public.content_locked());
+
+-- 46.5 — modules: zapis wyłącznie superadmin. Domyka lukę — modules_admin_all pozwalał
+-- city_adminowi pisać do modules na poziomie bazy (UI tylko ukrywał zakładkę). Warunek
+-- blokady jest tu zbędny: superadmin nigdy nie jest blokowany (decyzja 261007-ihg).
+-- Odczyt dla wszystkich zostaje przez modules_anon_select.
+DROP POLICY IF EXISTS "modules_admin_all"        ON public.modules;
+DROP POLICY IF EXISTS "modules_superadmin_write" ON public.modules;
+CREATE POLICY "modules_superadmin_write" ON public.modules FOR ALL
+  USING (public.get_my_role() = 'superadmin')
+  WITH CHECK (public.get_my_role() = 'superadmin');
+
+-- 46.6 — admin_delete_question (kopia sekcji 32, ta sama sygnatura) + blokada dla city_admin.
+-- SECURITY DEFINER omija RLS, więc warunek blokady musi być w samej funkcji.
+CREATE OR REPLACE FUNCTION public.admin_delete_question(p_id UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF public.get_my_role() = 'city_admin' AND public.content_locked() THEN RAISE EXCEPTION 'content locked'; END IF;
+  DELETE FROM public.answers WHERE question_id = p_id;
+  DELETE FROM public.questions WHERE id = p_id;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_question(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_question(UUID) TO authenticated;
+
+-- 46.7 — admin_delete_city_questions (kopia sekcji 30, ta sama sygnatura) + blokada dla city_admin.
+CREATE OR REPLACE FUNCTION public.admin_delete_city_questions(p_city TEXT, p_practice BOOLEAN)
+RETURNS INT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_count INT;
+BEGIN
+  IF public.get_my_role() NOT IN ('city_admin','superadmin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF public.get_my_role() = 'city_admin' AND public.content_locked() THEN RAISE EXCEPTION 'content locked'; END IF;
+  DELETE FROM public.answers WHERE question_id IN
+    (SELECT id FROM public.questions WHERE city = p_city AND is_practice = p_practice);
+  WITH d AS (DELETE FROM public.questions WHERE city = p_city AND is_practice = p_practice RETURNING 1)
+    SELECT count(*) INTO v_count FROM d;
+  RETURN v_count;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.admin_delete_city_questions(TEXT, BOOLEAN) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_city_questions(TEXT, BOOLEAN) TO authenticated;
+
+-- 46.8 — uwagi (bez kodu):
+--  • Wymiana polityk (DROP POLICY IF EXISTS + CREATE POLICY) idzie w jednym wklejeniu —
+--    SQL Editor wykonuje skrypt w jednej transakcji, więc nie ma chwili bez polityki.
+--  • Sondy (`npm run sonda`) piszą pytania kluczem service role (omija RLS) — blokada
+--    ich nie dotyczy.
+--  • Blokada nie zmienia odczytu: get_quiz_questions / get_practice_questions działają jak dotąd.
 
 -- 46.9 — znacznik wgrania sekcji 46 (dla `npm run verify-prod`) + przeładowanie cache PostgREST.
 CREATE OR REPLACE FUNCTION public.schema_marker_46()

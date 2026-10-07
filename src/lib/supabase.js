@@ -267,6 +267,32 @@ export async function deleteAllQuestions(city, isPractice) {
   return { error: e2?.message || null };
 }
 
+// ─── BLOKADA EDYCJI TREŚCI (sekcja 46, paczka 261007-ihg) ─────────────────────
+// app_settings.content_locked: superadmin włącza/wyłącza; city_admin przy blokadzie nie
+// zapisze pytań (RLS 46.4). Front działa przed i po wgraniu sekcji 46: brak tabeli albo
+// uprawnień → { locked: false, available: false } (bez rzucania, wzór 07-05).
+
+export async function getContentLock() {
+  if (DEMO) return { locked: localStorage.getItem("fue_content_locked") === "1", available: true };
+  const { data, error } = await supabase.from("app_settings").select("content_locked").eq("id", 1).maybeSingle();
+  if (error) return { locked: false, available: false };
+  return { locked: !!data?.content_locked, available: !!data };
+}
+
+export async function updateContentLock(locked) {
+  if (DEMO) {
+    localStorage.setItem("fue_content_locked", locked ? "1" : "0");
+    return { error: null };
+  }
+  const { data: u } = await supabase.auth.getUser();
+  const { data, error } = await supabase.from("app_settings")
+    .update({ content_locked: !!locked, updated_at: new Date().toISOString(), updated_by: u?.user?.id ?? null })
+    .eq("id", 1).select("content_locked");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Nie zapisano — blokadę zmienia tylko superadmin (albo sekcja 46 nie jest wgrana)." };
+  return { error: null };
+}
+
 // ─── QUESTIONS ────────────────────────────────────────────────────────────────
 
 export async function getQuestions(city) {
@@ -327,8 +353,12 @@ export async function updateQuestion(id, updates) {
     }
     return { error: null };
   }
-  const { error } = await supabase.from("questions").update(updates).eq("id", id);
-  return { error: error?.message || null };
+  // .select("id"): UPDATE odrzucony przez RLS (blokada edycji, sekcja 46.4) nie zwraca
+  // błędu, tylko 0 zmienionych wierszy — bez tego zapis „udawałby” sukces.
+  const { data, error } = await supabase.from("questions").update(updates).eq("id", id).select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Zapis odrzucony — edycja zablokowana albo pytanie nie istnieje." };
+  return { error: null };
 }
 
 export async function deleteQuestion(id) {

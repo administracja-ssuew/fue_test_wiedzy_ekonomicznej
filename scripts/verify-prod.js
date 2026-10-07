@@ -424,6 +424,25 @@ async function main() {
     else if (Array.isArray(items) && items.length === 3 && !items[0].h && items[1].h === true && !items[2].h) {
       ok("build_plan_items — h tylko po module 3", "sekcja 46.1");
     } else                     bad("build_plan_items — zła reguła przerwy", `${JSON.stringify(items)} → sekcja 46.1`);
+
+    // 46.3 — content_locked(): anon może wołać (polityki FOR ALL), zwraca boolean.
+    {
+      const { data: cl, error: ecl } = await callRpc("content_locked", {});
+      if (isMissing(ecl))               bad("content_locked() — BRAK", "→ sekcja 46.3");
+      else if (ecl)                     bad("content_locked() — błąd", ecl.message);
+      else if (typeof cl === "boolean") ok("content_locked() — działa", "blokada = " + cl);
+      else                              bad("content_locked() — nieoczekiwana odpowiedź", JSON.stringify(cl));
+    }
+
+    // 46.2 — app_settings: anon NIE ma dostępu (REVOKE ALL FROM anon).
+    {
+      const { error: ea } = await anon.from("app_settings").select("id").limit(1);
+      if (isDenied(ea))  ok("app_settings niedostępne dla anon", "sekcja 46.2");
+      else if (ea && (ea.code === "PGRST205" || ea.code === "42P01" || /does not exist|Could not find the table/i.test(ea.message || "")))
+                         bad("app_settings — tabela BRAK", "→ sekcja 46.2");
+      else if (ea)       note("app_settings — niejednoznaczne", ea.message);
+      else               bad("app_settings — anon CZYTA tabelę", "⚠️ REVOKE z 46.2 nie wgrany");
+    }
   }
 
   console.log("\n" + "─".repeat(56));

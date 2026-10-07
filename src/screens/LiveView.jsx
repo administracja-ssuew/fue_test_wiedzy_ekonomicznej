@@ -100,7 +100,7 @@ export default function LiveView({ city }) {
         </div>
       )}
 
-      {/* Przerwa planowa (po module 2/4) — następny moduł */}
+      {/* Przerwa planowa (po module 3 — sekcja 46; plany sprzed 46: 2 i 4) — następny moduł */}
       {phase === "paused" && breakNext && (
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 64, marginBottom: 16 }}>☕</div>

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 // w useParticipantGame (App przełącza ekran), więc bez własnego kanału i polla.
 // Dwa tryby:
 //  • isAdminPause — ręczna pauza admina („Wstrzymano”),
-//  • przerwa planowa (06-12, po modułach 2 i 4) — „Przerwa” + następny moduł. Widoczna od
+//  • przerwa planowa (06-12, po module 3 — sekcja 46; plany sprzed 46: 2 i 4) — „Przerwa” + następny moduł. Widoczna od
 //    chwili kotwica + r z projekcji lokalnej, zanim zamiatacz zapisze pauzę w bazie.
 // Koniec gry obsługuje wyłącznie Ended („Koniec testu”).
 // eslint-disable-next-line no-unused-vars

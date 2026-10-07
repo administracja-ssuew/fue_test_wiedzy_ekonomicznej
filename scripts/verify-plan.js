@@ -4,7 +4,10 @@
  * Dla każdego fixture'a z src/lib/plan.fixtures.json liczy wynik w JS
  * (planPosition / sweepDecision / buildPlanItems / holdDue z src/lib/plan.js) i w bazie
  * (RPC plan_position / sweep_decision — sekcja 39; build_plan_items / plan_hold_due —
- * sekcja 42) i porównuje pole po polu. Wszystkie te funkcje SQL są czyste
+ * sekcja 42, reguła przerwy w build_plan_items — sekcja 46: przerwa tylko po module 3)
+ * i porównuje pole po polu. Budowa planu porównywana z fixture'em v3 (sekcja 46);
+ * przerwy/pozycje na v2 (plan sprzed 46 — funkcje czytają h z planu, nie znają numerów
+ * modułów). Wszystkie te funkcje SQL są czyste
  * (IMMUTABLE, bez dostępu do tabel) — skrypt nic nie czyta ani nie zapisuje w danych.
  * Bezpieczne do uruchomienia na produkcji.
  *
@@ -25,7 +28,8 @@ const anon = createClient(URL, ANON, { auth: { persistSession: false } });
 
 const iso = (ms) => (ms == null ? null : new Date(ms).toISOString());
 const A = fixtures.anchorMs;
-const V2 = fixtures.v2;
+const V2 = fixtures.v2;   // plan zamrożony przy sekcji 42 (przerwy po 2 i 4) — pozycje i przerwy
+const V3 = fixtures.v3;   // sekcja 46: budowa planu z przerwą tylko po module 3
 const isMissing = (e) => e && (e.code === "PGRST202" || /Could not find the function/i.test(e.message || ""));
 
 let pass = 0, fail = 0;
@@ -106,31 +110,37 @@ async function checkSweep(fx) {
   why.length ? bad(`[zamiatacz] ${fx.name}`, why) : ok(`[zamiatacz] ${fx.name}`);
 }
 
-// Budowa planu: SQL build_plan_items vs JS buildPlanItems vs fixture v2.items (sekcja 42).
+// Budowa planu: SQL build_plan_items vs JS buildPlanItems vs fixture v3.items (sekcje 42 + 46).
 async function checkBuild() {
   const { data, error } = await anon.rpc("build_plan_items", { p_questions: V2.questions, p_modules: V2.modules });
   if (isMissing(error)) missingSection("build_plan_items", error, 42);
   if (error) return bad("[budowa] build_plan_items", [`RPC błąd: ${error.message}`]);
   const sql = Array.isArray(data) ? data : [];
   const js = buildPlanItems(V2.questions, V2.modules);
-  const fx = V2.items;
+  const fx = V3.items;
   const why = [];
+  let hOnly = true; // czy jedyne różnice dotyczą znacznika h
   if (sql.length !== fx.length || js.length !== fx.length) {
     why.push(`długość: SQL=${sql.length} JS=${js.length} fixture=${fx.length}`);
+    hOnly = false;
   }
   const n = Math.min(sql.length, js.length, fx.length);
   for (let k = 0; k < n; k++) {
     for (const f of ["i", "id", "m", "tpq", "lead", "o", "c", "r"]) {
       if (sql[k][f] !== js[k][f] || js[k][f] !== fx[k][f]) {
         why.push(`item ${k}.${f}: SQL=${sql[k][f]} JS=${js[k][f]} fixture=${fx[k][f]}`);
+        hOnly = false;
       }
     }
     if (!!sql[k].h !== !!js[k].h || !!js[k].h !== !!fx[k].h) {
       why.push(`item ${k}.h: SQL=${!!sql[k].h} JS=${!!js[k].h} fixture=${!!fx[k].h}`);
     }
   }
+  // Stara reguła w bazie (h na końcu modułu 2/4) = sekcja 46 nie wgrana.
+  const sqlOldRule = sql.some((x) => x.h && (x.m === 2 || x.m === 4));
+  if (why.length && hOnly && sqlOldRule) why.push("→ wgraj sekcję 46 (build_plan_items)");
   why.length ? bad(`[budowa] build_plan_items (${fx.length} pytań, 5 modułów)`, why)
-             : ok(`[budowa] build_plan_items (${fx.length} pytań, 5 modułów, reveal 11,5 s, przerwy po 2 i 4)`);
+             : ok(`[budowa] build_plan_items (${fx.length} pytań, 5 modułów, reveal 11,5 s, przerwa po module 3)`);
 }
 
 // Należna przerwa planowa: SQL plan_hold_due vs JS holdDue vs fixture (sekcja 42).
@@ -151,7 +161,7 @@ async function checkHold(fx) {
 
 async function main() {
   console.log(`\n🌐 PRODUKCJA: ${URL}\n`);
-  console.log(`🧮 PARZYSTOŚĆ planu sesji JS ↔ SQL (sekcje 39 + 42) — ${fixtures.position.length} pozycji legacy, `
+  console.log(`🧮 PARZYSTOŚĆ planu sesji JS ↔ SQL (sekcje 39 + 42 + 46) —${fixtures.position.length} pozycji legacy, `
     + `${V2.position.length} pozycji v2, ${fixtures.sweep.length} decyzji zamiatacza, 1 budowa planu, `
     + `${V2.hold.length} przerw planowych\n`);
   for (const fx of fixtures.position) await checkPosition(fx, fixtures.items, "pozycja");

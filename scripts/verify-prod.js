@@ -2,7 +2,7 @@
  * FUE Quiz — weryfikacja PRODUKCJI (read-only)
  *
  * Sprawdza z perspektywy ANON, czy na produkcyjnej bazie są wgrane funkcje z
- * SUPABASE_FIXES.sql (sekcje 16–44) oraz czy funkcje admina faktycznie blokują anona.
+ * SUPABASE_FIXES.sql (sekcje 16–44 i 46) oraz czy funkcje admina faktycznie blokują anona.
  * Sekcje 16–38 = kontrakt obecnie wdrożonego frontu (nie ruszać); sekcje 39–40 =
  * plan sesji, RPC v2, zamiatacz pg_cron (żywotność przez sweeper_status); sekcja 41 =
  * utwardzenie starych RPC (znacznik schema_marker_41 + stare sygnatury, SC6); sekcja 42 =
@@ -11,6 +11,10 @@
  * (schema_marker_44, odmowy anona na funkcjach admina/wewnętrznych, record_violation);
  * RPC wiązania kodu (claim) NIE jest tu wołane (zapisałoby porażkę) — pełny test limitu
  * robi `npm run verify-code-limit`.
+ * Sekcja 46 (paczka 261007-ihg) = przerwa planowa tylko po module 3 (build_plan_items)
+ * + blokada edycji treści (schema_marker_46, content_locked(), app_settings niedostępne
+ * dla anona). Blok 42 sprawdza tylko okno odsłony — reguła przerw należy do bloku 46.
+ * Sekcja 45 jest zarezerwowana dla planu 07-13.
  * Woła RPC z nieistniejącymi UUID/kodami → żadnego zapisu (UPDATE-y nie trafiają
  * w żaden wiersz). Bezpieczne do uruchomienia na produkcji.
  *
@@ -278,24 +282,27 @@ async function main() {
     const { data, error } = await callRpc("schema_marker_42", {});
     if (isMissing(error))      bad("schema_marker_42 — BRAK", "→ uruchom sekcję 42");
     else if (error)            bad("schema_marker_42 — błąd", error.message);
-    else if (data === true)    ok("schema_marker_42 — sekcja 42 wgrana", "reveal 11,5 s + przerwy po modułach 2 i 4");
+    else if (data === true)    ok("schema_marker_42 — sekcja 42 wgrana", "reveal 11,5 s + przerwy planowe");
     else                       bad("schema_marker_42 — nieoczekiwana odpowiedź", JSON.stringify(data));
 
-    // build_plan_items: czysta funkcja (bez tabel) — okno odsłony i znacznik przerwy po module 2.
+    // build_plan_items: czysta funkcja (bez tabel) — okno odsłony 11,5 s. Reguła przerwy
+    // (na którym module jest h) zmieniła się w sekcji 46 — sprawdza ją blok SEKCJA 46.
     const qs = [{ id: DUMMY, module: 2 }, { id: "00000000-0000-0000-0000-000000000001", module: 3 }];
     const mods = [{ id: 2, timePerQ: 20 }, { id: 3, timePerQ: 20 }];
     const { data: items, error: eb } = await callRpc("build_plan_items", { p_questions: qs, p_modules: mods });
     if (isMissing(eb))         bad("build_plan_items — BRAK", "→ uruchom sekcję 42");
     else if (eb)               bad("build_plan_items — błąd", eb.message);
-    else if (Array.isArray(items) && items[0] && items[0].r - items[0].c === 11500 && items[0].h === true) {
-      ok("build_plan_items — r − c = 11500, h po module 2", "sekcja 42 (G1/G3)");
+    else if (Array.isArray(items) && items[0] && items[0].r - items[0].c === 11500) {
+      ok("build_plan_items — r − c = 11500", "sekcja 42 (G1)");
     } else                     bad("build_plan_items — zły plan", JSON.stringify(items));
 
-    // plan_hold_due: w chwili kotwica + r[0] przerwa po module 2 jest należna → 0.
+    // plan_hold_due: w chwili kotwica + r[0] przerwa na items[0] jest należna → 0.
+    // Znacznik h ustawiamy sami — funkcja czysta, test granicy nie zależy od reguły przerw.
     if (Array.isArray(items) && items[0]) {
       const anchor = Date.now();
       const { data: hd, error: eh } = await callRpc("plan_hold_due", {
-        p_items: items, p_anchor: new Date(anchor).toISOString(), p_hold_idx: null,
+        p_items: items.map((x, k) => (k === 0 ? { ...x, h: true } : x)),
+        p_anchor: new Date(anchor).toISOString(), p_hold_idx: null,
         p_at: new Date(anchor + items[0].r).toISOString(),
       });
       if (isMissing(eh))       bad("plan_hold_due — BRAK", "→ uruchom sekcję 42");
@@ -394,6 +401,29 @@ async function main() {
       if (isMissing(e)) ok("debug_request_ip_echo — usunięte", "44.Z wgrany");
       else              note("debug_request_ip_echo — jeszcze istnieje", "→ po teście wgraj 44.Z (07-06)");
     }
+  }
+
+  console.log("\n☕ SEKCJA 46 (przerwa tylko po module 3, blokada edycji):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_46", {});
+    if (isMissing(error))      bad("schema_marker_46 — BRAK", "→ uruchom sekcję 46 (paczka 261007-ihg)");
+    else if (error)            bad("schema_marker_46 — błąd", error.message);
+    else if (data === true)    ok("schema_marker_46 — sekcja 46 wgrana", "przerwa po module 3 + blokada edycji");
+    else                       bad("schema_marker_46 — nieoczekiwana odpowiedź", JSON.stringify(data));
+
+    // 46.1 — build_plan_items: moduły 2, 3, 4 → h tylko na ostatnim pytaniu modułu 3.
+    const qs = [
+      { id: DUMMY, module: 2 },
+      { id: "00000000-0000-0000-0000-000000000001", module: 3 },
+      { id: "00000000-0000-0000-0000-000000000002", module: 4 },
+    ];
+    const mods = [{ id: 2, timePerQ: 20 }, { id: 3, timePerQ: 20 }, { id: 4, timePerQ: 20 }];
+    const { data: items, error: eb } = await callRpc("build_plan_items", { p_questions: qs, p_modules: mods });
+    if (isMissing(eb))         bad("build_plan_items — BRAK", "→ uruchom sekcję 42 i 46");
+    else if (eb)               bad("build_plan_items — błąd", eb.message);
+    else if (Array.isArray(items) && items.length === 3 && !items[0].h && items[1].h === true && !items[2].h) {
+      ok("build_plan_items — h tylko po module 3", "sekcja 46.1");
+    } else                     bad("build_plan_items — zła reguła przerwy", `${JSON.stringify(items)} → sekcja 46.1`);
   }
 
   console.log("\n" + "─".repeat(56));

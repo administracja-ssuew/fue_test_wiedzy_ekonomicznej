@@ -15,9 +15,11 @@ export const ANSWER_LABELS = ["A", "B", "C", "D"];
 export const REVEAL_MS = 11500;
 // Tylko do arytmetyki (11,5 — niecałkowite). NIE wyświetlać: UI liczy sekundy z terminów planu (Math.ceil).
 export const REVEAL_SECONDS = REVEAL_MS / 1000;
-// Przerwy planowe (decyzja 06-09, luka G3): quiz sam staje po ostatnim pytaniu tych modułów
-// i czeka na „▶ Wznów quiz” (admin_resume_session). Lustro w SQL: build_plan_items (sekcja 42).
-export const BREAK_AFTER_MODULES = [2, 4];
+// Przerwy planowe (luka G3): quiz sam staje po ostatnim pytaniu tych modułów i czeka na
+// „▶ Wznów quiz” (admin_resume_session). Przerwa planowa tylko między modułem 3 a 4 (decyzja
+// organizatorów 261007-ihg; wcześniej [2, 4] — decyzja 06-09). Lustro w SQL: build_plan_items
+// (sekcja 46.1). Na produkcji plan buduje SQL — tu reguła działa w DEMO, testach i verify-plan.
+export const BREAK_AFTER_MODULES = [3];
 
 // Długość zapowiedzi modułu (ekran "Moduł X" przed pierwszym pytaniem modułu).
 // Wbudowana w plan sesji jako wydłużony lead pierwszego pytania modułu, więc jest

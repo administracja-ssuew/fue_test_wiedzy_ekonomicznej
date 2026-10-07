@@ -1,6 +1,6 @@
 import { REVEAL_MS, MODULE_INTRO_SECONDS, PRE_QUESTION_LEAD, BREAK_AFTER_MODULES } from "./gameLogic.js";
 
-// ─── Plan sesji (lustro SQL plan_position / sweep_decision, sekcja 39; budowa i przerwy — sekcja 42) ─
+// ─── Plan sesji (lustro SQL plan_position / sweep_decision, sekcja 39; budowa i przerwy — sekcja 42, reguła przerwy — sekcja 46) ─
 // Cała rozgrywka to deterministyczna funkcja (items, anchorMs, pausedAtMs, nowMs).
 // Plan (items) jest zamrażany przy starcie sesji: items { i, id, m, tpq, lead, o, c, r, h? },
 // o/c/r to ms od kotwicy (anchor); h = przerwa planowa po tym pytaniu (sekcja 42).

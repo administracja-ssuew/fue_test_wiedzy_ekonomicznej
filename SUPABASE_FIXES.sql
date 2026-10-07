@@ -3037,6 +3037,64 @@ NOTIFY pgrst, 'reload schema';
    wgrywanej PO wdrożeniu frontu fazy 7 (jak sekcja 41).
 */
 
+-- ─── 46. PACZKA 261007-ihg: PRZERWA TYLKO PO MODULE 3 + BLOKADA EDYCJI TREŚCI ──
+-- Addytywnie: CREATE OR REPLACE z IDENTYCZNYMI sygnaturami, nowa tabela/funkcja,
+-- DROP POLICY IF EXISTS + CREATE POLICY. Bez DROP funkcji. Sekcja 45 zarezerwowana dla planu 07-13.
+-- 46.1 dotyczy TYLKO sesji startowanych po wgraniu (plan zamrażany przy starcie).
+-- Stałe MUSZĄ być zgodne z src/lib/gameLogic.js (BREAK_AFTER_MODULES = [3]). Parzystość: `npm run verify-plan`.
+-- Wgrywać RĘCZNIE w SQL Editorze projektu ytbwmmqwbfcugouourih — 46.1–46.9 jednym wklejeniem,
+-- najlepiej gdy żadna sesja nie trwa; zaraz potem wdrożyć front.
+
+-- 46.1 — build_plan_items: przerwa planowa tylko po module 3 (lustro buildPlanItems, plan.js).
+-- Kopia 42.2 z JEDYNĄ zmianą reguły przerwy: v_prev_m IN (2, 4) → v_prev_m = 3.
+-- Znacznik h: true na ostatnim pytaniu modułu 3, tylko gdy po nim jest pytanie innego modułu.
+CREATE OR REPLACE FUNCTION public.build_plan_items(p_questions JSONB, p_modules JSONB)
+RETURNS JSONB LANGUAGE plpgsql IMMUTABLE SET search_path = public AS $$
+DECLARE
+  q RECORD;
+  v_items  JSONB  := '[]'::jsonb;
+  v_i      INT    := 0;
+  v_prev_m INT    := NULL;
+  v_prev_r BIGINT := 0;
+  v_tpq    INT;
+  v_lead   INT; v_o BIGINT; v_c BIGINT; v_r BIGINT;
+BEGIN
+  FOR q IN
+    SELECT (e->>'id')::UUID AS id, (e->>'module')::INT AS module, ord
+    FROM jsonb_array_elements(COALESCE(p_questions, '[]'::jsonb)) WITH ORDINALITY AS t(e, ord)
+    ORDER BY ord
+  LOOP
+    v_tpq := COALESCE((SELECT (m->>'timePerQ')::INT
+                         FROM jsonb_array_elements(COALESCE(p_modules, '[]'::jsonb)) m
+                        WHERE (m->>'id')::INT = q.module LIMIT 1), 60);
+    IF v_i > 0 AND q.module IS DISTINCT FROM v_prev_m AND v_prev_m = 3 THEN
+      v_items := jsonb_set(v_items, ARRAY[(v_i - 1)::TEXT, 'h'], 'true'::jsonb, true);
+    END IF;
+    v_lead := CASE WHEN v_i = 0 THEN 10
+                   WHEN q.module IS DISTINCT FROM v_prev_m THEN 30
+                   ELSE 4 END;
+    v_o := v_prev_r + v_lead * 1000;
+    v_c := v_o + v_tpq * 1000;
+    v_r := v_c + 11500;
+    v_items := v_items || jsonb_build_array(jsonb_build_object(
+      'i', v_i, 'id', q.id, 'm', q.module, 'tpq', v_tpq, 'lead', v_lead,
+      'o', v_o, 'c', v_c, 'r', v_r));
+    v_prev_r := v_r;
+    v_prev_m := q.module;
+    v_i := v_i + 1;
+  END LOOP;
+  RETURN v_items;
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.build_plan_items(JSONB, JSONB) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.build_plan_items(JSONB, JSONB) TO anon, authenticated;
+
+-- 46.9 — znacznik wgrania sekcji 46 (dla `npm run verify-prod`) + przeładowanie cache PostgREST.
+CREATE OR REPLACE FUNCTION public.schema_marker_46()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_46() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_46() TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

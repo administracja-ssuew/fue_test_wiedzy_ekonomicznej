@@ -129,7 +129,7 @@ export default function App() {
     document.body.dataset.fueRemaining = String(gv.secondsLeft ?? "");
     document.body.dataset.fueLocked = myCurrent ? "1" : "0";
     document.body.dataset.fueChoice = myCurrent?.chosen != null ? (ANSWER_LABELS[myCurrent.chosen] ?? "") : "";
-    // Przerwa planowa (po module 2/4) vs ręczna pauza — obie mają fazę „paused”.
+    // Przerwa planowa (po module 3 — sekcja 46; plany sprzed 46: 2 i 4) vs ręczna pauza — obie mają fazę „paused”.
     document.body.dataset.fueBreak = gv.plannedBreak ? "1" : "0";
   }, [screen, gamePhase, gv.idx, gv.secondsLeft, myCurrent, gv.plannedBreak]);
 

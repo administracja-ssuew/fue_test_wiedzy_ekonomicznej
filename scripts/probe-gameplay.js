@@ -68,7 +68,7 @@
  *   PROBE_TRACE=1                         ślad zmian stanu + DIAGNOZA przyczynowa (View Transitions,
  *                                         offset zegara telefonu, snapshot vs Realtime, start z DOM)
  *                                         i zrzut surowych danych do test-results/probe-trace-*.json
- * PROBE_FULL przechodzi też przez przerwy planowe po modułach 2 i 4 (klika „Wznów quiz” po 5 s).
+ * PROBE_FULL przechodzi też przez przerwy planowe po module 3 (sekcja 46; plany sprzed 46: 2 i 4) (klika „Wznów quiz” po 5 s).
  * Tryby łączą się ze sobą i z PROBE_FULL. Każdy przebieg sprawdza też SC5: przed końcem
  * czasu pytania ani submit_answer_v2, ani snapshot, ani summary nie ujawniają poprawności.
  */
@@ -132,7 +132,7 @@ const TPQ_OVERRIDE = parseInt(process.env.PROBE_TPQ || "20", 10);      // czas m
 // OFFLINE: powrót (5 s + 10 s od otwarcia pytania) musi wypaść przed terminem pytania,
 // więc czas pytania ustawiamy jawnie (domyślnie 20 s), niezależnie od konfiguracji produkcji.
 const OVERRIDE_TPQ = FULL || OFFLINE || !!process.env.PROBE_TPQ;
-// FULL: przerwy planowe po modułach 2 i 4 + reveal 11,5 s (sekcja 42) → 900000.
+// FULL: przerwy planowe po module 3 (sekcja 46; plany sprzed 46: 2 i 4) + reveal 11,5 s (sekcja 42) → 900000.
 // PAUSE_PHASE: 3 pytania + pauza; przy PROBE_TPQ=60 sam plan to ~233 s, więc 360000
 // (pętla i tak kończy się na ekranie wyników — limit to tylko bezpiecznik).
 const RUN_MS = parseInt(process.env.PROBE_RUN_MS || (FULL ? "900000" : PAUSE_PHASE ? "360000" : "150000"), 10);
@@ -214,7 +214,7 @@ async function setup() {
   if (pe) throw new Error("profile: " + pe.message);
 
   // W trybie pełnym rozkładamy pytania na 5 modułów — dzięki temu test przechodzi
-  // przez zapowiedzi modułów i przez przerwy po module 2 i 4.
+  // przez zapowiedzi modułów i przez przerwę po module 3 (sekcja 46; plany sprzed 46: 2 i 4).
   const rows = FULL
     ? [1, 2, 3, 4, 5].flatMap((m) => Array.from({ length: QPM }, (_, i) => ({
         city: CITY, module: m, q: `${TAG} M${m} Pytanie ${i + 1}`,
@@ -1338,7 +1338,7 @@ function dumpTrace(samples) {
 // telefony w fazie „paused” (i data-fue-break="1", jeśli klient wystawia ten atrybut — 06-15).
 function breakStage(plan, samples, flow) {
   const want = plan.filter((x) => x.h).length;
-  const name = "przerwy planowe po modułach 2 i 4";
+  const name = "przerwy planowe (po module 3; plany sprzed sekcji 46: 2 i 4)";
   if (!want) return [name, true, "brak przerw w planie"];
   const log = flow.breakLog || [];
   const bad = [];

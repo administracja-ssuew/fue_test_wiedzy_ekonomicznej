@@ -136,6 +136,7 @@ None — Phase 1 can start immediately.
 | 261007-ihg | Paczka 9 poprawek przed TWE 27.10 (landing, przerwa tylko po module 3, potwierdzenie podium, blokada edycji, średni czas 3 miejsca) — SQL 46 na prod, front wdrożony (index-B4Lo_n1O.js), verify-prod 70/70, verify-plan 47/47 | 2026-10-07 | `3013231` | [261007-ihg-paczka-9-poprawek-przed-twe-27-10](./quick/261007-ihg-paczka-9-poprawek-przed-twe-27-10/) |
 | fast-47 | Sekcja 47 SQL: city_admin usuwa pytania tylko we własnym mieście (admin_delete_question / admin_delete_city_questions) — wgrane, verify-prod 71/71 | 2026-10-07 | `f43e52c` | — |
 | 261007-m24 | Partnerzy: Biedronka (główny, na środku, największe) + Katowice Airport; myślniki — i – zamienione na - w src/index.html/vite.config.js; wdrożone (index-C5v-D0H5.js) | 2026-10-07 | `eee1e84` | [261007-m24-partnerzy-biedronka-katowice-airport-i-m](./quick/261007-m24-partnerzy-biedronka-katowice-airport-i-m/) |
+| 261008-lx4 | Live View doładowuje pytania (bug z pomiaru 08.10: pytanie dodane po otwarciu projektora → złe pytanie/numer); numer pytania z planu sesji; 361/361 testów; NIE wdrożone | 2026-10-08 | `ac4f52a` | [261008-lx4-live-view-doladowuje-pytania](./quick/261008-lx4-live-view-doladowuje-pytania/) |
 
 **Otwarte po 260902-lp2** (szczegóły w SUMMARY):
 
@@ -160,4 +161,4 @@ None — Phase 1 can start immediately.
 
 ---
 
-*Last updated: 2026-10-07 — Completed quick task 261007-ihg: paczka 9 poprawek przed TWE 27.10*
+*Last updated: 2026-10-08 — Completed quick task 261008-lx4: Live View doładowuje pytania*

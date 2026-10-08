@@ -61,6 +61,29 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   const planRef          = useRef(null); // items planu sesji (null = sesja legacy / plan jeszcze nie pobrany)
   const planSidRef       = useRef(null); // session.id, dla którego pobrano (lub pobieramy) plan
   const [planTpq, setPlanTpq] = useState(null); // czas bieżącego pytania z planu
+  // Numer, liczba pytań i moduł z planu sesji - lokalna lista pytań miasta może się różnić od planu.
+  const [qNum, setQNum]       = useState(0);
+  const [qTotal, setQTotal]   = useState(0);
+  const [planMod, setPlanMod] = useState(null);
+  const cityRef   = useRef(city);
+  cityRef.current = city;
+  const qFetchRef = useRef({ busy: false, at: 0 });
+
+  // Lista pytań mogła się zmienić po otwarciu projektora (pytanie dodane/podmienione,
+  // nowa sesja). Doładowanie bez równoległych wywołań i nie częściej niż co 2 s.
+  const refreshQuestions = () => {
+    const f = qFetchRef.current;
+    const c = cityRef.current;
+    if (!c || f.busy || Date.now() - f.at < 2000) return;
+    f.busy = true; f.at = Date.now();
+    getQuestions(c)
+      .then((qs) => {
+        if (cityRef.current !== c) return;
+        if (qs?.length) { setQuestions(qs); questionsRef.current = qs; }
+      })
+      .catch(() => {})
+      .finally(() => { f.busy = false; });
+  };
 
   // Sesja z Realtime/polla → sessionRef + jednorazowe pobranie planu na session.id.
   const applySession = (s) => {
@@ -74,6 +97,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     if (planSidRef.current === s.id) return;
     planSidRef.current = s.id;
     planRef.current = null;
+    refreshQuestions(); // nowa sesja może mieć inny zestaw pytań
     getSessionPlan(s.id).then((items) => {
       if (planSidRef.current !== s.id) return; // w międzyczasie inna sesja
       if (items?.length) planRef.current = items;
@@ -87,11 +111,11 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   // Initial load
   useEffect(() => {
     if (!city) return;
-    Promise.all([getSessionForCity(city), getCityBg(city), getQuestions(city)])
-      .then(([sess, bgData, qs]) => {
+    refreshQuestions();
+    Promise.all([getSessionForCity(city), getCityBg(city)])
+      .then(([sess, bgData]) => {
         const bgVal = bgData?.bg || bgData?.bgMobile;
         if (bgVal) setBg(bgVal);
-        if (qs?.length) { setQuestions(qs); questionsRef.current = qs; }
         if (sess) applySession(sess);
       });
   }, [city]); // eslint-disable-line
@@ -190,11 +214,15 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       } else {
         setBreakNext(null);
       }
-      const qs = questionsRef.current;
-      const found = qs.findIndex((x) => x.id === v.item.id);
-      const idx = found >= 0 ? found : v.idx;
+      // Pytania z planu nie ma na liście → doładuj listę. Do tego czasu idx = -1 (brak
+      // currentQ): lepiej chwilę bez treści niż cudze pytanie spod indeksu planu.
+      const idx = questionsRef.current.findIndex((x) => x.id === v.item.id);
+      if (idx < 0) refreshQuestions();
       resetForIdx(idx);
       setGIdx(idx);
+      setQNum(v.idx + 1);
+      setQTotal(planRef.current.length);
+      setPlanMod(v.item.m ?? null);
       setPlanTpq(v.item.tpq ?? null);
       setFirstOfModule(!!v.firstOfModule);
 
@@ -216,7 +244,7 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
       // Reveal po bramce (zamiast setTimeout 1500): raz na pytanie.
       if ((v.phase === "reveal" || v.phase === "finished")
           && nowMs >= v.closesAt + REVEAL_GATE_MS + 100
-          && revealFetchedRef.current !== idx) {
+          && idx >= 0 && revealFetchedRef.current !== idx) {
         revealFetchedRef.current = idx;
         fetchReveal(idx, { retry: true });
       }
@@ -277,9 +305,9 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   }, [city]);
 
   const currentQ = questions[gIdx];
-  const mod      = MODULES.find((m) => m.id === currentQ?.module);
+  const mod      = MODULES.find((m) => m.id === (currentQ?.module ?? planMod));
   // Czas pytania wyłącznie z planu (SC4); mod służy tylko do nazwy/ikony/koloru.
   const timePerQ = planTpq ?? 0;
 
-  return { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext };
+  return { phase, gIdx, qNum, qTotal, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, reveal, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext };
 }

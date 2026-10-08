@@ -13,7 +13,7 @@ const ANS_LABELS = ["A", "B", "C", "D"];
 // shared DB-state projection - stays in sync with participants and the admin embed.
 export default function LiveView({ city }) {
   // Public projector - anon, so no per-participant data; aggregate counts only.
-  const { phase, gIdx, timer, autoSec, cdNum, firstOfModule, currentQ, questions, mod, timePerQ, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext } =
+  const { phase, qNum, qTotal, timer, autoSec, cdNum, firstOfModule, currentQ, mod, timePerQ, revealTotal, revealCorrect, revealAns, liveCount, participantsTotal, bg, podium, breakNext } =
     useLiveProjection(city);
   // Poprawny indeks w reveal: bramkowany z serwera (revealAns) lub fallback ans
   // (pre-migracja, gdy ans jest jeszcze w pytaniach).
@@ -76,7 +76,7 @@ export default function LiveView({ city }) {
         <span style={{ fontFamily: '"Bebas Neue"', fontSize: 20, letterSpacing: 1 }}>{city}</span>
         {(phase === "quiz" || phase === "reveal") && (
           <span style={{ fontSize: 13, color: "#9B89CC", marginLeft: "auto" }}>
-            {mod?.icon} {mod?.name} · {gIdx + 1}/{questions.length} · {liveCount}/{participantsTotal} odp.
+            {mod?.icon} {mod?.name} · {qNum}/{qTotal} · {liveCount}/{participantsTotal} odp.
           </span>
         )}
       </div>
@@ -131,7 +131,7 @@ export default function LiveView({ city }) {
           }}>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 11, color: "#9B89CC", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
-                Pytanie {gIdx + 1} / {questions.length}
+                Pytanie {qNum} / {qTotal}
               </p>
               <p style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.4 }}>{currentQ.q}</p>
             </div>

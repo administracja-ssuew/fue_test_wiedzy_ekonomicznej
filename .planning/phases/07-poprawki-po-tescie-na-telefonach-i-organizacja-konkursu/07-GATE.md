@@ -90,4 +90,18 @@ We wszystkich przebiegach: telefon vs telefon ≤ 1 s, najdłuższy bezruch w py
 ## Czasy modułów
 
 **Przed testem na telefonach** (odczyt `modules.time_per_q`, 2026-09-29 po wdrożeniu): moduł 1: 20 s · 2: 30 s · 3: 60 s · 4: 75 s · 5: 20 s — zgodne z oczekiwanymi (20/30/60/75/20).
-**Po teście:** _(do uzupełnienia)_
+**Po teście** (odczyt 2026-10-08, klient serwisowy): moduł 1: 20 s · 2: 20 s · 3: 20 s · 4: 20 s · 5: 20 s — **NIE przywrócone** do 20/30/60/75/20. Brak notatki o celowej zmianie; najpewniej skrócone na testy z 07.10. Przed TWE 27.10 do ustawienia w panelu (decyzja użytkownika, Claude nie zmienia).
+
+## Test na telefonach
+
+**Decyzja (dosłownie, 2026-10-08):** „Zaliczony testami 07.10” — ręczna lista 9 punktów z 07-12 Task 3 nie była przechodzona osobno; użytkownik uznaje ją za pokrytą testami na telefonach z 07.10 (m.in. test Wrocław, 26 osób, sesja `3ea1b4a2`) i wcześniejszymi.
+**Znane uwagi z tych testów:** zgłoszony rozjazd Live View vs telefon — pomiarem 08.10 nieodtworzony (≤ 0,3 s), przy okazji naprawiony bug nieaktualnej listy pytań w Live View (quick 261008-lx4, wdrożone); uczestniczka WRO-1131 nie wróciła po zamknięciu przeglądarki — najpewniej utrata localStorage (przeglądarka w aplikacji / tryb prywatny), odblokowanie 🔓 przez admina.
+**Platforma:** nie zapisana per punkt (brak protokołu z listy 07-12).
+
+## Sekcja 45
+
+**Decyzja (dosłownie, 2026-10-08):** „Teraz (Recommended)”.
+**Warunek wstępny:** front fazy 7 wdrożony 29.09 (`index-bJmiVcCG.js`, sekcja „Wdrożenie”), obecnie produkcja serwuje `index-BTuFPne4.js`; naruszenia zapisuje `record_violation` (44.8), bezpośredni INSERT to tylko zapas przy braku RPC.
+**Ryzyko rezydualne przed 45:** limit prób (44) chroni tylko ścieżkę `claim`. `code_exists` (RPC) i anon INSERT do `violations` pozwalały bez limitu sprawdzać istnienie kodu — przy ~100 kodach na 10 000 w mieście to kilka minut do wyliczenia kodów; skutek: przejęcie kodu (uczestnik widzi „kod używany na innym urządzeniu”, admin zwalnia 🔓).
+**Po 45 zostają otwarte:** `get_participant_state` i `submit_answer_v2` (odpowiedź „invalid code”) — wymagają przeciążeń z `p_device` i zmian frontu (osobna runda `/gsd:plan-phase 7 --gaps`).
+**Przed wgraniem:** `npm run verify-prod` kod 0, blok 45 = „⚠️ sekcja 45 nie wgrana”; resztki sondy 0/0; aktywne sesje running/paused: 0.

@@ -2,7 +2,7 @@
  * FUE Quiz — weryfikacja PRODUKCJI (read-only)
  *
  * Sprawdza z perspektywy ANON, czy na produkcyjnej bazie są wgrane funkcje z
- * SUPABASE_FIXES.sql (sekcje 16–44 i 46) oraz czy funkcje admina faktycznie blokują anona.
+ * SUPABASE_FIXES.sql (sekcje 16–47) oraz czy funkcje admina faktycznie blokują anona.
  * Sekcje 16–38 = kontrakt obecnie wdrożonego frontu (nie ruszać); sekcje 39–40 =
  * plan sesji, RPC v2, zamiatacz pg_cron (żywotność przez sweeper_status); sekcja 41 =
  * utwardzenie starych RPC (znacznik schema_marker_41 + stare sygnatury, SC6); sekcja 42 =
@@ -15,7 +15,8 @@
  * + blokada edycji treści (schema_marker_46, content_locked(), app_settings niedostępne
  * dla anona). Blok 42 sprawdza tylko okno odsłony — reguła przerw należy do bloku 46.
  * Sekcja 47 = admin_delete_question / admin_delete_city_questions tylko we własnym mieście
- * city_admina (schema_marker_47). Sekcja 45 jest zarezerwowana dla planu 07-13.
+ * city_admina (schema_marker_47). Sekcja 45 (plan 07-13) = anon bez code_exists i bez
+ * bezpośredniego INSERT do violations; przed wgraniem tylko uwaga ⚠️.
  * Woła RPC z nieistniejącymi UUID/kodami → żadnego zapisu (UPDATE-y nie trafiają
  * w żaden wiersz). Bezpieczne do uruchomienia na produkcji.
  *
@@ -401,6 +402,37 @@ async function main() {
       const { error: e } = await callRpc("debug_request_ip_echo", {});
       if (isMissing(e)) ok("debug_request_ip_echo — usunięte", "44.Z wgrany");
       else              note("debug_request_ip_echo — jeszcze istnieje", "→ po teście wgraj 44.Z (07-06)");
+    }
+  }
+
+  console.log("\n🛡️  SEKCJA 45 (wyrocznie kodów):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_45", {});
+    if (isMissing(error))      note("sekcja 45 nie wgrana", "decyzja w 07-GATE.md (plan 07-13)");
+    else if (error)            bad("schema_marker_45 — błąd", error.message);
+    else if (data !== true)    bad("schema_marker_45 — nieoczekiwana odpowiedź", JSON.stringify(data));
+    else {
+      ok("schema_marker_45 — sekcja 45 wgrana", "code_exists + INSERT violations zamknięte");
+
+      const { error: e1 } = await callRpc("code_exists", { p_code: "PROBE-0000" });
+      if (isDenied(e1))       ok("code_exists — anon ZABLOKOWANY", "(sekcja 45.2 OK)");
+      else if (isMissing(e1)) bad("code_exists — BRAK", "funkcja potrzebna RPC uczestnika (§29+)");
+      else                    bad("code_exists — anon MA DOSTĘP", "⚠️ REVOKE z 45.2 nie wgrany — wyrocznia!");
+
+      // Odebrany GRANT i błąd polityki RLS mają ten sam kod 42501 — rozróżniamy po treści.
+      // Nieistniejący kod: nawet przy otwartej polityce nic się nie zapisze.
+      const { error: e2 } = await anon.from("violations")
+        .insert({ participant_code: "PROBE-0000", type: "tab_switch", count: 1 });
+      if (!e2)                                       bad("INSERT violations — anon WSTAWIA", "⚠️ 45.1 nie wgrany");
+      else if (/row-level security/i.test(e2.message || "")) bad("INSERT violations — został GRANT", "polityka zniknęła, ale GRANT INSERT został");
+      else if (/permission denied/i.test(e2.message || ""))  ok("INSERT violations — anon ZABLOKOWANY", "(sekcja 45.1 OK)");
+      else                                           bad("INSERT violations — niejednoznaczne", e2.message);
+
+      const { error: e3 } = await callRpc("record_violation", {
+        p_code: "PROBE-0000", p_session_id: null, p_type: "tab_switch", p_count: 1, p_type_count: 1,
+      });
+      if (e3) bad("record_violation po 45 — błąd", e3.message);
+      else    ok("record_violation po 45 — działa", "jedyna droga zapisu naruszeń");
     }
   }
 

@@ -3037,9 +3037,33 @@ NOTIFY pgrst, 'reload schema';
    wgrywanej PO wdrożeniu frontu fazy 7 (jak sekcja 41).
 */
 
+-- ─── 45. UTWARDZENIE WYROCZNI KODÓW — po wdrożeniu frontu fazy 7 ──
+-- Wgrywać DOPIERO po wdrożeniu frontu z recordViolation → record_violation (sekcja 44.8).
+-- Stary bundle traci bezpośredni zapis naruszeń (supabase-js zwraca błąd, front go ignoruje).
+-- Zamyka wyrocznie istnienia kodu bez limitu: code_exists() i INSERT violations.
+-- NIE zamyka: get_participant_state / submit_answer_v2 ('invalid code') — wymagają
+-- przeciążeń z p_device (zmiana frontu + sondy), osobna runda.
+-- code_exists wołają też funkcje SECURITY DEFINER (§29, §31, §36, §39) — jako właściciel,
+-- więc REVOKE od anona ich nie dotyczy. PUBLIC odebrany już w 27.2.
+-- Status: DO WGRANIA (plan 07-13)
+
+-- 45.1 — naruszenia tylko przez record_violation (SECURITY DEFINER, bez wyroczni)
+DROP POLICY IF EXISTS "violations_anon_insert" ON public.violations;
+REVOKE INSERT ON public.violations FROM anon;
+
+-- 45.2 — code_exists tylko dla funkcji definer (właściciel) i zalogowanych adminów
+REVOKE EXECUTE ON FUNCTION public.code_exists(TEXT) FROM anon;
+
+-- 45.3 — znacznik
+CREATE OR REPLACE FUNCTION public.schema_marker_45()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_45() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_45() TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';
+
 -- ─── 46. PACZKA 261007-ihg: PRZERWA TYLKO PO MODULE 3 + BLOKADA EDYCJI TREŚCI ──
 -- Addytywnie: CREATE OR REPLACE z IDENTYCZNYMI sygnaturami, nowa tabela/funkcja,
--- DROP POLICY IF EXISTS + CREATE POLICY. Bez DROP funkcji. Sekcja 45 zarezerwowana dla planu 07-13.
+-- DROP POLICY IF EXISTS + CREATE POLICY. Bez DROP funkcji. Sekcja 45 (plan 07-13) jest wyżej.
 -- 46.1 dotyczy TYLKO sesji startowanych po wgraniu (plan zamrażany przy starcie).
 -- 46.2–46.8: blokada edycji pytań/modułów — city_admin traci zapis przy content_locked;
 -- moduły zapisuje wyłącznie superadmin.

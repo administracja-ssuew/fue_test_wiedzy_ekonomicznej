@@ -30,6 +30,6 @@ date: 2026-10-08
 
 ## Nie zrobione
 
-- Brak wdrożenia na produkcję (Vercel) - do zrobienia razem z kolejną paczką albo osobno.
+- Wdrożone 08.10 (push na main → Vercel), produkcja serwuje index-BTuFPne4.js z poprawką.
 - Przypadek pytania usuniętego z bazy po starcie sesji: projektor nie pokaże treści i będzie
   ponawiał pobranie listy co 2 s do końca tego pytania (świadomie - lepsze niż złe pytanie).

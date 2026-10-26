@@ -91,32 +91,6 @@ const COORDINATORS_DATA = {
   ] },
 };
 
-const SCHEDULE = {
-  default: [
-    { time: "09:30", label: "Rejestracja uczestników",               icon: "📋" },
-    { time: "10:00", label: "Powitanie i omówienie zasad",            icon: "🎤" },
-    { time: "10:15", label: "Start Etapu Regionalnego",               icon: "🏁" },
-    { time: "11:30", label: "Zakończenie testu · przerwa",            icon: "⏸️" },
-    { time: "12:00", label: "Ogłoszenie wyników i wręczenie nagród",  icon: "🏆" },
-  ],
-  // Per-city overrides - fill in before the event:
-  // Kraków: [ ... ],
-};
-
-const RULES = {
-  default: [
-    "Udział w teście jest dobrowolny i bezpłatny.",
-    "Podczas testu obowiązuje zakaz używania telefonów i notatek.",
-    "Test składa się z 4 modułów tematycznych i 32 pytań zamkniętych (A/B/C/D).",
-    "Punktacja: 500 pkt za poprawną odpowiedź + bonus za szybkość do 500 pkt.",
-    "Raz zatwierdzonej odpowiedzi nie można zmienić - odpowiadaj uważnie.",
-    "Top 5 uczestników z każdego miasta awansuje do Etapu Ogólnopolskiego.",
-    "Organizatorzy zastrzegają sobie prawo do dyskwalifikacji uczestnika.",
-  ],
-  // Per-city overrides:
-  // Kraków: [ ... ],
-};
-
 // ─── Style helpers ───────────────────────────────────────────────────────────
 
 const W = {
@@ -273,9 +247,6 @@ function Shape({ style, gradient, delay = 0 }) {
 
 // Wspólny formularz zapisów dla wszystkich miast - podmień na właściwy URL.
 const REGISTRATION_URL = "#";
-// Jeden infopack dla wszystkich miast - podmień na link do PDF.
-const INFOPACK_URL = "#";
-
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   const [play, setPlay] = useState(() => document.fonts.status === "loaded" ? "running" : "paused");
   useEffect(() => {
@@ -534,89 +505,6 @@ function KoordynatorzyTab({ city, setCity }) {
   );
 }
 
-// ─── Tab: Informator ──────────────────────────────────────────────────────────
-
-// Harmonogram wyłączony do czasu ustalenia realnych godzin i numerów sal - dane w SCHEDULE
-// są jeszcze zaślepkami, a publikowanie zmyślonego rozkładu przed wydarzeniem myli uczestników.
-// Przywrócenie: zmień na true. Kod sekcji poniżej zostaje nietknięty.
-const SHOW_HARMONOGRAM = false;
-
-// Informator jest wspólny dla wszystkich miast (decyzja 261007-ihg) - bez wyboru miasta;
-// kontakty per miasto są w zakładce Koordynatorzy.
-function InformatorTab({ onShowCoordinators }) {
-  const INFO_SECTIONS = [
-    ...(SHOW_HARMONOGRAM ? [{ id: "harmonogram", label: "📅 Harmonogram" }] : []),
-    { id: "infopack", label: "📄 Infopack" },
-  ];
-
-  const [section, setSection] = useState("infopack");
-  const schedule = SCHEDULE.default;
-
-  return (
-    <div style={{ display: "flex", justifyContent: "center" }}>
-      <div style={{ width: "100%", maxWidth: 640, padding: "32px 24px" }}>
-        <div style={{ animation: "blurIn .45s ease both", marginBottom: 28 }}>
-          <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600 }}>Wszystko co musisz wiedzieć</span>
-          <h2 style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 46, letterSpacing: 2, color: "#EDE9FE", marginTop: 4, lineHeight: 1 }}>Informator uczestnika</h2>
-          <div style={{ height: 2, width: 60, background: "linear-gradient(90deg,#6B21E8,transparent)", marginTop: 10 }} />
-        </div>
-
-        {/* Sekcja tabs - ukryte, gdy została tylko jedna sekcja (pojedyncza zakładka
-            wygląda jak niedokończony interfejs). Wróci samo po SHOW_HARMONOGRAM = true. */}
-        <div style={{ display: INFO_SECTIONS.length > 1 ? "flex" : "none", borderBottom: "1px solid rgba(255,255,255,.09)", marginBottom: 28 }}>
-          {INFO_SECTIONS.map((s) => (
-            <button key={s.id} onClick={() => setSection(s.id)}
-              className={`fue-tab${section === s.id ? " active" : ""}`}
-              style={{ fontSize: 13, whiteSpace: "nowrap" }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        {SHOW_HARMONOGRAM && section === "harmonogram" && (
-          <div key="harmonogram" style={{ animation: "blurIn .35s ease both" }}>
-            {schedule.map((s, i) => (
-              <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start", paddingBottom: 20, animation: "cardIn .4s ease both", animationDelay: `${i * .07}s` }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 20 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: i === 2 ? "#6B21E8" : "#4F46E5", border: "2px solid rgba(107,33,232,.4)", marginTop: 5, ...(i === 2 ? { boxShadow: "0 0 8px rgba(107,33,232,.6)" } : {}) }} />
-                  {i < schedule.length - 1 &&<div style={{ width: 2, flex: 1, background: "rgba(107,33,232,.2)", marginTop: 4, minHeight: 24 }} />}
-                </div>
-                <div>
-                  <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 22, color: "#F5C518", letterSpacing: 1.5, lineHeight: 1 }}>{s.time}</p>
-                  <p style={{ fontSize: 14, color: "#EDE9FE", marginTop: 4, fontWeight: 500 }}>{s.icon} {s.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {section === "infopack" && (
-          <div key="infopack" style={{ animation: "blurIn .35s ease both" }}>
-            <div style={{ ...W.card({ padding: "28px", borderColor: "rgba(245,197,24,.28)" }), background: "linear-gradient(135deg, rgba(245,197,24,.08), rgba(107,33,232,.06))", textAlign: "center" }}>
-              <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 28, letterSpacing: 1.5, color: "#EDE9FE", lineHeight: 1 }}>📄 Infopack uczestnika</p>
-              <p style={{ fontSize: 14, color: "#9B89CC", lineHeight: 1.6, margin: "12px auto 22px", maxWidth: 440 }}>
-                Jeden informator dla wszystkich miast - zasady testu, harmonogram i praktyczne informacje.
-              </p>
-              <a href={INFOPACK_URL} target="_blank" rel="noopener noreferrer"
-                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px) scale(1.02)"; e.currentTarget.style.boxShadow = "0 14px 38px rgba(245,197,24,.5)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 8px 26px rgba(245,197,24,.35)"; }}
-                style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", background: "linear-gradient(135deg,#F5C518,#E5A800)", color: "#07021A", fontWeight: 800, fontSize: 15, padding: "14px 32px", borderRadius: 12, boxShadow: "0 8px 26px rgba(245,197,24,.35)", transition: "all .2s", fontFamily: '"Space Grotesk",sans-serif', letterSpacing: .3 }}>
-                📥 Pobierz infopack
-              </a>
-            </div>
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
-              <button onClick={onShowCoordinators}
-                style={{ ...W.btn("ghost", { width: "auto", fontSize: 13, padding: "10px 18px" }) }}>
-                Kontakt do koordynatora Twojej uczelni →
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Tab: Partnerzy ───────────────────────────────────────────────────────────
 
 // maxHeight wyrównuje optycznie loga o różnych proporcjach (okrągłe Coco Planet vs szerokie napisy).
@@ -696,7 +584,6 @@ const NAV_TABS = [
   { id: "organizatorzy", label: "Organizatorzy" },
   { id: "partnerzy",     label: "Partnerzy"     },
   { id: "koordynatorzy", label: "Koordynatorzy" },
-  { id: "informator",    label: "Informator"    },
 ];
 
 export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
@@ -723,7 +610,6 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
         {tab === "organizatorzy" && <OrganizatorszyTab />}
         {tab === "partnerzy"     && <PartnerzyTab />}
         {tab === "koordynatorzy" && <KoordynatorzyTab city={city} setCity={setCity} />}
-        {tab === "informator"    && <InformatorTab onShowCoordinators={() => setTab("koordynatorzy")} />}
       </div>
     </div>
   );

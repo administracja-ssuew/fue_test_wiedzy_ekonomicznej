@@ -70,14 +70,25 @@ const UNIV_COLORS = {
   UEK: "#D41D1F", SGH: "#82179F", UEP: "#699BF2", UEW: "#00A74D", UEKat: "#FFCC3C",
 };
 
-// Zdjęcia: wrzuć pliki JPG/PNG do folderu /public/photos/ i podaj ścieżkę w polu photo.
-// Np. photo: "/photos/krakow.jpg" - lub zostaw null żeby wyświetlać skrót uczelni.
+// Zdjęcia: kwadratowe JPG w /public/photos/ (ścieżka w polu photo) - albo null, wtedy skrót uczelni.
+// Miasto może mieć kilku koordynatorów (Warszawa ma dwie osoby) - każda osoba to osobna karta.
 const COORDINATORS_DATA = {
-  Kraków:   { name: "Imię Nazwisko", role: "Koordynator KG UEK",   email: "koordynator@uek.krakow.pl",                  phone: "+48 XXX XXX XXX", abbr: "UEK",   color: "#D41D1F", photo: null },
-  Warszawa: { name: "Imię Nazwisko", role: "Koordynator KG SGH",   email: "koordynator@sgh.waw.pl",                     phone: "+48 XXX XXX XXX", abbr: "SGH",   color: "#82179F", photo: null },
-  Poznań:   { name: "Imię Nazwisko", role: "Koordynator KG UEP",   email: "koordynator@ue.poznan.pl",                   phone: "+48 XXX XXX XXX", abbr: "UEP",   color: "#699BF2", photo: null },
-  Wrocław:  { name: "Hubert Gościmski", role: "Koordynator KG UEW", email: "hubert.goscimski@samorzad.ue.wroc.pl",      phone: "+48 XXX XXX XXX", abbr: "UEW",   color: "#00A74D", photo: null },
-  Katowice: { name: "Imię Nazwisko", role: "Koordynator KG UEKat", email: "koordynator@ue.katowice.pl",                 phone: "+48 XXX XXX XXX", abbr: "UEKat", color: "#FFCC3C", photo: null },
+  Kraków: { role: "Koordynacja KG UEK", abbr: "UEK", color: "#D41D1F", people: [
+    { name: "Julita Mosur", email: "julitamosur0@gmail.com", phone: "+48 576 358 767", photo: "/photos/krakow-julita-mosur.jpg" },
+  ] },
+  Warszawa: { role: "Koordynacja KG SGH", abbr: "SGH", color: "#82179F", people: [
+    { name: "Oliwia Liczbik",  email: "oliwialiczbik@gmail.com",     phone: "+48 792 336 807", photo: "/photos/warszawa-oliwia-liczbik.jpg" },
+    { name: "Maria Korzeniak", email: "marysiakorzeniak@gmail.com",  phone: "+48 533 264 733", photo: "/photos/warszawa-maria-korzeniak.jpg" },
+  ] },
+  Poznań: { role: "Koordynacja KG UEP", abbr: "UEP", color: "#699BF2", people: [
+    { name: "Aida Konecka", email: "aidakonecka@gmail.com", phone: "+48 780 710 077", photo: "/photos/poznan-aida-konecka.jpg" },
+  ] },
+  Wrocław: { role: "Koordynacja KG UEW", abbr: "UEW", color: "#00A74D", people: [
+    { name: "Hubert Gościmski", email: "hubert.goscimski@samorzad.ue.wroc.pl", phone: "+48 727 328 580", photo: "/photos/wroclaw-hubert-goscimski.jpg" },
+  ] },
+  Katowice: { role: "Koordynacja KG UEKat", abbr: "UEKat", color: "#FFCC3C", people: [
+    { name: "Szymon Boryczko", email: "szymon.boryczko@ps.uekat.pl", phone: "+48 570 424 263", photo: "/photos/katowice-szymon-boryczko.jpg" },
+  ] },
 };
 
 const SCHEDULE = {
@@ -466,7 +477,7 @@ function SectionLabel({ text }) {
 // ─── Tab: Koordynatorzy ───────────────────────────────────────────────────────
 
 function KoordynatorzyTab({ city, setCity }) {
-  const coord = COORDINATORS_DATA[city];
+  const { people, ...cityInfo } = COORDINATORS_DATA[city];
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 580, padding: "32px 24px" }}>
@@ -480,11 +491,15 @@ function KoordynatorzyTab({ city, setCity }) {
           <CitySelector city={city} setCity={setCity} />
         </div>
 
-        {/* Karta animowana po zmianie miasta */}
-        <div key={city} style={{
+        {/* Karty animowane po zmianie miasta - po jednej na osobę */}
+        <div key={city} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {people.map((p, i) => {
+          const coord = { ...cityInfo, ...p };
+          return (
+        <div key={p.name} style={{
           ...W.card({ padding: "28px", borderColor: `${coord.color}35` }),
           background: `linear-gradient(135deg, ${coord.color}10, ${coord.color}05)`,
-          animation: "cardIn .4s ease both",
+          animation: "cardIn .4s ease both", animationDelay: `${i * .08}s`,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 8 }}>
             <div style={{
@@ -510,6 +525,9 @@ function KoordynatorzyTab({ city, setCity }) {
             </div>
           </div>
           <ContactRows coord={coord} />
+        </div>
+          );
+        })}
         </div>
       </div>
     </div>
@@ -601,6 +619,14 @@ function InformatorTab({ onShowCoordinators }) {
 
 // ─── Tab: Partnerzy ───────────────────────────────────────────────────────────
 
+// maxHeight wyrównuje optycznie loga o różnych proporcjach (okrągłe Coco Planet vs szerokie napisy).
+const PARTNERS = [
+  { src: "/partner-katowice-airport.png", alt: "Katowice Airport i GTL", maxHeight: 84 },
+  { src: "/partner-coco-planet.png",      alt: "Coco Planet",           maxHeight: 84 },
+  { src: "/partner-filipinka.jpg",        alt: "Filipinka",             maxHeight: 54 },
+  { src: "/partner-eventim.png",          alt: "Eventim",               maxHeight: 46 },
+];
+
 function PartnerzyTab() {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
@@ -636,20 +662,21 @@ function PartnerzyTab() {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
-            <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>Partner</span>
+            <span style={{ fontSize: 11, color: "#9B89CC", letterSpacing: 1.5, textTransform: "uppercase", fontWeight: 600, marginBottom: 10 }}>Partnerzy</span>
             <div style={{
-              background: "#fff", borderRadius: 14,
-              padding: "clamp(12px, 3vw, 18px) clamp(14px, 4vw, 24px)",
-              width: "100%", maxWidth: 340, boxSizing: "border-box",
-              display: "flex", justifyContent: "center",
-              animation: "cardIn .45s ease both", animationDelay: ".12s",
+              display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: 14, width: "100%", maxWidth: 680,
             }}>
-              <img
-                src="/partner-katowice-airport.png"
-                alt="Katowice Airport i GTL"
-                decoding="async"
-                style={{ display: "block", width: "100%", maxWidth: 300, height: "auto" }}
-              />
+              {PARTNERS.map((p, i) => (
+                <div key={p.src} style={{
+                  background: "#fff", borderRadius: 14, height: 112, boxSizing: "border-box",
+                  padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "center",
+                  animation: "cardIn .45s ease both", animationDelay: `${.12 + i * .06}s`,
+                }}>
+                  <img src={p.src} alt={p.alt} decoding="async"
+                    style={{ display: "block", maxWidth: "100%", maxHeight: p.maxHeight, width: "auto", height: "auto" }} />
+                </div>
+              ))}
             </div>
           </div>
         </div>

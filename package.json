@@ -22,6 +22,10 @@
     "verify-realtime": "vite-node scripts/verify-realtime.js",
     "verify-clock": "vite-node scripts/verify-clock.js",
     "verify-order": "vite-node scripts/verify-order.js",
+    "db:login": "node scripts/db.js login",
+    "db:status": "node scripts/db.js status",
+    "db:query": "node scripts/db.js query",
+    "db:sql": "node scripts/db.js sql",
     "sonda": "vite-node scripts/probe-gameplay.js",
     "e2e": "playwright test",
     "report": "node scripts/report.js"

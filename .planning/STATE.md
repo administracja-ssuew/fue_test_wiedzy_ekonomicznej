@@ -137,6 +137,7 @@ None — Phase 1 can start immediately.
 | fast-47 | Sekcja 47 SQL: city_admin usuwa pytania tylko we własnym mieście (admin_delete_question / admin_delete_city_questions) — wgrane, verify-prod 71/71 | 2026-10-07 | `f43e52c` | — |
 | 261007-m24 | Partnerzy: Biedronka (główny, na środku, największe) + Katowice Airport; myślniki — i – zamienione na - w src/index.html/vite.config.js; wdrożone (index-C5v-D0H5.js) | 2026-10-07 | `eee1e84` | [261007-m24-partnerzy-biedronka-katowice-airport-i-m](./quick/261007-m24-partnerzy-biedronka-katowice-airport-i-m/) |
 | 261008-lx4 | Live View doładowuje pytania (bug z pomiaru 08.10: pytanie dodane po otwarciu projektora → złe pytanie/numer); numer pytania z planu sesji; 361/361 testów; wdrożone (index-BTuFPne4.js) | 2026-10-08 | `ac4f52a` | [261008-lx4-live-view-doladowuje-pytania](./quick/261008-lx4-live-view-doladowuje-pytania/) |
+| 261026-o0s | CLI bazy przez Management API: `npm run db:login/status/query/sql` (sekcje z SUPABASE_FIXES.sql, `--stage`, zapis na prod po wpisaniu PROD); 371/371 testów | 2026-10-26 | `9edb3c9` | [261026-o0s-cli-do-bazy-przez-management-api](./quick/261026-o0s-cli-do-bazy-przez-management-api/) |
 
 **Otwarte po 260902-lp2** (szczegóły w SUMMARY):
 
@@ -161,4 +162,4 @@ None — Phase 1 can start immediately.
 
 ---
 
-*Last updated: 2026-10-08 — Completed quick task 261008-lx4: Live View doładowuje pytania*
+*Last updated: 2026-10-26 — Completed quick task 261026-o0s: CLI bazy przez Management API*

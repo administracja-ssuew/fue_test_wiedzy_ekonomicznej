@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 import { cityInfo } from "../lib/gameLogic.js";
-import { supabase, DEMO, getSessionForCity, getQuestions } from "../lib/supabase.js";
+import { supabase, DEMO, getSessionForCity, getQuestions, getPracticeQuestions } from "../lib/supabase.js";
 import JoinQR from "../components/JoinQR.jsx";
 import { useWakeLockState } from "../hooks/useWakeLock.js";
 import { armWakeLockFromGesture } from "../lib/wakeLock.js";
@@ -43,15 +43,16 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
     return () => clearInterval(t);
   }, []);
 
-  // Realna liczba pytań per moduł - z bazy danego miasta (nie ze statycznego banku).
+  // Realna liczba pytań per moduł - z bazy danego miasta (nie ze statycznego banku);
+  // sesja próbna gra pulą próbną (sekcja 48).
   useEffect(() => {
     if (!city) return;
-    getQuestions(city).then((qs) => {
+    (isPractice ? getPracticeQuestions(city) : getQuestions(city)).then((qs) => {
       const counts = {};
       for (const q of qs) counts[q.module] = (counts[q.module] || 0) + 1;
       setQCounts(counts);
     });
-  }, [city]);
+  }, [city, isPractice]);
 
   // Fetch session once on mount (both DEMO and production)
   useEffect(() => {

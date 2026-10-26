@@ -3257,6 +3257,84 @@ REVOKE EXECUTE ON FUNCTION public.schema_marker_47() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.schema_marker_47() TO anon, authenticated;
 NOTIFY pgrst, 'reload schema';
 
+-- ─── 48. SESJA PRÓBNA GRA PULĄ PRÓBNĄ (quick 261026-wfx) ───────────────────
+-- Błąd: start_quiz_session_v2 budował plan zawsze z puli głównej miasta, więc sesja
+-- próbna (is_practice = true) dostawała wszystkie pytania konkursowe.
+-- Addytywnie: nowe przeciążenie build_session_plan(TEXT, BOOLEAN); stare (TEXT) zostaje.
+-- start_quiz_session_v2 — kopia 42.4; jedyna zmiana: czyta is_practice sesji i przekazuje go
+-- do planu. Dla sesji właściwej plan identyczny jak build_session_plan(TEXT).
+
+-- 48.1 — plan z wybranej puli (false = główna, true = próbna)
+CREATE OR REPLACE FUNCTION public.build_session_plan(p_city TEXT, p_practice BOOLEAN)
+RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_q JSONB;
+  v_m JSONB;
+BEGIN
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', q.id, 'module', q.module)
+                            ORDER BY q.module, q.sort_order, q.id), '[]'::jsonb)
+    INTO v_q
+    FROM public.questions q
+   WHERE q.city = p_city AND q.is_practice = COALESCE(p_practice, false);
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', m.id, 'timePerQ', m.time_per_q)), '[]'::jsonb)
+    INTO v_m
+    FROM public.modules m;
+  RETURN public.build_plan_items(v_q, v_m);
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.build_session_plan(TEXT, BOOLEAN) FROM PUBLIC, anon, authenticated;
+
+-- 48.2 — start: plan z puli zgodnej z is_practice sesji
+CREATE OR REPLACE FUNCTION public.start_quiz_session_v2(p_session_id UUID)
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_now TIMESTAMPTZ := clock_timestamp();
+  v_city TEXT; v_status TEXT; v_practice BOOLEAN; v_items JSONB;
+BEGIN
+  IF COALESCE(public.get_my_role(), '') NOT IN ('city_admin','superadmin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  SELECT city, status, is_practice INTO v_city, v_status, v_practice
+    FROM public.quiz_sessions WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN json_build_object('ok', false, 'reason', 'not found', 'session', NULL);
+  END IF;
+  -- kotwica liczona PO uzyskaniu blokady (czekanie na blokadę nie skraca zapowiedzi)
+  v_now := clock_timestamp();
+  IF v_status IS DISTINCT FROM 'waiting' THEN
+    RETURN json_build_object('ok', false, 'reason', 'not waiting',
+      'session', (SELECT row_to_json(s) FROM public.quiz_sessions s WHERE s.id = p_session_id));
+  END IF;
+  v_items := public.build_session_plan(v_city, COALESCE(v_practice, false));
+  IF v_items IS NULL OR jsonb_array_length(v_items) = 0 THEN
+    RETURN json_build_object('ok', false, 'reason', 'no questions',
+      'session', (SELECT row_to_json(s) FROM public.quiz_sessions s WHERE s.id = p_session_id));
+  END IF;
+  INSERT INTO public.session_plans (session_id, items) VALUES (p_session_id, v_items)
+  ON CONFLICT (session_id) DO UPDATE SET items = EXCLUDED.items, created_at = clock_timestamp();
+  UPDATE public.quiz_sessions SET
+    status               = 'running',
+    current_question_idx = 0,
+    plan_anchor_at       = v_now,
+    plan_paused_at       = NULL,
+    plan_hold_idx        = NULL,
+    revealed_idx         = NULL,
+    revealed_ans         = NULL,
+    pause_elapsed_s      = NULL,
+    q_started_at         = v_now + ((v_items->0->>'o')::BIGINT) * INTERVAL '1 millisecond'
+  WHERE id = p_session_id;
+  RETURN json_build_object('ok', true, 'reason', NULL, 'items', jsonb_array_length(v_items),
+    'session', (SELECT row_to_json(s) FROM public.quiz_sessions s WHERE s.id = p_session_id));
+END; $$;
+REVOKE EXECUTE ON FUNCTION public.start_quiz_session_v2(UUID) FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.start_quiz_session_v2(UUID) TO authenticated;
+
+-- 48.3 — znacznik wgrania sekcji 48 + przeładowanie cache PostgREST.
+CREATE OR REPLACE FUNCTION public.schema_marker_48()
+RETURNS BOOLEAN LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+REVOKE EXECUTE ON FUNCTION public.schema_marker_48() FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.schema_marker_48() TO anon, authenticated;
+NOTIFY pgrst, 'reload schema';
+
 -- ════════════════════════════════════════════════════════════════
 --  Done. Verify by checking that no errors appeared above.
 -- ════════════════════════════════════════════════════════════════

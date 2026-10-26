@@ -922,9 +922,9 @@ function SesjaTab({ city, adminId, onPodium }) {
       setParticipants(await getParticipantsInSession(city, data.id));
       if (data.status === "ended" || data.status === "results") setResults(await getSessionResults(data.id));
     }
-    // Always load real questions - practice sessions also use real question IDs for answers
-    const qs = await getQuestions(city);
-    setCityQuestions(qs);
+    // Pula główna + próbna (sekcja 48: sesja próbna gra pulą próbną); główna pierwsza.
+    const [main, prac] = await Promise.all([getQuestions(city), getPracticeQuestions(city)]);
+    setCityQuestions([...(main || []), ...(prac || [])]);
     setLoading(false);
   };
 
@@ -954,7 +954,8 @@ function SesjaTab({ city, adminId, onPodium }) {
         if (pollVersionRef.current !== myVersion) return;
         if (fresh) { setSession(fresh); sessionRef.current = fresh; }
         const s = sessionRef.current;
-        const q = cityQuestions[s?.current_question_idx ?? 0];
+        const qi = s?.current_question_idx ?? 0;
+        const q = cityQuestions.find((x) => x.id === planRef.current?.[qi]?.id) ?? cityQuestions[qi];
         const [stats, parts, viols] = await Promise.all([
           // Lightweight {total, correct} during the question - full per-row list is
           // only fetched at reveal (in the ghost LiveTab/LiveView), not here.
@@ -1105,7 +1106,7 @@ function SesjaTab({ city, adminId, onPodium }) {
         // Only count answers for the question currently on screen; the 1s poll
         // reconciles the exact value, so a missed event self-corrects within 1s.
         const curIdx = sessionRef.current?.current_question_idx ?? 0;
-        const curQid = cityQuestionsRef.current[curIdx]?.id;
+        const curQid = planRef.current?.[curIdx]?.id ?? cityQuestionsRef.current[curIdx]?.id;
         if (a.question_id !== curQid) return;
         setLiveStats((prev) => {
           const cur = prev || { total: 0, correct: 0 };

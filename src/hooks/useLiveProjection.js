@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
   supabase, DEMO,
-  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions,
+  getSessionForCity, getCityBg, getLiveQuestionStats, getLiveAnswerCount, getQuestions, getPracticeQuestions,
   getParticipantCount, getSessionPlan, getAnswerSummaryV2,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
@@ -76,7 +76,10 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
     const c = cityRef.current;
     if (!c || f.busy || Date.now() - f.at < 2000) return;
     f.busy = true; f.at = Date.now();
-    getQuestions(c)
+    // Pula główna + próbna (sekcja 48: sesja próbna gra pulą próbną). Szukamy po id, więc
+    // główna zostaje pierwsza - indeksy sesji właściwej bez zmian.
+    Promise.all([getQuestions(c), getPracticeQuestions(c)])
+      .then(([main, practice]) => [...(main || []), ...(practice || [])])
       .then((qs) => {
         if (cityRef.current !== c) return;
         if (qs?.length) { setQuestions(qs); questionsRef.current = qs; }

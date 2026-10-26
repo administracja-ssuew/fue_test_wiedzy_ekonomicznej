@@ -10,6 +10,7 @@ vi.mock("../lib/supabase.js", () => {
     getSessionForCity: vi.fn(),
     getCityBg: vi.fn(async () => null),
     getQuestions: vi.fn(),
+    getPracticeQuestions: vi.fn(async () => []),
     getSessionPlan: vi.fn(),
     getLiveQuestionStats: vi.fn(async () => ({ answers: [], total: 0, correct: 0 })),
     getLiveAnswerCount: vi.fn(async () => 0),
@@ -19,7 +20,7 @@ vi.mock("../lib/supabase.js", () => {
 });
 
 import useLiveProjection from "./useLiveProjection.js";
-import { getSessionForCity, getQuestions, getSessionPlan } from "../lib/supabase.js";
+import { getSessionForCity, getQuestions, getPracticeQuestions, getSessionPlan } from "../lib/supabase.js";
 
 const Q = (id, module = 1) => ({ id, module, q: `Treść ${id}`, opts: ["a", "b", "c", "d"] });
 const PLAN = [
@@ -75,6 +76,24 @@ describe("useLiveProjection - pytanie spoza listy otwartej przy starcie projekto
 
     expect(hook.result.current.currentQ?.id).toBe("qNEW");
     expect(getQuestions).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
+  it("sesja próbna: pytanie z puli próbnej, mimo że pula główna ma coś pod tym indeksem", async () => {
+    // Sekcja 48: plan sesji próbnej wskazuje pytania próbne (P1, P2), których nie ma w puli głównej.
+    getSessionPlan.mockResolvedValue([
+      { i: 0, id: "P1", m: 1, tpq: 20, lead: 10, o: 10000, c: 30000, r: 41500 },
+      { i: 1, id: "P2", m: 2, tpq: 20, lead: 10, o: 45500, c: 65500, r: 77000 },
+    ]);
+    getQuestions.mockResolvedValue([Q("q1"), Q("qX", 2)]);
+    getPracticeQuestions.mockResolvedValue([Q("P1"), Q("P2", 2)]);
+
+    const hook = renderHook(() => useLiveProjection("Kraków"));
+    await tick(500);
+
+    expect(hook.result.current.currentQ?.id).toBe("P2"); // nie "qX"
+    expect(hook.result.current.qNum).toBe(2);
+    expect(hook.result.current.qTotal).toBe(2);
     hook.unmount();
   });
 });

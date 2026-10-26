@@ -487,6 +487,15 @@ async function main() {
     else                       bad("schema_marker_47 — nieoczekiwana odpowiedź", JSON.stringify(data));
   }
 
+  console.log("\n🔬 SEKCJA 48 (sesja próbna gra pulą próbną):\n");
+  {
+    const { data, error } = await callRpc("schema_marker_48", {});
+    if (isMissing(error))      bad("schema_marker_48 — BRAK", "→ uruchom sekcję 48 (plan sesji próbnej z puli próbnej)");
+    else if (error)            bad("schema_marker_48 — błąd", error.message);
+    else if (data === true)    ok("schema_marker_48 — sekcja 48 wgrana", "start sesji próbnej bierze pulę próbną");
+    else                       bad("schema_marker_48 — nieoczekiwana odpowiedź", JSON.stringify(data));
+  }
+
   console.log("\n" + "─".repeat(56));
   if (fail === 0) console.log(`✅ PRODUKCJA GOTOWA pod kątem SQL (${pass} OK${warn ? `, ${warn} uwag` : ""})`);
   else console.log(`❌ ${fail} PROBLEM(ÓW) — uzupełnij wskazane sekcje SQL na produkcji`);

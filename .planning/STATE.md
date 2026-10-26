@@ -139,6 +139,7 @@ None — Phase 1 can start immediately.
 | 261008-lx4 | Live View doładowuje pytania (bug z pomiaru 08.10: pytanie dodane po otwarciu projektora → złe pytanie/numer); numer pytania z planu sesji; 361/361 testów; wdrożone (index-BTuFPne4.js) | 2026-10-08 | `ac4f52a` | [261008-lx4-live-view-doladowuje-pytania](./quick/261008-lx4-live-view-doladowuje-pytania/) |
 | 261026-o0s | CLI bazy przez Management API: `npm run db:login/status/query/sql` (sekcje z SUPABASE_FIXES.sql, `--stage`, zapis na prod po wpisaniu PROD); 371/371 testów | 2026-10-26 | `9edb3c9` | [261026-o0s-cli-do-bazy-przez-management-api](./quick/261026-o0s-cli-do-bazy-przez-management-api/) |
 | 261026-ps4 | Partnerzy Coco Planet, Filipinka, Eventim (siatka kafelków) + koordynatorzy ze zdjęciami (Warszawa: 2 osoby); 371/371 testów; wdrożone (index-49feXgOP.js) | 2026-10-26 | `558472d` | [261026-ps4-partnerzy-coco-planet-filipinka-eventim-](./quick/261026-ps4-partnerzy-coco-planet-filipinka-eventim-/) |
+| 261026-qs8 | Usunięta zakładka Informator ze strony głównej (+ martwe dane SCHEDULE/RULES/INFOPACK_URL); 371/371 testów | 2026-10-26 | `7b308d9` | [261026-qs8-usuni-cie-zak-adki-informator](./quick/261026-qs8-usuni-cie-zak-adki-informator/) |
 
 **Otwarte po 260902-lp2** (szczegóły w SUMMARY):
 
@@ -163,4 +164,4 @@ None — Phase 1 can start immediately.
 
 ---
 
-*Last updated: 2026-10-26 — Completed quick task 261026-ps4: partnerzy i koordynatorzy*
+*Last updated: 2026-10-26 — Completed quick task 261026-qs8: usunięta zakładka Informator*

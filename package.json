@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "bot": "vite-node scripts/bot-runner.js",
     "load": "vite-node scripts/load-runner.js",
+    "load-v2": "vite-node scripts/load-v2.js",
     "rls": "vite-node scripts/rls-check.js",
     "seed-admin": "vite-node scripts/seed-admin.js",
     "seed-admins": "vite-node scripts/seed-admins.js",

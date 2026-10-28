@@ -142,7 +142,7 @@ None — Phase 1 can start immediately.
 | 261026-qs8 | Usunięta zakładka Informator ze strony głównej (+ martwe dane SCHEDULE/RULES/INFOPACK_URL); 371/371 testów | 2026-10-26 | `7b308d9` | [261026-qs8-usuni-cie-zak-adki-informator](./quick/261026-qs8-usuni-cie-zak-adki-informator/) |
 | 261026-wfx | Sesja próbna gra pulą próbną: SQL 48 (build_session_plan(TEXT,BOOLEAN), start_quiz_session_v2 z is_practice) + panel/Live View/poczekalnia; plany właściwe 5 miast identyczne przed/po; start próbny i właściwy sprawdzony w wycofanej transakcji; verify-prod 76 OK; wdrożone (index-CwBmYp0V.js) | 2026-10-27 | `afb7c46` | [261026-wfx-sesja-pr-bna-z-puli-pr-bnej](./quick/261026-wfx-sesja-pr-bna-z-puli-pr-bnej/) |
 | 261027-2q5 | Seria sond na stagingu (kontrole bazy, 7 sond rozgrywki, sesja próbna) + nowy `npm run load-v2`: 410 osób / 5 miast naraz / przerwa+wznowienie — 0 błędów, p95 przejścia 820 ms | 2026-10-27 | `1c9076e` | [261027-2q5-seria-sond-na-stagingu-i-test-obciazenia](./quick/261027-2q5-seria-sond-na-stagingu-i-test-obciazenia/) |
-| 261027-wuf | Poprawki po finale: wspólny kanał sesji (94× client_error), blokada pauzy 5 s po wznowieniu, ponowienie akcji admina po odmowie logowania, baner zablokowanych kodów z 🔓, zaślepka strony głównej; 386/386; sondy stagingu zielone; WDROŻENIE wstrzymane (push 403) | 2026-10-28 | `549e213` | [261027-wuf-poprawki-po-finale-kanal-quiz-pauza-po-w](./quick/261027-wuf-poprawki-po-finale-kanal-quiz-pauza-po-w/) |
+| 261027-wuf | Poprawki po finale: wspólny kanał sesji (94× client_error), blokada pauzy 5 s po wznowieniu, ponowienie akcji admina po odmowie logowania, baner zablokowanych kodów z 🔓, zaślepka strony głównej; 386/386; sondy stagingu zielone; wdrożone 28.10 (index-B538Edkh.js) | 2026-10-28 | `549e213` | [261027-wuf-poprawki-po-finale-kanal-quiz-pauza-po-w](./quick/261027-wuf-poprawki-po-finale-kanal-quiz-pauza-po-w/) |
 
 **Otwarte po 260902-lp2** (szczegóły w SUMMARY):
 
@@ -167,4 +167,4 @@ None — Phase 1 can start immediately.
 
 ---
 
-*Last updated: 2026-10-28 — Completed quick task 261027-wuf: poprawki po finale (wdrożenie czeka na dostęp do repo)*
+*Last updated: 2026-10-28 — Completed quick task 261027-wuf: poprawki po finale *

@@ -1,7 +1,7 @@
 # Quick 261027-wuf — PODSUMOWANIE
 
 **Commit:** `549e213` · testy 386/386, build OK (`index-B538Edkh.js`).
-**Wdrożenie:** wstrzymane — push odrzucony 403 (git zalogowany jako `dzial-it-samorzadu`, brak dostępu do repo `administracja-ssuew/...`).
+**Wdrożenie:** 28.10 11:31, `www.testwiedzyekonomicznej.pl` serwuje `index-B538Edkh.js` (pierwsze pushe odrzucone 403 — git zalogowany jako `dzial-it-samorzadu`; kolejna próba przeszła).
 
 ## Weryfikacja na stagingu (build z *_STAGE, sondy Playwright)
 - Sonda podstawowa (poczekalnia → start → quiz → wyniki): ✅; client_error w event_log stagingu: **0** (finał: 94 przy starcie sesji).

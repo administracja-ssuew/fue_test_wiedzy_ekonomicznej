@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  activeConflicts,
   ROSTER_STATES, CONFLICT_WINDOW_MS,
   lastClosedIndex, classifyParticipant, sortRoster, summarizeRoster, conflictLabel,
 } from "./roster.js";
@@ -109,5 +110,23 @@ describe("conflictLabel / ROSTER_STATES", () => {
   it("stany problemowe", () => {
     const problems = Object.entries(ROSTER_STATES).filter(([, s]) => s.problem).map(([k]) => k).sort();
     expect(problems).toEqual(["conflict", "disconnected", "no_answer"]);
+  });
+});
+
+describe("activeConflicts (baner zablokowanych kodów)", () => {
+  const now = 10 * 60 * 1000;
+  it("pokazuje kody z prób w oknie, najnowsze pierwsze", () => {
+    const m = new Map([["WRO-1", now - 60_000], ["WRO-2", now - 10_000], ["WRO-3", now - 6 * 60_000]]);
+    expect(activeConflicts(m, now).map((x) => x.code)).toEqual(["WRO-2", "WRO-1"]);
+  });
+  it("zwolniony kod znika, ale wraca przy nowszej próbie", () => {
+    const m = new Map([["WRO-1", now - 60_000]]);
+    expect(activeConflicts(m, now, new Map([["WRO-1", now - 30_000]]))).toEqual([]);
+    const later = new Map([["WRO-1", now - 5_000]]);
+    expect(activeConflicts(later, now, new Map([["WRO-1", now - 30_000]])).map((x) => x.code)).toEqual(["WRO-1"]);
+  });
+  it("pusta / brak mapy - pusta lista", () => {
+    expect(activeConflicts(null, now)).toEqual([]);
+    expect(activeConflicts(new Map(), now)).toEqual([]);
   });
 });

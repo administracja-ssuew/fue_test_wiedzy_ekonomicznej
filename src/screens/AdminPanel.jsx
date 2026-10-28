@@ -11,24 +11,25 @@ import {
   logEvent,
   startQuizSessionV2, adminPauseSession, adminResumeSession, adminSkipQuestion, adminRepeatQuestion,
   getSessionPlan, getSweeperStatus, adminSweepSession,
-  getRecentCodeConflicts, getQuestionAnswerPresence,
+  getRecentCodeConflicts, getQuestionAnswerPresence, releaseCodeByCode,
   getContentLock, updateContentLock,
 } from "../lib/supabase.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import { canEditContent, friendlyWriteError, CONTENT_LOCKED_TEXT } from "../lib/contentLock.js";
 import { planPosition, breakIdxAt, toMs } from "../lib/plan.js";
+import { sessionSignalChannel } from "../lib/sessionSignal.js";
 import { downloadResultsXlsx, resultsFileName } from "../lib/resultsXlsx.js";
 import { CITIES } from "../data/questions.js";
 import { CITY_PREFIX, parseCodesCsv, assignNumbers, takenNumbersFromCodes } from "../lib/codeFormat.js";
 import { moveItem, moveById, applyModuleOrder } from "../lib/reorder.js";
 import useWindowWidth from "../hooks/useWindowWidth.js";
 import ParticipantRoster from "../components/ParticipantRoster.jsx";
-import { lastClosedIndex } from "../lib/roster.js";
+import { lastClosedIndex, activeConflicts } from "../lib/roster.js";
 import { VIOLATION_LABELS } from "../lib/violations.js";
 import { useModules } from "../context/ModulesContext.jsx";
 import useLiveProjection from "../hooks/useLiveProjection.js";
 import { serverNow } from "../lib/serverClock.js";
-import { shouldEndEarly, PAUSE_ARM_MS, pauseClickAction } from "../lib/gameLogic.js";
+import { shouldEndEarly, PAUSE_ARM_MS, pauseClickAction, pauseLockLeftMs } from "../lib/gameLogic.js";
 
 const C = {
   bg:    "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)",
@@ -770,6 +771,10 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [xlsxBusy, setXlsxBusy]             = useState(false); // trwa budowanie skoroszytu
   // Pauza z dwóch kliknięć (06-16, H4): chwila, do której drugie kliknięcie pauzuje (0 = nieuzbrojony).
   const [pauseArmedUntil, setPauseArmedUntil] = useState(0);
+  // Chwila wejścia w „running” (start/wznowienie) - przez 5 s pauza zablokowana (pauseLockLeftMs).
+  const [runningSince, setRunningSince] = useState(0);
+  const [lockNow, setLockNow] = useState(() => Date.now());
+  const prevStRef = useRef(null);
   const pauseArmTimerRef = useRef(null);
   useEffect(() => () => clearTimeout(pauseArmTimerRef.current), []);
   // Zmiana statusu (np. pauza z innego panelu, przerwa planowa) rozbraja przycisk.
@@ -831,6 +836,8 @@ function SesjaTab({ city, adminId, onPodium }) {
   const [closedPresence, setClosedPresence] = useState(null); // { idx, map: Map<code, hasChoice> }
   const [conflicts, setConflicts] = useState(() => new Map());
   const [rosterNow, setRosterNow] = useState(() => Date.now());
+  // Kody zwolnione z banera konfliktów: code → ms (ukryte do nowszej próby).
+  const [releasedCodes, setReleasedCodes] = useState(() => new Map());
   const closedIdxRef = useRef(null);
   useEffect(() => { closedIdxRef.current = null; setClosedPresence(null); setConflicts(new Map()); }, [session?.id]);
   useEffect(() => {
@@ -860,6 +867,13 @@ function SesjaTab({ city, adminId, onPodium }) {
     const ivC = setInterval(pullConflicts, 6000);
     return () => { alive = false; clearInterval(iv); clearInterval(ivC); };
   }, [session?.id, session?.status, city]);
+
+  const releaseConflict = async (code) => {
+    const { error } = await releaseCodeByCode(code);
+    if (error) return alert(`Nie udało się zwolnić kodu ${code}: ${error}. Spróbuj ponownie.`);
+    setReleasedCodes((m) => new Map(m).set(code, Date.now()));
+    setParticipants(await getParticipantsInSession(city, sessionRef.current?.id));
+  };
 
   const releaseFromRoster = async (p) => {
     const { error } = await releaseCode(p.id);
@@ -1062,6 +1076,21 @@ function SesjaTab({ city, adminId, onPodium }) {
     };
   }, [session?.status, cityQuestions]);
 
+  // Blokada pauzy po starcie/wznowieniu: zapamiętaj wejście w „running” i odliczaj 5 s.
+  useEffect(() => {
+    const cur = session?.status || null;
+    const prev = prevStRef.current;
+    prevStRef.current = cur;
+    if (cur !== "running" || prev === "running") return undefined;
+    const t0 = Date.now();
+    setRunningSince(t0); setLockNow(t0);
+    const iv = setInterval(() => {
+      const n = Date.now(); setLockNow(n);
+      if (pauseLockLeftMs(t0, n) === 0) clearInterval(iv);
+    }, 250);
+    return () => clearInterval(iv);
+  }, [session?.status]);
+
   // Realtime Presence - count participants actually on the lobby screen
   useEffect(() => {
     if (DEMO || !supabase) return;
@@ -1082,9 +1111,9 @@ function SesjaTab({ city, adminId, onPodium }) {
   useEffect(() => {
     if (DEMO || !supabase || !session?.id) return;
     // Broadcast channel - admin sends status updates to participants instantly
-    const bcCh = supabase.channel(`quiz-${session.id}`)
-      .subscribe();
-    quizBcChRef.current = bcCh;
+    // Wspólny kanał sesji (sessionSignal.js) - wbudowany podgląd Live View słucha tego samego.
+    const bc = sessionSignalChannel(supabase, session.id);
+    quizBcChRef.current = bc.channel;
     // Violations real-time + INSTANT answer counter (push <100ms, no polling lag).
     // Requires SUPABASE_FIXES.sql section 21 (answers in realtime publication);
     // RLS answers_admin_select means only the admin receives these events.
@@ -1115,7 +1144,7 @@ function SesjaTab({ city, adminId, onPodium }) {
       })
       .subscribe();
     return () => {
-      supabase.removeChannel(bcCh); quizBcChRef.current = null;
+      bc.release(); quizBcChRef.current = null;
       supabase.removeChannel(violCh);
     };
   }, [session?.id]); // eslint-disable-line
@@ -1188,6 +1217,7 @@ function SesjaTab({ city, adminId, onPodium }) {
   if (loading) return <p style={{ color: "#9B89CC", textAlign: "center", padding: 32 }}>Ładowanie…</p>;
 
   const st     = session?.status || "waiting";
+  const pauseLockLeft = st === "running" ? pauseLockLeftMs(runningSince, lockNow) : 0;
   // Presence lobby może nie działać dla miast z polskimi znakami (07-RESEARCH Pułapka 3):
   // pusta lista = stan nieznany → „W poczekalni”, nie fałszywe „Rozłączony”.
   const lobbyCodes = st === "waiting" && lobbyPresenceList.length ? new Set(lobbyPresenceList.map((x) => x.code)) : null;
@@ -1386,9 +1416,12 @@ function SesjaTab({ city, adminId, onPodium }) {
                   podwójne kliknięcie chroni przed przypadkiem bez okna modalnego. Pierwszy klik
                   NICZEGO nie zapisuje w bazie. Nazwa dostępna zawsze zawiera „Pauza” (sonda). */}
               <button
-                style={pauseArmedUntil ? C.btn("danger", { flex: 1 }) : { ...C.btn("pause", { flex: 1 }) }}
+                disabled={pauseLockLeft > 0}
+                title={pauseLockLeft > 0 ? "Quiz właśnie ruszył - pauza będzie dostępna za chwilę" : undefined}
+                style={pauseArmedUntil ? C.btn("danger", { flex: 1 }) : { ...C.btn("pause", { flex: 1 }), ...(pauseLockLeft > 0 ? { opacity: .45, cursor: "not-allowed" } : {}) }}
                 aria-label={pauseArmedUntil ? `⏸ Pauza - ${PAUSE_ARMED_TEXT}` : undefined}
                 onClick={async () => {
+                  if (pauseLockLeft > 0) return;
                   clearTimeout(pauseArmTimerRef.current);
                   if (pauseClickAction(pauseArmedUntil, Date.now()) === "arm") {
                     setPauseArmedUntil(Date.now() + PAUSE_ARM_MS);
@@ -1397,7 +1430,7 @@ function SesjaTab({ city, adminId, onPodium }) {
                   }
                   setPauseArmedUntil(0);
                   applyV2(await adminPauseSession(sessionRef.current.id), "session_paused");
-                }}>{pauseArmedUntil ? `⏸ ${PAUSE_ARMED_TEXT}` : "⏸ Pauza"}</button>
+                }}>{pauseArmedUntil ? `⏸ ${PAUSE_ARMED_TEXT}` : pauseLockLeft > 0 ? `⏸ Pauza (za ${Math.ceil(pauseLockLeft / 1000)} s)` : "⏸ Pauza"}</button>
               <button
                 disabled={!allAnswered}
                 title={allAnswered ? "Można przejść dalej bez czekania na czas" : "Aktywne, gdy wszyscy odpowiedzą (lub gdy odpowiedzi przestaną napływać)"}
@@ -1524,6 +1557,31 @@ function SesjaTab({ city, adminId, onPodium }) {
           ))}
         </div>
       )}
+
+      {/* ── Baner: kody blokowane „na innym urządzeniu” (po finale 27.10) ───
+          Z prób wejścia, nie z listy sesji - kod przypięty w próbie nie należy do sesji finału. */}
+      {(st === "waiting" || st === "running" || st === "paused") && (() => {
+        const list = activeConflicts(conflicts, rosterNow, releasedCodes);
+        if (!list.length) return null;
+        return (
+          <div role="alert" style={{ margin: "12px 20px 0", padding: "12px 14px", borderRadius: 12,
+            background: "rgba(255,154,60,.12)", border: "1px solid rgba(255,154,60,.55)" }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#FF9A3C", marginBottom: 8 }}>
+              ⚠️ {list.length === 1 ? "Ktoś nie może wejść" : `${list.length} osoby nie mogą wejść`} - kod przypięty do innego telefonu/przeglądarki.
+              Kliknij 🔓 i poproś o ponowne wpisanie kodu.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {list.map(({ code, atMs }) => (
+                <button key={code} onClick={() => releaseConflict(code)}
+                  title="Zwolnij kod z poprzedniego urządzenia"
+                  style={{ ...C.btn("ghost", { padding: "6px 12px", fontSize: 13 }), borderColor: "rgba(255,154,60,.6)", color: "#FFD3A8" }}>
+                  🔓 {code} <span style={{ opacity: .7, fontSize: 11 }}>· {Math.max(0, Math.floor((rosterNow - atMs) / 60000))} min</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Lista uczestników „kto utknął” (07-11) ───────────────────── */}
       {(st === "waiting" || st === "running" || st === "paused") && (

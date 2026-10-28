@@ -110,9 +110,24 @@ const W = {
 
 // ─── Social bar ───────────────────────────────────────────────────────────────
 
-function SocialBar() {
+// Wejście z kodem i logowanie admina - dyskretnie w lewym górnym rogu (decyzja po finale 27.10).
+// Nazwy dostępne zostają pełne („Mam kod - dołącz”, „Panel Administratora”) - szukają ich sondy i e2e.
+const QUIET_LINK = { background: "none", border: "none", padding: "4px 2px", cursor: "pointer", fontSize: 11, color: "rgba(155,137,204,.55)", fontFamily: '"Space Grotesk",sans-serif', letterSpacing: .3 };
+
+function SocialBar({ onEnterCode, onAdminLogin }) {
   return (
-    <div style={{ background: "rgba(0,0,0,.5)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexShrink: 0 }}>
+    <div style={{ background: "rgba(0,0,0,.5)", borderBottom: "1px solid rgba(255,255,255,.07)", padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={onEnterCode} aria-label="Mam kod - dołącz" style={QUIET_LINK}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#C4B5FD")} onMouseLeave={(e) => (e.currentTarget.style.color = QUIET_LINK.color)}>
+          Mam kod
+        </button>
+        <span aria-hidden="true" style={{ color: "rgba(155,137,204,.3)", fontSize: 11 }}>·</span>
+        <button onClick={onAdminLogin} aria-label="Panel Administratora" style={QUIET_LINK}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#C4B5FD")} onMouseLeave={(e) => (e.currentTarget.style.color = QUIET_LINK.color)}>
+          Panel admina
+        </button>
+      </div>
       <div style={{ display: "flex", gap: 7 }}>
         {SOCIAL_LINKS.map((s) => {
           const Icon = s.icon;
@@ -247,6 +262,21 @@ function Shape({ style, gradient, delay = 0 }) {
 
 // Wspólny formularz zapisów dla wszystkich miast - podmień na właściwy URL.
 const REGISTRATION_URL = "#";
+// Po wydarzeniu (finał 27.10.2026): zaślepka z podziękowaniem zamiast zapisów, przycisków i odliczania.
+// Przed kolejną edycją: false (i nowa data TEST_START).
+const EVENT_FINISHED = true;
+
+function ThankYou() {
+  return (
+    <div style={{ ...W.card({ padding: "26px 28px" }), background: "linear-gradient(135deg, rgba(245,197,24,.08), rgba(107,33,232,.08))", borderColor: "rgba(245,197,24,.28)", maxWidth: 520, margin: "0 auto" }}>
+      <p style={{ fontFamily: '"Bebas Neue",sans-serif', fontSize: 34, letterSpacing: 2, color: "#F5C518", lineHeight: 1 }}>Dziękujemy za udział!</p>
+      <p style={{ fontSize: 15, color: "#EDE9FE", lineHeight: 1.6, marginTop: 12 }}>
+        Test Wiedzy Ekonomicznej {TEST_START.getFullYear()} zakończony. Dziękujemy wszystkim uczestnikom, koordynatorom i partnerom.
+      </p>
+      <p style={{ fontSize: 13, color: "#9B89CC", lineHeight: 1.6, marginTop: 8 }}>Do zobaczenia w kolejnej edycji!</p>
+    </div>
+  );
+}
 function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
   const [play, setPlay] = useState(() => document.fonts.status === "loaded" ? "running" : "paused");
   useEffect(() => {
@@ -307,6 +337,11 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
           }} />
         </div>
 
+        {EVENT_FINISHED ? (
+          <div style={{ animation: "blurIn .55s .58s ease both", animationPlayState: play }}>
+            <ThankYou />
+          </div>
+        ) : (<>
         {/* CTA Zapisy - wspólny formularz dla wszystkich miast (placeholder URL) */}
         <div style={{ animation: "blurIn .55s .58s ease both", animationPlayState: play, display: "flex", justifyContent: "center", marginBottom: 16 }}>
           <a href={REGISTRATION_URL} target="_blank" rel="noopener noreferrer"
@@ -339,6 +374,7 @@ function HomeTab({ isDesktop, onEnterCode, onAdminLogin }) {
         <div style={{ animation: "blurIn .5s .78s ease both", animationPlayState: play, marginTop: 36 }}>
           <CountdownDisplay />
         </div>
+        </>)}
       </div>
     </div>
   );
@@ -593,7 +629,7 @@ export default function Welcome({ isDesktop, onEnterCode, onAdminLogin }) {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#070215 0%,#0E0435 50%,#070215 100%)", display: "flex", flexDirection: "column", fontFamily: '"Space Grotesk",sans-serif', color: "#EDE9FE" }}>
 
-      <SocialBar />
+      <SocialBar onEnterCode={onEnterCode} onAdminLogin={onAdminLogin} />
 
       <nav style={{ borderBottom: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.2)", display: "flex", overflowX: "auto", flexShrink: 0 }}>
         {NAV_TABS.map((t) => (

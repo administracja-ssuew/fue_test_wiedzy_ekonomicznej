@@ -5,6 +5,7 @@ import {
   getParticipantCount, getSessionPlan, getAnswerSummaryV2,
 } from "../lib/supabase.js";
 import { useModules } from "../context/ModulesContext.jsx";
+import { listenSessionSignal } from "../lib/sessionSignal.js";
 import { REVEAL_MS } from "../lib/gameLogic.js";
 import { toMs, projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
 import { serverNow } from "../lib/serverClock.js";
@@ -155,13 +156,10 @@ export default function useLiveProjection(city, { detailed = false } = {}) {
   // postgres_changes/polling. Dzięki temu reveal kończy się równo z uczestnikiem.
   useEffect(() => {
     if (!sessionId || DEMO || !supabase) return;
-    const ch = supabase.channel(`quiz-${sessionId}`)
-      .on("broadcast", { event: "quiz_event" }, () => {
-        // Sygnał do szybkiego odświeżenia - stan bierzemy z bazy, nie z payloadu (anty-spoofing).
-        getSessionForCity(city).then(applySession);
-      })
-      .subscribe();
-    return () => supabase.removeChannel(ch);
+    // Wspólny kanał sesji (sessionSignal.js) - w panelu admina ten sam `quiz-<id>` trzyma
+    // nadawca; własny removeChannel zamykałby mu kanał przy zmianie zakładki.
+    // Sygnał do szybkiego odświeżenia - stan bierzemy z bazy, nie z payloadu (anty-spoofing).
+    return listenSessionSignal(supabase, sessionId, () => { getSessionForCity(city).then(applySession); });
   }, [sessionId]);
 
   // Projection ticker

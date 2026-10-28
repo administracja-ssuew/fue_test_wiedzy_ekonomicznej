@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { cityInfo } from "../lib/gameLogic.js";
 import { supabase, DEMO, getSessionForCity, getQuestions, getPracticeQuestions } from "../lib/supabase.js";
+import { listenSessionSignal } from "../lib/sessionSignal.js";
 import JoinQR from "../components/JoinQR.jsx";
 import { useWakeLockState } from "../hooks/useWakeLock.js";
 import { armWakeLockFromGesture } from "../lib/wakeLock.js";
@@ -73,16 +74,14 @@ export default function Lobby({ participant, isDesktop, isPractice, onStartQuiz,
   // autorytatywny stan czytamy z bazy (kanał jest publiczny).
   useEffect(() => {
     if (DEMO || !supabase || !session?.id) return;
-    const ch = supabase.channel(`quiz-${session.id}`)
-      .on("broadcast", { event: "quiz_event" }, () => {
-        getSessionForCity(city).then((s) => {
-          if (!s) return;
-          setSession(s);
-          if (s.status === "running") { clearInterval(pollRef.current); onStartQuizRef.current(s); }
-        });
-      })
-      .subscribe();
-    return () => supabase.removeChannel(ch);
+    // Wspólny kanał sesji (sessionSignal.js) - hook gry słucha tego samego `quiz-<id>`.
+    return listenSessionSignal(supabase, session.id, () => {
+      getSessionForCity(city).then((s) => {
+        if (!s) return;
+        setSession(s);
+        if (s.status === "running") { clearInterval(pollRef.current); onStartQuizRef.current(s); }
+      });
+    });
   }, [session?.id, city]);
 
   // Realtime + safety-net polling in production; polling-only in DEMO.

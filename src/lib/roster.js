@@ -67,3 +67,19 @@ export function summarizeRoster(rows) {
 export function conflictLabel(atMs, nowMs) {
   return `${ROSTER_STATES.conflict.label} · ${Math.max(0, Math.floor((nowMs - atMs) / 60000))} min temu`;
 }
+
+// Kody, które w ostatnich CONFLICT_WINDOW_MS próbowały wejść z innego urządzenia - do banera
+// w panelu. Bierzemy je wprost z prób (conflicts), NIE z listy uczestników sesji: kod przypięty
+// w próbie nie należy do sesji finału, więc na liście by go nie było (finał 27.10: WRO-9676
+// próbowała 17 razy, admin jej nie widział). released: Map(code → ms zwolnienia) - ukrywa
+// kod, dopóki nie przyjdzie NOWSZA próba.
+export function activeConflicts(conflicts, nowMs, released = new Map()) {
+  const out = [];
+  for (const [code, atMs] of conflicts || []) {
+    if (!Number.isFinite(atMs) || nowMs - atMs > CONFLICT_WINDOW_MS) continue;
+    const rel = released.get(code);
+    if (rel != null && rel >= atMs) continue;
+    out.push({ code, atMs });
+  }
+  return out.sort((a, b) => b.atMs - a.atMs);
+}

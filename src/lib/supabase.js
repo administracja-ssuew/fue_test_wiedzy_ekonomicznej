@@ -147,8 +147,18 @@ export async function validateParticipantCode(rawCode) {
 // Admin: zwolnij kod (wyczyść powiązanie z urządzeniem) - zmiana telefonu itp.
 export async function releaseCode(id) {
   if (DEMO) return { error: null };
-  const { error } = await supabase.rpc("admin_release_code", { p_id: id });
+  const { error } = await adminRpcCall("admin_release_code", { p_id: id });
   return { error: error?.message || null };
+}
+
+// Zwolnienie kodu po samym kodzie - dla banera konfliktów (kod przypięty w próbie nie ma wiersza
+// na liście uczestników sesji finału, więc nie znamy jego id z listy).
+export async function releaseCodeByCode(code) {
+  if (DEMO) return { error: null };
+  const { data, error } = await supabase.from("participant_codes").select("id").eq("code", code).maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "nie znaleziono kodu" };
+  return releaseCode(data.id);
 }
 
 export async function markCodeUsed(code, sessionId) {
@@ -1136,8 +1146,7 @@ export async function startQuizSessionV2(sessionId) {
     localStorage.setItem(key, JSON.stringify(next));
     return { ok: true, reason: null, session: next, error: null };
   }
-  await supabase.auth.getSession();
-  const { data, error } = await supabase.rpc("start_quiz_session_v2", { p_session_id: sessionId });
+  const { data, error } = await adminRpcCall("start_quiz_session_v2", { p_session_id: sessionId });
   if (error) {
     if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: "Na bazie brak sekcji 39 (start_quiz_session_v2) - wgraj SQL." };
     return { ok: false, reason: null, session: null, error: error.message };
@@ -1340,9 +1349,26 @@ function demoAdminAction(sessionId, fn) {
   return { ok: true, reason: null, session: res.next, error: null };
 }
 
-async function adminRpc(name, args) {
+// Odmowa z powodu logowania (wygasły/odrzucony token): serwer zwraca 'forbidden' z get_my_role()
+// = NULL albo błąd JWT. Po długiej przerwie (finał 27.10: 30-45 min) karta panelu mogła spać.
+export const isAuthDenied = (error) =>
+  !!error && (/forbidden|jwt|token|not authenticated/i.test(error.message || "") || error.code === "PGRST301" || error.code === "42501");
+export const SESSION_EXPIRED_TEXT = "Sesja logowania wygasła - odśwież stronę (F5) i zaloguj się ponownie. Quiz trwa dalej bez zmian.";
+
+// RPC admina z jednym ponowieniem po odświeżeniu sesji, gdy serwer odmówił z powodu logowania.
+async function adminRpcCall(name, args) {
   await supabase.auth.getSession();
-  const { data, error } = await supabase.rpc(name, args);
+  let res = await supabase.rpc(name, args);
+  if (isAuthDenied(res.error)) {
+    const { error: rErr } = await supabase.auth.refreshSession();
+    if (!rErr) res = await supabase.rpc(name, args);
+    if (isAuthDenied(res.error)) return { data: null, error: { ...res.error, message: SESSION_EXPIRED_TEXT } };
+  }
+  return res;
+}
+
+async function adminRpc(name, args) {
+  const { data, error } = await adminRpcCall(name, args);
   if (error) {
     if (isMissingFn(error)) return { ok: false, reason: null, session: null, error: `Na bazie brak sekcji 39 (${name}) - wgraj SQL.` };
     return { ok: false, reason: null, session: null, error: error.message };

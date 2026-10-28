@@ -100,3 +100,9 @@ export const getModule = (id, modules = MODULES) => modules.find((m) => m.id ===
 // PAUSE_ARM_MS pauzuje od razu. armedUntil = 0 → nieuzbrojony.
 export const PAUSE_ARM_MS = 3000;
 export const pauseClickAction = (armedUntil, nowMs) => (armedUntil > 0 && nowMs < armedUntil ? "pause" : "arm");
+
+// Blokada pauzy tuż po starcie/wznowieniu (finał 27.10: admin Wrocławia kliknął dalej w to samo
+// miejsce - „⏸ Pauza” pojawia się tam, gdzie był „▶ Wznów quiz” - i zatrzymał quiz po 11 s).
+export const PAUSE_LOCK_AFTER_RUN_MS = 5000;
+export const pauseLockLeftMs = (runningSinceMs, nowMs) =>
+  runningSinceMs ? Math.max(0, runningSinceMs + PAUSE_LOCK_AFTER_RUN_MS - nowMs) : 0;

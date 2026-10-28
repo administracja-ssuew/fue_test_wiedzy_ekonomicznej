@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { DEMO, supabase, getParticipantState, submitAnswerV2 } from "../lib/supabase.js";
 import { projectPlanState, REVEAL_GATE_MS } from "../lib/plan.js";
+import { listenSessionSignal, uniqueTopic } from "../lib/sessionSignal.js";
 import { serverNow, addClockSample } from "../lib/serverClock.js";
 import {
   VT_MAX_DELAY_MS, shouldStartViewTransition, isSlowViewTransition,
@@ -484,9 +485,9 @@ export default function useParticipantGame(participant) {
       // Socket mógł zostać rozłączony przez removeChannel innego ekranu (lista kanałów
       // pusta → supabase-js zamyka socket) - bez tego subscribe() wisiałby na martwym.
       try { supabase.realtime.connect(); } catch (_) { /* nieistotne */ }
-      ch = supabase.channel(`quiz-${sessionId}`)
-        // Broadcast to tylko SYGNAŁ - kanał publiczny, payload mógłby być sfałszowany.
-        .on("broadcast", { event: "quiz_event" }, () => snapshotJittered({ includePlan: false }, 1000))
+      // Własny, unikalny kanał na postgres_changes (sessionSignal.js: wspólna nazwa `quiz-<id>`
+      // z poczekalnią rzucała wyjątek przy starcie sesji - finał 27.10, 94× client_error).
+      ch = supabase.channel(uniqueTopic(`quiz-rows-${sessionId}`))
         .on("postgres_changes", {
           event: "UPDATE", schema: "public", table: "quiz_sessions", filter: `id=eq.${sessionId}`,
         }, onRow)
@@ -499,6 +500,8 @@ export default function useParticipantGame(participant) {
         });
     };
     connect();
+    // Broadcast admina to tylko SYGNAŁ - kanał publiczny, payload mógłby być sfałszowany.
+    const offSignal = listenSessionSignal(supabase, sessionId, () => snapshotJittered({ includePlan: false }, 1000));
 
     // Dozorca (wzorzec z App.jsx): kanał nie jest i nie staje się połączony → odtwórz.
     // Snapshot nadrabiający odpali ponowne SUBSCRIBED; dodatkowo rozrzucony tu na wypadek,
@@ -525,6 +528,7 @@ export default function useParticipantGame(participant) {
     return () => {
       disposed = true;
       try { supabase.removeChannel(ch); } catch (_) { /* nieistotne */ }
+      offSignal();
       clearInterval(watchdog);
       clearTimeout(netStart);
       if (net) clearInterval(net);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { cityInfo, REVEAL_SECONDS, REVEAL_MS, BREAK_AFTER_MODULES,
   shouldEndEarly, earlySkipFloorSeconds, ANSWER_PLATEAU_MS, AUTO_SKIP_MIN_TPQ,
-  PAUSE_ARM_MS, pauseClickAction } from "./gameLogic.js";
+  PAUSE_ARM_MS, pauseClickAction, PAUSE_LOCK_AFTER_RUN_MS, pauseLockLeftMs } from "./gameLogic.js";
 
 describe("stałe planu (G1/G3)", () => {
   it("okno odsłony 11,5 s = bramka 1,5 s + 10 s widoczności poprawnej odpowiedzi", () => {
@@ -111,5 +111,19 @@ describe("pauseClickAction (pauza z dwóch kliknięć)", () => {
     expect(pauseClickAction(armedUntil, armedUntil - 1)).toBe("pause");
     expect(pauseClickAction(armedUntil, armedUntil)).toBe("arm");
     expect(pauseClickAction(armedUntil, armedUntil + 5000)).toBe("arm");
+  });
+});
+
+describe("pauseLockLeftMs (blokada pauzy po starcie/wznowieniu)", () => {
+  it("przez PAUSE_LOCK_AFTER_RUN_MS po wznowieniu pauza jest zablokowana", () => {
+    expect(PAUSE_LOCK_AFTER_RUN_MS).toBe(5000);
+    expect(pauseLockLeftMs(10_000, 10_000)).toBe(5000);
+    expect(pauseLockLeftMs(10_000, 13_000)).toBe(2000);
+  });
+  it("po upływie blokady i bez znanego momentu startu - brak blokady", () => {
+    expect(pauseLockLeftMs(10_000, 15_000)).toBe(0);
+    expect(pauseLockLeftMs(10_000, 99_000)).toBe(0);
+    expect(pauseLockLeftMs(0, 10_000)).toBe(0);
+    expect(pauseLockLeftMs(null, 10_000)).toBe(0);
   });
 });
